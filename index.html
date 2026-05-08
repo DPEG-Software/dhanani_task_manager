@@ -7,7 +7,13 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <!-- Microsoft Authentication Library -->
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js" crossorigin="anonymous"></script>
+<script>
+// Fallback if primary CDN fails
+if (typeof msal === 'undefined') {
+  document.write('<script src="https://unpkg.com/@azure/msal-browser@2.38.3/dist/msal-browser.min.js" crossorigin="anonymous"><\/script>');
+}
+</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
