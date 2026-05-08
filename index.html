@@ -607,12 +607,17 @@ const MSAL_CONFIG = {
   auth: {
     clientId: "8d523e65-0163-49c7-881b-407c0222527e",
     authority: "https://login.microsoftonline.com/9152bf5c-22ff-4e4a-8624-784a2d243006",
-    redirectUri: window.location.origin + window.location.pathname,
+    redirectUri: "https://dpeg-software.github.io/dhanani_task_manager/",
+    navigateToLoginRequestUrl: false,
   },
-  cache: { cacheLocation: "sessionStorage", storeAuthStateInCookie: false }
+  cache: {
+    cacheLocation: "localStorage",
+    storeAuthStateInCookie: true
+  }
 };
 
-const SCOPES = ["User.Read", "Files.ReadWrite"];
+const SCOPES = ["User.Read"];
+const SCOPES_GRAPH = ["User.Read", "Files.ReadWrite"];
 const ONEDRIVE_FOLDER = "DPEGTaskManager";
 
 // PRINCIPALS — those with Wednesday Review vs Discussion Notes
@@ -692,21 +697,28 @@ const DEPT_COLORS = {
 // MICROSOFT AUTH
 // ============================================================
 async function initMsal() {
-  // Show sign-in screen by default while we check session
   showSignIn();
   try {
     msalInstance = new msal.PublicClientApplication(MSAL_CONFIG);
     await msalInstance.initialize();
 
-    // Handle the redirect response when coming back from Microsoft
-    const response = await msalInstance.handleRedirectPromise();
+    // Handle redirect response from Microsoft
+    let response = null;
+    try {
+      response = await msalInstance.handleRedirectPromise();
+    } catch (redirectErr) {
+      console.error("Redirect error:", redirectErr);
+      setMsStatus("Sign in error: " + redirectErr.message);
+      return;
+    }
+
     if (response && response.account) {
       currentAccount = response.account;
       await loadUser(currentAccount);
       return;
     }
 
-    // Check for existing session
+    // Check existing session
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) {
       currentAccount = accounts[0];
@@ -714,12 +726,12 @@ async function initMsal() {
       return;
     }
 
-    // No session — show sign-in button ready
+    // Ready for sign in
     setMsStatus("");
 
   } catch (err) {
     console.error("MSAL init error:", err);
-    setMsStatus("Something went wrong. Please refresh the page.");
+    setMsStatus("Error: " + err.message + " — Please refresh.");
   }
 }
 
@@ -745,7 +757,7 @@ async function signInWithMicrosoft() {
   try {
     const loginRequest = {
       scopes: SCOPES,
-      redirectUri: window.location.origin + window.location.pathname,
+      redirectUri: "https://dpeg-software.github.io/dhanani_task_manager/",
       prompt: "select_account"
     };
     await msalInstance.loginRedirect(loginRequest);
@@ -822,11 +834,16 @@ function setSyncStatus(state, label) {
 
 async function getAccessToken() {
   try {
-    const result = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: currentAccount });
+    const result = await msalInstance.acquireTokenSilent({ scopes: SCOPES_GRAPH, account: currentAccount });
     return result.accessToken;
   } catch (err) {
-    const result = await msalInstance.acquireTokenPopup({ scopes: SCOPES });
-    return result.accessToken;
+    try {
+      const result = await msalInstance.acquireTokenPopup({ scopes: SCOPES_GRAPH });
+      return result.accessToken;
+    } catch (popupErr) {
+      console.error("Token error:", popupErr);
+      throw popupErr;
+    }
   }
 }
 
