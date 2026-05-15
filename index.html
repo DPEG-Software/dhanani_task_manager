@@ -18535,6 +18535,20 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .toast{position:fixed;bottom:22px;right:22px;background:#111827;color:#fff;padding:10px 16px;border-radius:var(--rlg);font-size:12.5px;font-weight:600;box-shadow:var(--sh3);z-index:999;opacity:0;transform:translateY(8px);transition:.22s ease;pointer-events:none;max-width:280px}
 .toast.show{opacity:1;transform:none}
 
+/* OUTLOOK */
+.ol-folder{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);cursor:pointer;font-size:12.5px;font-weight:500;color:var(--sub);transition:all .15s;margin-bottom:1px}
+.ol-folder:hover{background:var(--sage3);color:var(--ink)}
+.ol-folder.active{background:var(--sage2);color:var(--ink);font-weight:700}
+.ol-email-item{padding:12px 14px;border-bottom:1px solid #f3f4f6;cursor:pointer;transition:background .12s}
+.ol-email-item:hover{background:#f9fafb}
+.ol-email-item.active{background:var(--sage3);border-left:3px solid var(--ink)}
+.ol-email-item.unread .ol-email-subject{font-weight:700;color:var(--body)}
+.ol-email-sender{font-size:12.5px;font-weight:600;color:var(--body);margin-bottom:2px}
+.ol-email-subject{font-size:12px;color:var(--sub);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ol-email-preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ol-email-date{font-size:10.5px;color:var(--muted);margin-left:auto;white-space:nowrap;flex-shrink:0}
+.ol-email-top{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+
 /* ONEDRIVE SYNC INDICATOR */
 .sync-bar{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);padding:4px 0}
 .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0}
@@ -18598,6 +18612,10 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     <button class="ni" onclick="nav('summary')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3M3 17v3a2 2 0 002 2h14a2 2 0 002-2v-3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Summary Sheet
+    </button>
+    <button class="ni" onclick="nav('outlook')">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Outlook <span class="nb red" id="nb-inbox">0</span>
     </button>
     <div class="sb-lbl">Actions</div>
     <button class="ni" onclick="openAdd()">
@@ -18782,6 +18800,82 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     </div>
   </div>
 
+  <!-- OUTLOOK -->
+  <div class="page" id="page-outlook">
+    <div style="display:grid;grid-template-columns:200px 340px 1fr;gap:0;background:var(--white);border-radius:var(--rlg);border:1px solid var(--border);min-height:calc(100vh - 140px);overflow:hidden">
+      
+      <!-- Folder Panel -->
+      <div style="border-right:1px solid var(--border);background:#f9fafb">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+          <button class="btn btn-primary" style="width:100%" onclick="openCompose()">+ Compose</button>
+        </div>
+        <div style="padding:8px">
+          <div id="ol-folder-inbox" class="ol-folder active" onclick="loadFolder('inbox')">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4" stroke-width="2" stroke-linecap="round"/></svg>
+            Inbox <span id="ol-inbox-count" style="margin-left:auto;background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:700;padding:1px 5px;border-radius:20px"></span>
+          </div>
+          <div id="ol-folder-sent" class="ol-folder" onclick="loadFolder('sent')">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Sent Items
+          </div>
+          <div id="ol-folder-drafts" class="ol-folder" onclick="loadFolder('drafts')">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="2" stroke-linecap="round"/></svg>
+            Drafts
+          </div>
+        </div>
+      </div>
+
+      <!-- Email List Panel -->
+      <div style="border-right:1px solid var(--border);display:flex;flex-direction:column">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+          <div style="font-size:13px;font-weight:700;color:var(--body);flex:1" id="ol-folder-title">Inbox</div>
+          <button onclick="refreshFolder()" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:18px">&#8635;</button>
+        </div>
+        <div style="flex:1;overflow-y:auto" id="ol-email-list">
+          <div class="empty-state"><div class="es-text">Loading emails...</div></div>
+        </div>
+      </div>
+
+      <!-- Email Reader Panel -->
+      <div style="display:flex;flex-direction:column">
+        <div id="ol-email-reader" style="flex:1;overflow-y:auto;padding:0">
+          <div class="split-empty" style="height:100%">
+            <div style="font-size:14px;font-weight:600;color:var(--body);margin-bottom:4px">Select an email</div>
+            <div style="font-size:12px;color:var(--muted)">Click an email on the left to read it</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPOSE MODAL -->
+  <div class="mo" id="mo-compose">
+    <div class="mo-box" style="width:620px">
+      <div class="mo-hdr">
+        <div><div class="mo-title">New Email</div></div>
+        <button class="mo-x" onclick="closeMo('mo-compose')">&#10005;</button>
+      </div>
+      <div class="mo-body">
+        <div class="form-grp">
+          <label class="form-lbl">To</label>
+          <input type="email" class="form-in" id="compose-to" placeholder="recipient@dhananipeg.com" list="ppl-dl">
+        </div>
+        <div class="form-grp">
+          <label class="form-lbl">Subject</label>
+          <input type="text" class="form-in" id="compose-subject" placeholder="Email subject">
+        </div>
+        <div class="form-grp">
+          <label class="form-lbl">Message</label>
+          <textarea class="form-ta" id="compose-body" placeholder="Write your message..." style="min-height:200px"></textarea>
+        </div>
+      </div>
+      <div class="mo-foot">
+        <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-compose')">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="sendEmail()">Send</button>
+      </div>
+    </div>
+  </div>
+
   </div>
 </main>
 
@@ -18857,7 +18951,7 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH = ["User.Read", "Files.ReadWrite"];
+const SCOPES_GRAPH = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
 const ONEDRIVE_FOLDER = "DPEGTaskManager";
 
 // PRINCIPALS — those with Wednesday Review vs Discussion Notes
@@ -19097,9 +19191,29 @@ async function loadTasksFromOneDrive() {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.ok) {
-      const data = await res.json();
-      tasks = Array.isArray(data) ? data : (data.tasks || []);
-      archives = Array.isArray(data.archives) ? data.archives : [];
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        if (Array.isArray(data)) {
+          // Flow saved as array
+          tasks = data;
+          archives = [];
+        } else if (data.tasks) {
+          // App saved format
+          tasks = data.tasks || [];
+          archives = data.archives || [];
+        } else if (data.id) {
+          // Flow saved single task object
+          tasks = [data];
+          archives = [];
+        } else {
+          tasks = [];
+          archives = [];
+        }
+      } catch(e) {
+        tasks = [];
+        archives = [];
+      }
     } else if (res.status === 404) {
       tasks = [];
       archives = [];
@@ -19316,50 +19430,91 @@ function renderActivity(){
 // WEDNESDAY / DISCUSSION NOTES
 // ============================================================
 function renderWed(){
-  const wt=tasks.filter(t=>t.wednesday).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const wt=tasks.filter(t=>t.wednesday);
   const total=wt.length+customNotes.length;
-  document.getElementById("ws-n").textContent=total;
-  document.getElementById("ws-p").textContent=wt.filter(t=>nstt(t.status)==="Pending").length;
-  document.getElementById("ws-o").textContent=wt.filter(t=>nstt(t.status)==="Overdue").length;
-  const el=document.getElementById("wed-list");
-  if(!total){el.innerHTML=`<div class="empty-state"><div class="es-text">Nothing added yet</div><div class="es-sub">Use + Wed in the Action Log to add tasks, or type a note above</div></div>`;return;}
-  let html="";
+  document.getElementById('ws-n').textContent=total;
+  document.getElementById('ws-p').textContent=wt.filter(t=>nstt(t.status)==='Pending').length;
+  document.getElementById('ws-o').textContent=wt.filter(t=>nstt(t.status)==='Overdue').length;
+  const el=document.getElementById('wed-list');
+  if(!total){
+    el.innerHTML=`<div class="empty-state"><div class="es-text">Nothing added yet</div><div class="es-sub">Use the Wed button in the Action Log to add tasks, or type a note above</div></div>`;
+    return;
+  }
+  let html='';
+
   if(wt.length){
-    const groups=wt.reduce((acc,t)=>{const key=t.date||new Date().toISOString().split("T")[0];(acc[key]||(acc[key]=[])).push(t);return acc;},{});
-    Object.keys(groups).sort((a,b)=>new Date(a)-new Date(b)).forEach(date=>{
-      html+=`<div class="wed-date-group"><div class="wed-date">${fmtD(date)}</div>`;
-      html+=groups[date].map(t=>`
+    // Group by department
+    const groups={};
+    wt.forEach(t=>{
+      const dept=t.dept&&t.dept!=='Unknown'?t.dept:'Miscellaneous';
+      if(!groups[dept])groups[dept]=[];
+      groups[dept].push(t);
+    });
+
+    // Sort departments — Miscellaneous always last
+    const depts=Object.keys(groups).sort((a,b)=>{
+      if(a==='Miscellaneous')return 1;
+      if(b==='Miscellaneous')return -1;
+      return a.localeCompare(b);
+    });
+
+    depts.forEach(dept=>{
+      const deptTasks=groups[dept];
+      const dcolor_val=DEPT_COLORS[dept]||'#374151';
+      html+=`<div class="wed-date-group">
+        <div class="wed-date" style="display:flex;align-items:center;gap:8px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${dcolor_val};display:inline-block;flex-shrink:0"></span>
+          ${dept} <span style="font-size:10px;opacity:.6;font-weight:500;text-transform:none;letter-spacing:0">${deptTasks.length} item${deptTasks.length!==1?'s':''}</span>
+        </div>`;
+      html+=deptTasks.map(t=>`
         <div class="wed-card">
           <div class="wed-card-head">
             <div class="wed-card-title">${t.title}</div>
-            <span class="wed-card-dept">${t.dept}</span>
             ${sbadge(t.status)}
-            <button class="rm-btn" onclick="removeFromWed(${t.id})">&#215;</button>
+            <button class="rm-btn" onclick="removeFromWed(${t.id})" title="Remove from agenda">&#215;</button>
           </div>
           <div class="wed-card-body">
-            <div class="wed-card-meta"><span>${t.person}</span>${pBadge(t.priority)}</div>
-            <div class="wed-card-summary">${t.summary||"No summary available."}</div>
-            ${t.followup?`<div style="font-size:12px;color:var(--forest);font-weight:500;margin-bottom:8px;padding:6px 10px;background:var(--sage3);border-radius:6px">${t.followup}</div>`:""}
-            <textarea class="ag-ta" placeholder="Meeting notes..." id="wn-${t.id}" rows="2">${t.meetingNote||""}</textarea>
+            <div class="wed-card-meta">
+              <span style="font-weight:600;color:var(--body)">${t.person}</span>
+              ${pBadge(t.priority||'Normal')}
+            </div>
+            <div class="wed-card-summary">${t.summary||'No summary available.'}</div>
+            ${t.followup?`<div style="font-size:12px;color:var(--forest);font-weight:500;margin-bottom:8px;padding:6px 10px;background:var(--sage3);border-radius:6px">Previous note: ${t.followup}</div>`:''}
+            <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="2">${t.meetingNote||''}</textarea>
             <div class="ag-foot">
-              ${["Pending","Done","Overdue"].map(s=>`<button class="ag-status-btn ${s.toLowerCase()}${nstt(t.status)===s?" on":""}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join("")}
+              ${['Pending','In Progress','Done','Overdue'].map(s=>`<button class="ag-status-btn ${s.toLowerCase().replace(' ','-')}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
+              <button class="btn btn-ghost btn-xs" onclick="removeFromWed(${t.id})" style="margin-left:auto">Remove</button>
             </div>
           </div>
-        </div>`).join("");
+        </div>`).join('');
       html+=`</div>`;
     });
   }
+
+  // Custom notes section
   if(customNotes.length){
-    html+=`<div class="wed-date-group"><div class="wed-date">Custom Notes</div>`;
+    html+=`<div class="wed-date-group">
+      <div class="wed-date" style="display:flex;align-items:center;gap:8px">
+        <span style="width:10px;height:10px;border-radius:50%;background:#6b7280;display:inline-block;flex-shrink:0"></span>
+        Discussion Notes <span style="font-size:10px;opacity:.6;font-weight:500;text-transform:none;letter-spacing:0">${customNotes.length} note${customNotes.length!==1?'s':''}</span>
+      </div>`;
     html+=customNotes.map((n,i)=>`
       <div class="wed-card">
-        <div class="wed-card-head"><div class="wed-card-title">${n.text}</div><span class="wed-card-dept">Note</span><button class="rm-btn" onclick="removeCN(${i})">&#215;</button></div>
-        <div class="wed-card-body"><textarea class="ag-ta" placeholder="Add notes..." id="cn-note-${i}" rows="2">${n.meetingNote||""}</textarea></div>
-      </div>`).join("");
+        <div class="wed-card-head">
+          <div class="wed-card-title">${n.text}</div>
+          <span style="font-size:11px;color:var(--muted)">Added ${n.time}</span>
+          <button class="rm-btn" onclick="removeCN(${i})" title="Remove note">&#215;</button>
+        </div>
+        <div class="wed-card-body">
+          <textarea class="ag-ta" placeholder="Add discussion notes here..." id="cn-note-${i}" rows="2">${n.meetingNote||''}</textarea>
+        </div>
+      </div>`).join('');
     html+=`</div>`;
   }
+
   el.innerHTML=html;
 }
+
 
 function addCN(){const v=document.getElementById("cn-in").value.trim();if(!v)return;customNotes.unshift({text:v,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),meetingNote:""});document.getElementById("cn-in").value="";renderWed();syncBadges();toast("Note added");}
 function removeCN(i){const el=document.getElementById("cn-note-"+i);if(el)customNotes[i].meetingNote=el.value;customNotes.splice(i,1);renderWed();syncBadges();}
@@ -19549,8 +19704,8 @@ function renderCharts(){
 // ============================================================
 // NAVIGATION
 // ============================================================
-const PT={dashboard:"Dashboard",master:"Action Log",people:"People & Departments",wednesday:isWednesdayUser?"Wednesday Review":"Discussion Notes",archive:"Archive",summary:"Summary Sheet"};
-const PS={dashboard:"Real-time overview of task activity",master:"All dispatched tasks",people:"Team members and departments",wednesday:"Weekly agenda and notes",archive:"Past meeting records",summary:"Task report and CSV export"};
+const PT={dashboard:"Dashboard",master:"Action Log",people:"People & Departments",wednesday:isWednesdayUser?"Wednesday Review":"Discussion Notes",archive:"Archive",summary:"Summary Sheet",outlook:"Outlook"};
+const PS={dashboard:"Real-time overview of task activity",master:"All dispatched tasks",people:"Team members and departments",wednesday:"Weekly agenda and notes",archive:"Past meeting records",summary:"Task report and CSV export",outlook:"Send and receive emails. Tasks are created automatically for emails sent to DPEG staff."};
 function nav(name,mode){
   if(name==="departments"){name="people";mode="departments";}
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
@@ -19560,7 +19715,7 @@ function nav(name,mode){
   document.getElementById("tb-sub").textContent=PS[name]||"";
   document.querySelectorAll(".ni").forEach(btn=>{
     const t=btn.textContent.trim().toLowerCase();
-    if((name==="dashboard"&&t.startsWith("dash"))||(name==="master"&&t.startsWith("action"))||(name==="people"&&(t.startsWith("people")||t.startsWith("dept")))||(name==="wednesday"&&(t.startsWith("wed")||t.startsWith("disc")))||(name==="archive"&&t.startsWith("arch"))||(name==="summary"&&t.startsWith("sum")))
+    if((name==="dashboard"&&t.startsWith("dash"))||(name==="master"&&t.startsWith("action"))||(name==="people"&&(t.startsWith("people")||t.startsWith("dept")))||(name==="wednesday"&&(t.startsWith("wed")||t.startsWith("disc")))||(name==="archive"&&t.startsWith("arch"))||(name==="summary"&&t.startsWith("sum"))||(name==="outlook"&&t.startsWith("out")))
       btn.classList.add("active");
   });
   curSearch="";document.getElementById("srch").value="";
@@ -19570,6 +19725,7 @@ function nav(name,mode){
   if(name==="archive")renderArc();
   if(name==="dashboard"){renderCharts();renderActivity();}
   if(name==="summary")renderSum();
+  if(name==="outlook"){loadFolder("inbox");}
 }
 
 function syncBadges(){
@@ -19611,6 +19767,182 @@ function toast(msg,dur=2600){
   t.textContent=msg;t.classList.add("show");
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),dur);
 }
+
+
+// ============================================================
+// OUTLOOK INTEGRATION
+// ============================================================
+let currentFolder = 'inbox';
+let currentEmailId = null;
+let emailCache = {};
+
+const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts'};
+const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts'};
+
+async function loadFolder(folder) {
+  currentFolder = folder;
+  document.getElementById('ol-folder-title').textContent = FOLDER_LABELS[folder];
+  document.querySelectorAll('.ol-folder').forEach(f=>f.classList.remove('active'));
+  const af = document.getElementById('ol-folder-'+folder);
+  if(af) af.classList.add('active');
+  document.getElementById('ol-email-reader').innerHTML = `<div class="split-empty" style="height:300px"><div style="font-size:14px;font-weight:600;color:var(--body);margin-bottom:4px">Select an email</div><div style="font-size:12px;color:var(--muted)">Click an email to read it</div></div>`;
+  const listEl = document.getElementById('ol-email-list');
+  listEl.innerHTML = '<div class="empty-state"><div class="es-text">Loading...</div></div>';
+  try {
+    const token = await getAccessToken();
+    const res = await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=30&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    const emails = data.value||[];
+    if(folder==='inbox'){
+      const unread=emails.filter(e=>!e.isRead).length;
+      const ce=document.getElementById('ol-inbox-count');
+      if(ce)ce.textContent=unread>0?unread:'';
+      const nb=document.getElementById('nb-inbox');
+      if(nb)nb.textContent=unread>0?unread:'0';
+    }
+    if(!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails</div></div>';return;}
+    listEl.innerHTML=emails.map(e=>{
+      const sender=folder==='sent'?(e.toRecipients?.[0]?.emailAddress?.name||e.toRecipients?.[0]?.emailAddress?.address||'Unknown'):(e.from?.emailAddress?.name||e.from?.emailAddress?.address||'Unknown');
+      const date=new Date(e.receivedDateTime||e.sentDateTime);
+      const dateStr=date.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      const isUnread=!e.isRead&&folder==='inbox';
+      return `<div class="ol-email-item${isUnread?' unread':''}" onclick="readEmail('${e.id}','${folder}')"><div class="ol-email-top"><div class="ol-email-sender">${sender}</div><div class="ol-email-date">${dateStr}</div></div><div class="ol-email-subject">${e.subject||'(no subject)'}</div><div class="ol-email-preview">${e.bodyPreview||''}</div></div>`;
+    }).join('');
+  } catch(err) {
+    console.error('Load folder error:',err);
+    listEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load emails</div></div>';
+  }
+}
+
+async function readEmail(emailId, folder) {
+  currentEmailId=emailId;
+  document.querySelectorAll('.ol-email-item').forEach(e=>e.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  const readerEl=document.getElementById('ol-email-reader');
+  readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading email...</div></div>';
+  try {
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok) throw new Error('Failed');
+    const email=await res.json();
+    emailCache[emailId]=email;
+    const sender=email.from?.emailAddress;
+    const toList=email.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
+    const date=new Date(email.receivedDateTime||email.sentDateTime);
+    const dateStr=date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    const bodyContent=email.body?.content||email.bodyPreview||'';
+    const isHtml=email.body?.contentType==='html';
+    readerEl.innerHTML=`
+      <div style="padding:18px 20px;border-bottom:1px solid var(--border);background:#f9fafb">
+        <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:10px;line-height:1.3">${email.subject||'(no subject)'}</div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:12px;color:var(--body);margin-bottom:2px"><strong>From:</strong> ${sender?.name||''} &lt;${sender?.address||''}&gt;</div>
+            <div style="font-size:12px;color:var(--sub);margin-bottom:2px"><strong>To:</strong> ${toList}</div>
+            <div style="font-size:11px;color:var(--muted)">${dateStr}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="replyEmail('${emailId}')">Reply</button>
+            <button class="btn btn-ghost btn-sm" onclick="forwardEmail('${emailId}')">Forward</button>
+            <button class="btn btn-primary btn-sm" onclick="addTaskFromEmail('${emailId}')">+ Add to Tasks</button>
+          </div>
+        </div>
+      </div>
+      <div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:var(--body);overflow-y:auto">
+        ${isHtml?bodyContent:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px">${bodyContent}</pre>`}
+      </div>`;
+    if(!email.isRead&&folder==='inbox'){
+      fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
+    }
+  } catch(err) {
+    console.error('Read email error:',err);
+    readerEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load email</div></div>';
+  }
+}
+
+function openCompose(to,subject,body){
+  document.getElementById('compose-to').value=to||'';
+  document.getElementById('compose-subject').value=subject||'';
+  document.getElementById('compose-body').value=body||'';
+  document.querySelector('#mo-compose .mo-title').textContent='New Email';
+  document.getElementById('mo-compose').classList.add('open');
+}
+
+function replyEmail(emailId){
+  const email=emailCache[emailId];if(!email)return;
+  const to=email.from?.emailAddress?.address||'';
+  const subject=email.subject?.startsWith('Re:')?email.subject:`Re: ${email.subject}`;
+  const orig=`
+
+--- Original Message ---
+From: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}
+
+${email.bodyPreview}`;
+  openCompose(to,subject,orig);
+  document.querySelector('#mo-compose .mo-title').textContent='Reply';
+}
+
+function forwardEmail(emailId){
+  const email=emailCache[emailId];if(!email)return;
+  const subject=email.subject?.startsWith('Fw:')?email.subject:`Fw: ${email.subject}`;
+  const orig=`
+
+--- Forwarded Message ---
+From: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}
+Subject: ${email.subject}
+
+${email.bodyPreview}`;
+  openCompose('',subject,orig);
+  document.querySelector('#mo-compose .mo-title').textContent='Forward';
+}
+
+async function sendEmail(){
+  const to=document.getElementById('compose-to').value.trim();
+  const subject=document.getElementById('compose-subject').value.trim();
+  const body=document.getElementById('compose-body').value.trim();
+  if(!to||!subject){toast('Please fill in To and Subject');return;}
+  const btn=document.querySelector('#mo-compose .btn-primary');
+  btn.disabled=true;btn.textContent='Sending...';
+  try {
+    const token=await getAccessToken();
+    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({message:{subject,body:{contentType:'Text',content:body},toRecipients:[{emailAddress:{address:to}}]},saveToSentItems:true})
+    });
+    closeMo('mo-compose');
+    btn.disabled=false;btn.textContent='Send';
+    // Auto create task if sent to DPEG staff
+    if(to.toLowerCase().includes('@dhananipeg.com')){
+      const recipient=PEOPLE_DB.find(p=>p.email.toLowerCase()===to.toLowerCase());
+      const newTask={id:Date.now(),title:subject,summary:body.slice(0,255),person:recipient?.name||to.split('@')[0],email:to,dept:recipient?.dept||'Unknown',date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
+      tasks.unshift(newTask);
+      await saveTasksToOneDrive();
+      refreshAll();
+      toast('Email sent and task created in Action Log');
+    } else {
+      toast('Email sent');
+    }
+    if(currentFolder==='sent')loadFolder('sent');
+  } catch(err){
+    console.error('Send error:',err);
+    toast('Failed to send. Please try again.');
+    btn.disabled=false;btn.textContent='Send';
+  }
+}
+
+async function addTaskFromEmail(emailId){
+  const email=emailCache[emailId];if(!email)return;
+  const sender=email.from?.emailAddress;
+  const newTask={id:Date.now(),title:email.subject||'(no subject)',summary:email.bodyPreview||'',person:sender?.name||sender?.address||'Unknown',email:sender?.address||'',dept:PEOPLE_DB.find(p=>p.email?.toLowerCase()===sender?.address?.toLowerCase())?.dept||'Unknown',date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
+  tasks.unshift(newTask);
+  await saveTasksToOneDrive();
+  refreshAll();
+  toast('Task added to Action Log');
+}
+
+function refreshFolder(){loadFolder(currentFolder);}
 
 // ============================================================
 // INIT
