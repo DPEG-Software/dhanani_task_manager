@@ -18919,7 +18919,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     <div class="mo-body">
       <div class="sum-box" id="mo-sum"></div>
       <div class="d-row"><div class="d-lbl">Assigned To</div><div class="d-val" id="mo-person"></div></div>
-      <div class="d-row"><div class="d-lbl">Department</div><div class="d-val" id="mo-dept"></div></div>
+      <div class="d-row"><div class="d-lbl">Department</div><select class="form-sel" id="mo-dept" style="width:auto"></select></div>
       <div class="d-row"><div class="d-lbl">Date</div><div class="d-val" id="mo-date"></div></div>
       <div class="d-row"><div class="d-lbl">Status</div><select class="form-sel" id="mo-status" style="width:auto"><option>Pending</option><option>Done</option><option>Overdue</option></select></div>
       <div class="form-grp" style="margin-top:10px"><label class="form-lbl">Follow-up Note</label><input type="text" class="form-in" id="mo-followup" placeholder="Add a note..."></div>
@@ -19005,6 +19005,7 @@ let currentAccount = null;
 let isWednesdayUser = false;
 let tasks = [];
 let archives = [];
+let staffConfig = {};
 let customNotes = [];
 let curTaskId = null, curWeek = 0, curSearch = "", curPplSel = null, curDeptSel = null, curPplFilter = "", directoryMode = "people";
 let CH = {};
@@ -19231,25 +19232,31 @@ async function loadTasksFromOneDrive() {
           // Flow saved as array
           tasks = data;
           archives = [];
+          staffConfig = {};
         } else if (data.tasks) {
           // App saved format
           tasks = data.tasks || [];
           archives = data.archives || [];
+          staffConfig = data.staffConfig || {};
         } else if (data.id) {
           // Flow saved single task object
           tasks = [data];
           archives = [];
+          staffConfig = {};
         } else {
           tasks = [];
           archives = [];
+          staffConfig = {};
         }
       } catch(e) {
         tasks = [];
         archives = [];
+        staffConfig = {};
       }
     } else if (res.status === 404) {
       tasks = [];
       archives = [];
+      staffConfig = {};
       await saveTasksToOneDrive();
     }
     setSyncStatus("synced", "Synced with OneDrive");
@@ -19272,12 +19279,13 @@ async function saveTasksToOneDrive() {
     const token = await getAccessToken();
     const folder = currentUser.folder;
     const path = `/me/drive/root:/${ONEDRIVE_FOLDER}/${folder}/tasks.json:/content`;
-    const payload = JSON.stringify({ tasks, archives }, null, 2);
-    await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    const payload = JSON.stringify({ tasks, archives, staffConfig }, null, 2);
+    const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: payload
     });
+    if (!res.ok) throw new Error(`OneDrive save failed (${res.status})`);
     setSyncStatus("synced", "Saved to OneDrive");
   } catch (err) {
     setSyncStatus("error", "Save failed");
@@ -19293,6 +19301,32 @@ function dcolor(dept) { return DEPT_COLORS[dept] || "#374151"; }
 function ini(n) { return n.split(" ").map(x=>x[0]).join("").toUpperCase().slice(0,2); }
 function fmtD(d) { return new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
 function nstt(s) { return s==="In Progress"?"Pending":(s||"Pending"); }
+function normEmail(email) { return String(email||"").trim().toLowerCase(); }
+function staffKey(email,name) { return normEmail(email) || String(name||"").trim().toLowerCase(); }
+function findPersonByEmail(email) { return PEOPLE_DB.find(x=>normEmail(x.email)===normEmail(email)); }
+function findPersonByName(name) { return PEOPLE_DB.find(x=>x.name.toLowerCase()===String(name||"").toLowerCase()); }
+function configuredDept(email,name) {
+  const key = staffKey(email,name);
+  return (key && staffConfig[key]?.dept) || "";
+}
+function personDept(email,name) {
+  const configured = configuredDept(email,name);
+  if (configured) return configured;
+  const p = email ? findPersonByEmail(email) : findPersonByName(name);
+  return p?.dept || "Needs Department";
+}
+function deptOptions(selected) {
+  const list = DEPARTMENTS.includes(selected) || !selected ? DEPARTMENTS : [selected,...DEPARTMENTS];
+  return list.map(d=>`<option${d===selected?" selected":""}>${d}</option>`).join("");
+}
+function saveStaffDeptForTask(t,dept) {
+  const key = staffKey(t.email,t.person);
+  if (!key) return;
+  staffConfig[key] = { name:t.person, email:t.email||"", dept };
+  tasks.forEach(x=>{
+    if ((t.email && normEmail(x.email)===normEmail(t.email)) || (!t.email && x.person===t.person)) x.dept = dept;
+  });
+}
 function sbadge(s) {
   const st=nstt(s);
   const m={Pending:"bp",Done:"bd",Overdue:"bo"};
@@ -19300,7 +19334,7 @@ function sbadge(s) {
 }
 function av(name,size) {
   const sz=size||32;
-  return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${avc(name)};display:flex;align-items:center;justify-content:center;font-size:${Math.round(sz*.34)}px;font-weight:700;color:#fff;flex-shrink:0">${ini(name)}</div>`;
+  return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${dcolor(personDept("",name))};display:flex;align-items:center;justify-content:center;font-size:${Math.round(sz*.34)}px;font-weight:700;color:#fff;flex-shrink:0">${ini(name)}</div>`;
 }
 function pBadge(p) {
   const pr=String(p||"Normal").toLowerCase()==="high"?"High":"Normal";
@@ -19371,7 +19405,7 @@ async function togWed(id){
 // ============================================================
 function renderPplList(filter){
   const pp={};
-  tasks.forEach(t=>{if(!pp[t.person])pp[t.person]={name:t.person,dept:t.dept,tasks:[]};pp[t.person].tasks.push(t);});
+  tasks.forEach(t=>{if(!pp[t.person])pp[t.person]={name:t.person,email:t.email||"",dept:personDept(t.email,t.person),tasks:[]};pp[t.person].tasks.push(t);});
   PEOPLE_DB.forEach(p=>{if(!pp[p.name])pp[p.name]={name:p.name,dept:p.dept,tasks:[],principal:p.principal,role:p.role};else{pp[p.name].principal=p.principal;pp[p.name].role=p.role;}});
   const list=Object.values(pp).filter(p=>!filter||p.name.toLowerCase().includes(filter.toLowerCase())||p.dept.toLowerCase().includes(filter.toLowerCase()));
   const el=document.getElementById("ppl-list");
@@ -19404,19 +19438,30 @@ function selectPpl(name){
   curPplSel=name;renderPplList(curPplFilter);
   const pt=tasks.filter(t=>t.person===name);
   const pdb=PEOPLE_DB.find(p=>p.name===name);
+  const primaryTask=pt[0]||{};
+  const dept=personDept(primaryTask.email,name);
   const dn=pt.filter(t=>nstt(t.status)==="Done").length;
   const pct=pt.length?Math.round(dn/pt.length*100):0;
   document.getElementById("ppl-right").innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border)">
       ${av(name,44)}<div style="flex:1">
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:2px">${name}</div>
-        <div style="font-size:12px;color:var(--muted)">${pdb?.role||""} &bull; ${pdb?.dept||""} &bull; ${pdb?.email||""}</div>
+        <div style="font-size:12px;color:var(--muted)">${pdb?.role||""} &bull; ${dept} &bull; ${pdb?.email||primaryTask.email||""}</div>
         <div style="display:flex;gap:12px;margin-top:5px"><span style="font-size:12px;font-weight:600;color:#15803d">${dn} completed</span><span style="font-size:12px;font-weight:600;color:${pt.filter(t=>nstt(t.status)==="Overdue").length?"#b91c1c":"var(--muted)"}">${pt.filter(t=>nstt(t.status)!=="Done").length} open</span></div>
       </div>
       <div style="text-align:right"><div style="font-size:22px;font-weight:700;color:var(--body)">${pct}%</div><div class="prog-track" style="width:72px;margin-top:4px"><div class="prog-fill" style="width:${pct}%"></div></div></div>
     </div>
+    ${pt.length?`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.6px">Department</div><select class="form-sel" style="width:auto" onchange="updatePersonDept('${name}',this.value)">${deptOptions(dept)}</select></div>`:""}
     ${pt.length?`<table style="width:100%;border-collapse:collapse"><thead><tr>${["Task","Status","Priority","Date","Notes"].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:#f9fafb;border-bottom:1px solid var(--border)">${h}</th>`).join("")}</tr></thead><tbody>${pt.map(t=>`<tr style="border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openDetail(${t.id})"><td style="padding:10px"><div style="font-size:13px;font-weight:600;color:var(--body)">${t.title}</div></td><td style="padding:10px">${sbadge(t.status)}</td><td style="padding:10px">${pBadge(t.priority)}</td><td style="padding:10px;font-size:12px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td><td style="padding:10px;font-size:12px;color:var(--muted);font-style:${t.followup?"normal":"italic"}">${t.followup||"None"}</td></tr>`).join("")}</tbody></table>`:
     `<div class="empty-state"><div class="es-text">No tasks assigned yet</div></div>`}`;
+}
+async function updatePersonDept(name,dept){
+  const t=tasks.find(x=>x.person===name);
+  if(!t)return;
+  saveStaffDeptForTask(t,dept);
+  refreshAll();
+  toast("Department saved");
+  await saveTasksToOneDrive();
 }
 function renderDeptList(){
   const dp={};DEPARTMENTS.forEach(d=>dp[d]=[]);
@@ -19651,7 +19696,7 @@ function openDetail(id){
   document.getElementById("mo-sub").textContent=`${t.person} • ${t.dept} • ${fmtD(t.date)}`;
   document.getElementById("mo-sum").textContent=t.summary||"No summary available.";
   document.getElementById("mo-person").textContent=t.person+(t.email?` (${t.email})`:"");
-  document.getElementById("mo-dept").textContent=t.dept;
+  document.getElementById("mo-dept").innerHTML=deptOptions(t.dept);
   document.getElementById("mo-date").textContent=fmtD(t.date);
   document.getElementById("mo-status").value=nstt(t.status);
   document.getElementById("mo-followup").value=t.followup||"";
@@ -19659,7 +19704,7 @@ function openDetail(id){
 }
 async function saveDetail(){
   const t=tasks.find(x=>x.id===curTaskId);
-  if(t){t.status=document.getElementById("mo-status").value;t.followup=document.getElementById("mo-followup").value;}
+  if(t){t.status=document.getElementById("mo-status").value;t.followup=document.getElementById("mo-followup").value;saveStaffDeptForTask(t,document.getElementById("mo-dept").value);}
   closeMo("mo-detail");refreshAll();toast("Changes saved");await saveTasksToOneDrive();
 }
 async function movToWed(){const t=tasks.find(x=>x.id===curTaskId);if(t)t.wednesday=true;closeMo("mo-detail");refreshAll();toast("Moved to agenda");await saveTasksToOneDrive();}
@@ -19675,7 +19720,10 @@ async function addTask(){
   if(!title){toast("Please enter a task title");return;}
   const person=document.getElementById("nt-person").value||"Unassigned";
   const email=document.getElementById("nt-email").value;
-  tasks.unshift({id:Date.now(),title,summary:document.getElementById("nt-summary").value||"",person,email,dept:document.getElementById("nt-dept").value,date:document.getElementById("nt-date").value,status:document.getElementById("nt-status").value,priority:document.getElementById("nt-priority").value,wednesday:false,followup:"",weekOffset:0});
+  const dept=document.getElementById("nt-dept").value;
+  const task={id:Date.now(),title,summary:document.getElementById("nt-summary").value||"",person,email,dept,date:document.getElementById("nt-date").value,status:document.getElementById("nt-status").value,priority:document.getElementById("nt-priority").value,wednesday:false,followup:"",weekOffset:0};
+  tasks.unshift(task);
+  saveStaffDeptForTask(task,dept);
   closeMo("mo-add");
   ["nt-title","nt-summary","nt-person","nt-email"].forEach(i=>document.getElementById(i).value="");
   refreshAll();toast(`Task saved${email?`. Notification will go to ${email}`:""}`);
@@ -19947,8 +19995,10 @@ async function quickAddTask(emailId){
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,sentDateTime,bodyPreview`,{headers:{Authorization:`Bearer ${token}`}});
     const email=await res.json();
     const recipient=email.toRecipients?.[0]?.emailAddress;
-    const p=PEOPLE_DB.find(x=>x.email?.toLowerCase()===recipient?.address?.toLowerCase());
-    const newTask={id:Date.now(),emailId:emailId,title:email.subject||'(no subject)',summary:email.bodyPreview||'',person:p?.name||recipient?.name||recipient?.address||'Unknown',email:recipient?.address||'',dept:p?.dept||'Unknown',date:new Date(email.sentDateTime).toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
+    const p=findPersonByEmail(recipient?.address);
+    const person=p?.name||recipient?.name||recipient?.address||'Unknown';
+    const address=recipient?.address||'';
+    const newTask={id:Date.now(),emailId:emailId,title:email.subject||'(no subject)',summary:email.bodyPreview||'',person,email:address,dept:personDept(address,person),date:new Date(email.sentDateTime).toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
     tasks.unshift(newTask);
     trackedEmailIds.add(emailId);
     await saveTasksToOneDrive();
@@ -20067,22 +20117,27 @@ async function sendEmail(){
     const toRecipients=to.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address);
     const ccRecipients=cc?cc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
     const bccRecipients=bcc?bcc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
-    const message={subject,body:{contentType:'Text',content:body},toRecipients,saveToSentItems:true};
+    const message={subject,body:{contentType:'Text',content:body},toRecipients};
     if(ccRecipients.length)message.ccRecipients=ccRecipients;
     if(bccRecipients.length)message.bccRecipients=bccRecipients;
-    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+    const sendRes = await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
       method:'POST',
       headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
       body:JSON.stringify({message,saveToSentItems:true})
     });
+    if(!sendRes.ok){
+      const errText=await sendRes.text().catch(()=>"");
+      throw new Error(`Microsoft Graph sendMail failed (${sendRes.status}) ${errText}`);
+    }
     closeMo('mo-compose');
     if(btn){btn.disabled=false;btn.innerHTML='<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Send';}
     // Auto create tasks for all DPEG recipients in To and CC
     const dpegRecipients=getDpegRecipients(to,cc);
     if(dpegRecipients.length){
       for(const email of dpegRecipients){
-        const p=PEOPLE_DB.find(x=>x.email.toLowerCase()===email.toLowerCase());
-        const newTask={id:Date.now()+Math.random(),title:subject,summary:body.slice(0,255),person:p?.name||email.split('@')[0],email,dept:p?.dept||'Unknown',date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
+        const p=findPersonByEmail(email);
+        const person=p?.name||email.split('@')[0];
+        const newTask={id:Date.now()+Math.random(),title:subject,summary:body.slice(0,255),person,email,dept:personDept(email,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
         tasks.unshift(newTask);
       }
       await saveTasksToOneDrive();
@@ -20094,7 +20149,7 @@ async function sendEmail(){
     if(currentFolder==='sent')loadFolder('sent');
   }catch(err){
     console.error('Send error:',err);
-    toast('Failed to send email. Please try again.');
+    toast('Email was not sent. No Action Log task was created.');
     if(btn){btn.disabled=false;btn.innerHTML='<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Send';}
   }
 }
@@ -20102,8 +20157,10 @@ async function sendEmail(){
 async function addTaskFromEmail(emailId){
   const email=emailCache[emailId];if(!email)return;
   const sender=email.from?.emailAddress;
-  const p=PEOPLE_DB.find(x=>x.email?.toLowerCase()===sender?.address?.toLowerCase());
-  const newTask={id:Date.now(),emailId,title:email.subject||'(no subject)',summary:email.bodyPreview||'',person:p?.name||sender?.name||sender?.address||'Unknown',email:sender?.address||'',dept:p?.dept||'Unknown',date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
+  const p=findPersonByEmail(sender?.address);
+  const person=p?.name||sender?.name||sender?.address||'Unknown';
+  const address=sender?.address||'';
+  const newTask={id:Date.now(),emailId,title:email.subject||'(no subject)',summary:email.bodyPreview||'',person,email:address,dept:personDept(address,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
   tasks.unshift(newTask);
   trackedEmailIds.add(emailId);
   await saveTasksToOneDrive();
