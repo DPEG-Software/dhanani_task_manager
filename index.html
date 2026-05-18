@@ -18429,7 +18429,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .dr-cnt{font-size:11px;color:var(--muted);margin-top:1px}
 
 /* WEDNESDAY */
-.wed-page{max-width:940px;margin:0 auto}
+.wed-page{max-width:100%;margin:0}
 .wed-hero{background:linear-gradient(135deg,#0E3416 0%,#1A5C2A 100%);border-radius:var(--rlg);padding:18px 20px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:16px}
 .wh-title{font-size:18px;font-weight:800;color:#fff;margin-bottom:2px}
 .wh-sub{font-size:12px;color:rgba(255,255,255,.72)}
@@ -18442,7 +18442,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .cn-row{display:flex;gap:8px}
 .cn-in{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:13px;color:var(--body);outline:none;transition:border .15s}
 .cn-in:focus{border-color:#9ca3af}
-.agenda-panel{background:var(--white);border:1px solid var(--sage);border-radius:var(--rlg);overflow:hidden}
+.agenda-panel{background:var(--white);border:1px solid var(--sage);border-radius:var(--rlg);overflow:hidden;width:100%}
 .agenda-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 16px;border-bottom:1px solid var(--sage);background:var(--sage3)}
 .agenda-title{font-size:14px;font-weight:800;color:var(--ink)}
 .agenda-sub{font-size:11.5px;color:var(--muted)}
@@ -18593,6 +18593,10 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke-width="2"/></svg>
       Dashboard
     </button>
+    <button class="ni" onclick="nav('outlook')">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Outlook <span class="nb red" id="nb-inbox">0</span>
+    </button>
     <button class="ni" onclick="nav('master')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke-width="2" stroke-linecap="round"/></svg>
       Action Log <span class="nb" id="nb-m">0</span>
@@ -18612,10 +18616,6 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     <button class="ni" onclick="nav('summary')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3M3 17v3a2 2 0 002 2h14a2 2 0 002-2v-3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Summary Sheet
-    </button>
-    <button class="ni" onclick="nav('outlook')">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Outlook <span class="nb red" id="nb-inbox">0</span>
     </button>
     <div class="sb-lbl">Actions</div>
     <button class="ni" onclick="openAdd()">
@@ -18801,77 +18801,110 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   </div>
 
   <!-- OUTLOOK -->
-  <div class="page" id="page-outlook">
-    <div style="display:grid;grid-template-columns:200px 340px 1fr;gap:0;background:var(--white);border-radius:var(--rlg);border:1px solid var(--border);min-height:calc(100vh - 140px);overflow:hidden">
-      
-      <!-- Folder Panel -->
-      <div style="border-right:1px solid var(--border);background:#f9fafb">
-        <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
-          <button class="btn btn-primary" style="width:100%" onclick="openCompose()">+ Compose</button>
+  <div class="page" id="page-outlook" style="padding:0;margin:-22px -24px;height:calc(100vh - 56px)">
+    <div style="display:grid;grid-template-columns:180px 320px 1fr;height:100%;overflow:hidden;background:var(--white);border-top:1px solid var(--border)">
+
+      <!-- LEFT: Folders -->
+      <div style="border-right:1px solid var(--border);background:#f9fafb;display:flex;flex-direction:column;height:100%;overflow:hidden">
+        <div style="padding:14px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+          <button class="btn btn-primary" style="width:100%;font-size:12.5px;padding:9px 12px" onclick="openCompose()">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke-width="2.5" stroke-linecap="round"/></svg>
+            New Email
+          </button>
         </div>
-        <div style="padding:8px">
+        <div style="padding:8px;flex:1;overflow-y:auto">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:8px 8px 4px">Folders</div>
           <div id="ol-folder-inbox" class="ol-folder active" onclick="loadFolder('inbox')">
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4" stroke-width="2" stroke-linecap="round"/></svg>
-            Inbox <span id="ol-inbox-count" style="margin-left:auto;background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:700;padding:1px 5px;border-radius:20px"></span>
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4" stroke-width="2" stroke-linecap="round"/></svg>
+            Inbox
+            <span id="ol-inbox-count" style="margin-left:auto;background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;display:none"></span>
           </div>
           <div id="ol-folder-sent" class="ol-folder" onclick="loadFolder('sent')">
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Sent Items
           </div>
           <div id="ol-folder-drafts" class="ol-folder" onclick="loadFolder('drafts')">
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="2" stroke-linecap="round"/></svg>
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="2" stroke-linecap="round"/></svg>
             Drafts
+          </div>
+          <div style="height:1px;background:var(--border);margin:8px 0"></div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:4px 8px 4px">Tracking</div>
+          <div id="ol-folder-untracked" class="ol-folder" onclick="loadFolder('untracked')">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke-width="2" stroke-linecap="round"/></svg>
+            Untracked
+            <span id="ol-untracked-count" style="margin-left:auto;background:var(--amber-bg);color:var(--amber);font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;display:none"></span>
           </div>
         </div>
       </div>
 
-      <!-- Email List Panel -->
-      <div style="border-right:1px solid var(--border);display:flex;flex-direction:column">
-        <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      <!-- MIDDLE: Email List -->
+      <div style="border-right:1px solid var(--border);display:flex;flex-direction:column;height:100%;overflow:hidden">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0;display:flex;align-items:center;gap:8px">
           <div style="font-size:13px;font-weight:700;color:var(--body);flex:1" id="ol-folder-title">Inbox</div>
-          <button onclick="refreshFolder()" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:18px">&#8635;</button>
+          <button onclick="refreshFolder()" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:17px;line-height:1;padding:2px" title="Refresh">&#8635;</button>
         </div>
         <div style="flex:1;overflow-y:auto" id="ol-email-list">
           <div class="empty-state"><div class="es-text">Loading emails...</div></div>
         </div>
       </div>
 
-      <!-- Email Reader Panel -->
-      <div style="display:flex;flex-direction:column">
-        <div id="ol-email-reader" style="flex:1;overflow-y:auto;padding:0">
-          <div class="split-empty" style="height:100%">
+      <!-- RIGHT: Email Reader — FIXED, does not scroll with list -->
+      <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+        <div id="ol-email-reader" style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px">
+            <svg width="48" height="48" fill="none" stroke="#d1d5db" viewBox="0 0 24 24" style="margin-bottom:14px"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <div style="font-size:14px;font-weight:600;color:var(--body);margin-bottom:4px">Select an email</div>
-            <div style="font-size:12px;color:var(--muted)">Click an email on the left to read it</div>
+            <div style="font-size:12px;color:var(--muted)">Click any email from the list to read it here</div>
           </div>
         </div>
       </div>
+
     </div>
   </div>
 
   <!-- COMPOSE MODAL -->
   <div class="mo" id="mo-compose">
-    <div class="mo-box" style="width:620px">
-      <div class="mo-hdr">
-        <div><div class="mo-title">New Email</div></div>
-        <button class="mo-x" onclick="closeMo('mo-compose')">&#10005;</button>
+    <div class="mo-box" style="width:640px;max-height:92vh">
+      <div class="mo-hdr" style="background:var(--ink);border-radius:var(--rlg) var(--rlg) 0 0">
+        <div><div class="mo-title" id="compose-title" style="color:#fff">New Email</div></div>
+        <button class="mo-x" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" onclick="closeMo('mo-compose')">&#10005;</button>
       </div>
-      <div class="mo-body">
-        <div class="form-grp">
-          <label class="form-lbl">To</label>
-          <input type="email" class="form-in" id="compose-to" placeholder="recipient@dhananipeg.com" list="ppl-dl">
+      <div class="mo-body" style="padding:14px 18px">
+        <!-- TO -->
+        <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">To</span>
+          <input type="text" id="compose-to" placeholder="Add recipients..." list="ppl-dl" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showCcBcc()">
+          <button onclick="toggleBcc()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;font-weight:600;padding:2px 6px;border-radius:4px;transition:all .12s" id="bcc-toggle-btn" title="Add BCC">BCC</button>
         </div>
-        <div class="form-grp">
-          <label class="form-lbl">Subject</label>
-          <input type="text" class="form-in" id="compose-subject" placeholder="Email subject">
+        <!-- CC -->
+        <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px" id="cc-row">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">CC</span>
+          <input type="text" id="compose-cc" placeholder="Add CC recipients..." list="ppl-dl" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
         </div>
-        <div class="form-grp">
-          <label class="form-lbl">Message</label>
-          <textarea class="form-ta" id="compose-body" placeholder="Write your message..." style="min-height:200px"></textarea>
+        <!-- BCC — hidden by default -->
+        <div style="display:none;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px" id="bcc-row">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">BCC</span>
+          <input type="text" id="compose-bcc" placeholder="Add BCC recipients..." list="ppl-dl" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+        </div>
+        <!-- SUBJECT -->
+        <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Re</span>
+          <input type="text" id="compose-subject" placeholder="Subject" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:var(--body);background:transparent">
+        </div>
+        <!-- BODY -->
+        <textarea id="compose-body" placeholder="Write your message here..." style="width:100%;min-height:220px;border:none;outline:none;font-family:Inter,sans-serif;font-size:13.5px;color:var(--body);resize:vertical;line-height:1.6;background:transparent"></textarea>
+        <!-- DPEG recipients preview -->
+        <div id="compose-recipients-preview" style="display:none;margin-top:8px;padding:8px 10px;background:var(--sage3);border-radius:var(--r);border:1px solid var(--sage)">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--forest);margin-bottom:4px">Tasks will be auto-created for:</div>
+          <div id="compose-dpeg-list" style="font-size:12px;color:var(--forest)"></div>
         </div>
       </div>
-      <div class="mo-foot">
-        <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-compose')">Cancel</button>
-        <button class="btn btn-primary btn-sm" onclick="sendEmail()">Send</button>
+      <div class="mo-foot" style="border-top:1px solid var(--border)">
+        <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-compose')">Discard</button>
+        <button class="btn btn-primary btn-sm" onclick="sendEmail()" id="compose-send-btn">
+          <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Send
+        </button>
       </div>
     </div>
   </div>
@@ -19770,103 +19803,227 @@ function toast(msg,dur=2600){
 
 
 // ============================================================
-// OUTLOOK INTEGRATION
+// OUTLOOK INTEGRATION — Full featured with CC/BCC/Untracked
 // ============================================================
 let currentFolder = 'inbox';
 let currentEmailId = null;
 let emailCache = {};
+let trackedEmailIds = new Set();
 
 const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts'};
-const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts'};
+const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',untracked:'Untracked Emails'};
 
-async function loadFolder(folder) {
-  currentFolder = folder;
-  document.getElementById('ol-folder-title').textContent = FOLDER_LABELS[folder];
-  document.querySelectorAll('.ol-folder').forEach(f=>f.classList.remove('active'));
-  const af = document.getElementById('ol-folder-'+folder);
-  if(af) af.classList.add('active');
-  document.getElementById('ol-email-reader').innerHTML = `<div class="split-empty" style="height:300px"><div style="font-size:14px;font-weight:600;color:var(--body);margin-bottom:4px">Select an email</div><div style="font-size:12px;color:var(--muted)">Click an email to read it</div></div>`;
-  const listEl = document.getElementById('ol-email-list');
-  listEl.innerHTML = '<div class="empty-state"><div class="es-text">Loading...</div></div>';
-  try {
-    const token = await getAccessToken();
-    const res = await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=30&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
-    if(!res.ok) throw new Error('Failed');
-    const data = await res.json();
-    const emails = data.value||[];
-    if(folder==='inbox'){
-      const unread=emails.filter(e=>!e.isRead).length;
-      const ce=document.getElementById('ol-inbox-count');
-      if(ce)ce.textContent=unread>0?unread:'';
-      const nb=document.getElementById('nb-inbox');
-      if(nb)nb.textContent=unread>0?unread:'0';
-    }
-    if(!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails</div></div>';return;}
-    listEl.innerHTML=emails.map(e=>{
-      const sender=folder==='sent'?(e.toRecipients?.[0]?.emailAddress?.name||e.toRecipients?.[0]?.emailAddress?.address||'Unknown'):(e.from?.emailAddress?.name||e.from?.emailAddress?.address||'Unknown');
-      const date=new Date(e.receivedDateTime||e.sentDateTime);
-      const dateStr=date.toLocaleDateString('en-US',{month:'short',day:'numeric'});
-      const isUnread=!e.isRead&&folder==='inbox';
-      return `<div class="ol-email-item${isUnread?' unread':''}" onclick="readEmail('${e.id}','${folder}')"><div class="ol-email-top"><div class="ol-email-sender">${sender}</div><div class="ol-email-date">${dateStr}</div></div><div class="ol-email-subject">${e.subject||'(no subject)'}</div><div class="ol-email-preview">${e.bodyPreview||''}</div></div>`;
+function buildTrackedSet(){
+  trackedEmailIds = new Set(tasks.filter(t=>t.emailId).map(t=>t.emailId));
+}
+
+function getDpegRecipients(toStr,ccStr){
+  const all=[...(toStr||'').split(','),...(ccStr||'').split(',')]
+    .map(e=>e.trim()).filter(e=>e.toLowerCase().includes('@dhananipeg.com'));
+  return [...new Set(all)];
+}
+
+function showRecipientPreview(){
+  const to=document.getElementById('compose-to')?.value||'';
+  const cc=document.getElementById('compose-cc')?.value||'';
+  const dpeg=getDpegRecipients(to,cc);
+  const preview=document.getElementById('compose-recipients-preview');
+  const list=document.getElementById('compose-dpeg-list');
+  if(!preview||!list)return;
+  if(dpeg.length){
+    preview.style.display='block';
+    list.innerHTML=dpeg.map(e=>{
+      const p=PEOPLE_DB.find(x=>x.email.toLowerCase()===e.toLowerCase());
+      return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;margin-bottom:3px;background:#fff;border:1px solid var(--sage);border-radius:4px;padding:2px 8px;font-size:11.5px;font-weight:600;color:var(--forest)"><span style="width:6px;height:6px;border-radius:50%;background:var(--fern);display:inline-block;flex-shrink:0"></span>${p?.name||e}</span>`;
     }).join('');
-  } catch(err) {
-    console.error('Load folder error:',err);
-    listEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load emails</div></div>';
+  } else {
+    preview.style.display='none';
   }
 }
 
-async function readEmail(emailId, folder) {
+function toggleBcc(){
+  const row=document.getElementById('bcc-row');
+  if(!row)return;
+  const showing=row.style.display!=='none'&&row.style.display!=='';
+  row.style.display=showing?'none':'flex';
+  const btn=document.getElementById('bcc-toggle-btn');
+  if(btn)btn.style.color=showing?'':'var(--ink)';
+}
+
+async function loadFolder(folder){
+  currentFolder=folder;
+  buildTrackedSet();
+  const titleEl=document.getElementById('ol-folder-title');
+  if(titleEl)titleEl.textContent=FOLDER_LABELS[folder]||folder;
+  document.querySelectorAll('.ol-folder').forEach(f=>f.classList.remove('active'));
+  const af=document.getElementById('ol-folder-'+folder);
+  if(af)af.classList.add('active');
+  const readerEl=document.getElementById('ol-email-reader');
+  if(readerEl)readerEl.innerHTML=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px"><svg width="48" height="48" fill="none" stroke="#d1d5db" viewBox="0 0 24 24" style="margin-bottom:14px"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.5" stroke-linecap="round"/></svg><div style="font-size:14px;font-weight:600;color:var(--body);margin-bottom:4px">Select an email</div><div style="font-size:12px;color:var(--muted)">Click any email to read it here</div></div>`;
+  const listEl=document.getElementById('ol-email-list');
+  if(!listEl)return;
+  listEl.innerHTML=`<div class="empty-state"><div class="es-text">Loading...</div></div>`;
+  if(folder==='untracked'){await loadUntracked();return;}
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=40&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Failed');
+    const data=await res.json();
+    const emails=data.value||[];
+    if(folder==='inbox'){
+      const unread=emails.filter(e=>!e.isRead).length;
+      const ce=document.getElementById('ol-inbox-count');
+      if(ce){ce.textContent=unread>0?unread:'';ce.style.display=unread>0?'':'none';}
+      const nb=document.getElementById('nb-inbox');
+      if(nb)nb.textContent=unread>0?unread:'0';
+    }
+    if(!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails found</div></div>';return;}
+    listEl.innerHTML=emails.map(e=>{
+      const isTracked=trackedEmailIds.has(e.id);
+      const sender=folder==='sent'?(e.toRecipients?.[0]?.emailAddress?.name||e.toRecipients?.[0]?.emailAddress?.address||'Unknown'):(e.from?.emailAddress?.name||e.from?.emailAddress?.address||'Unknown');
+      const dt=new Date(e.receivedDateTime||e.sentDateTime);
+      const now=new Date();
+      const isToday=dt.toDateString()===now.toDateString();
+      const dateStr=isToday?dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      const isUnread=!e.isRead&&folder==='inbox';
+      return `<div class="ol-email-item${isUnread?' unread':''}" onclick="readEmail('${e.id}','${folder}')">
+        <div class="ol-email-top">
+          <div class="ol-email-sender">${sender}</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd)">✓ Tracked</span>`:''}
+            <div class="ol-email-date">${dateStr}</div>
+          </div>
+        </div>
+        <div class="ol-email-subject">${e.subject||'(no subject)'}</div>
+        <div class="ol-email-preview">${e.bodyPreview||''}</div>
+      </div>`;
+    }).join('');
+  }catch(err){
+    console.error('Load folder error:',err);
+    listEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load emails</div><div class="es-sub">Check your connection</div></div>';
+  }
+}
+
+async function loadUntracked(){
+  const listEl=document.getElementById('ol-email-list');
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=50&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Failed');
+    const data=await res.json();
+    const emails=data.value||[];
+    // Filter to DPEG emails not yet tracked
+    const untracked=emails.filter(e=>{
+      const isDpeg=e.toRecipients?.some(r=>r.emailAddress?.address?.toLowerCase().includes('@dhananipeg.com'));
+      const isTracked=trackedEmailIds.has(e.id);
+      return isDpeg&&!isTracked;
+    });
+    const untrackedCount=untracked.length;
+    const uc=document.getElementById('ol-untracked-count');
+    if(uc){uc.textContent=untrackedCount>0?untrackedCount:'';uc.style.display=untrackedCount>0?'':'none';}
+    if(!untracked.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">All caught up</div><div class="es-sub">All emails to DPEG staff are tracked</div></div>';return;}
+    listEl.innerHTML=`<div style="padding:10px 14px;background:var(--amber-bg);border-bottom:1px solid var(--amber-bd)"><div style="font-size:11.5px;font-weight:600;color:var(--amber)">${untracked.length} email${untracked.length!==1?'s':''} sent to DPEG staff not yet in Action Log</div></div>`+
+    untracked.map(e=>{
+      const to=e.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
+      const dt=new Date(e.sentDateTime);
+      const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      return `<div class="ol-email-item" style="display:flex;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0" onclick="readEmail('${e.id}','sent')">
+          <div class="ol-email-top"><div class="ol-email-sender">To: ${to}</div><div class="ol-email-date">${dateStr}</div></div>
+          <div class="ol-email-subject">${e.subject||'(no subject)'}</div>
+          <div class="ol-email-preview">${e.bodyPreview||''}</div>
+        </div>
+        <button onclick="quickAddTask('${e.id}')" style="flex-shrink:0;margin-top:8px;padding:4px 8px;background:var(--ink);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add</button>
+      </div>`;
+    }).join('');
+  }catch(err){
+    listEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load untracked emails</div></div>';
+  }
+}
+
+async function quickAddTask(emailId){
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,sentDateTime,bodyPreview`,{headers:{Authorization:`Bearer ${token}`}});
+    const email=await res.json();
+    const recipient=email.toRecipients?.[0]?.emailAddress;
+    const p=PEOPLE_DB.find(x=>x.email?.toLowerCase()===recipient?.address?.toLowerCase());
+    const newTask={id:Date.now(),emailId:emailId,title:email.subject||'(no subject)',summary:email.bodyPreview||'',person:p?.name||recipient?.name||recipient?.address||'Unknown',email:recipient?.address||'',dept:p?.dept||'Unknown',date:new Date(email.sentDateTime).toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
+    tasks.unshift(newTask);
+    trackedEmailIds.add(emailId);
+    await saveTasksToOneDrive();
+    refreshAll();
+    toast('Added to Action Log');
+    loadUntracked();
+  }catch(err){toast('Could not add task');}
+}
+
+async function readEmail(emailId,folder){
   currentEmailId=emailId;
   document.querySelectorAll('.ol-email-item').forEach(e=>e.classList.remove('active'));
-  event.currentTarget.classList.add('active');
+  if(event&&event.currentTarget)event.currentTarget.classList.add('active');
   const readerEl=document.getElementById('ol-email-reader');
-  readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading email...</div></div>';
-  try {
+  if(!readerEl)return;
+  readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading...</div></div>';
+  try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead`,{headers:{Authorization:`Bearer ${token}`}});
-    if(!res.ok) throw new Error('Failed');
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Failed');
     const email=await res.json();
     emailCache[emailId]=email;
     const sender=email.from?.emailAddress;
     const toList=email.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
-    const date=new Date(email.receivedDateTime||email.sentDateTime);
-    const dateStr=date.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    const ccList=email.ccRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
+    const dt=new Date(email.receivedDateTime||email.sentDateTime);
+    const dateStr=dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const bodyContent=email.body?.content||email.bodyPreview||'';
     const isHtml=email.body?.contentType==='html';
+    const isTracked=trackedEmailIds.has(emailId);
     readerEl.innerHTML=`
-      <div style="padding:18px 20px;border-bottom:1px solid var(--border);background:#f9fafb">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:10px;line-height:1.3">${email.subject||'(no subject)'}</div>
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-          <div>
-            <div style="font-size:12px;color:var(--body);margin-bottom:2px"><strong>From:</strong> ${sender?.name||''} &lt;${sender?.address||''}&gt;</div>
-            <div style="font-size:12px;color:var(--sub);margin-bottom:2px"><strong>To:</strong> ${toList}</div>
-            <div style="font-size:11px;color:var(--muted)">${dateStr}</div>
-          </div>
-          <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" onclick="replyEmail('${emailId}')">Reply</button>
-            <button class="btn btn-ghost btn-sm" onclick="forwardEmail('${emailId}')">Forward</button>
-            <button class="btn btn-primary btn-sm" onclick="addTaskFromEmail('${emailId}')">+ Add to Tasks</button>
-          </div>
+        <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">From:</span> ${sender?.name||''} &lt;${sender?.address||''}&gt;</div>
+        <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">To:</span> ${toList}</div>
+        ${ccList?`<div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">CC:</span> ${ccList}</div>`:''}
+        <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${dateStr}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="replyEmail('${emailId}')">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Reply
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="forwardEmail('${emailId}')">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Forward
+          </button>
+          ${isTracked
+            ?`<span class="btn btn-ghost btn-sm" style="color:var(--leaf);border-color:var(--leaf-bd);background:var(--leaf-bg);cursor:default">✓ In Action Log</span>`
+            :`<button class="btn btn-primary btn-sm" onclick="addTaskFromEmail('${emailId}')">+ Add to Tasks</button>`
+          }
         </div>
       </div>
-      <div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:var(--body);overflow-y:auto">
-        ${isHtml?bodyContent:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px">${bodyContent}</pre>`}
+      <div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:var(--body);overflow-y:auto;flex:1">
+        ${isHtml?bodyContent:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${bodyContent}</pre>`}
       </div>`;
     if(!email.isRead&&folder==='inbox'){
       fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
     }
-  } catch(err) {
-    console.error('Read email error:',err);
+  }catch(err){
     readerEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load email</div></div>';
   }
 }
 
-function openCompose(to,subject,body){
+function openCompose(to,subject,body,type){
   document.getElementById('compose-to').value=to||'';
+  document.getElementById('compose-cc').value='';
+  if(document.getElementById('compose-bcc'))document.getElementById('compose-bcc').value='';
   document.getElementById('compose-subject').value=subject||'';
   document.getElementById('compose-body').value=body||'';
-  document.querySelector('#mo-compose .mo-title').textContent='New Email';
+  document.getElementById('compose-title').textContent=type||'New Email';
+  // Hide BCC by default
+  const bccRow=document.getElementById('bcc-row');
+  if(bccRow)bccRow.style.display='none';
   document.getElementById('mo-compose').classList.add('open');
+  showRecipientPreview();
 }
 
 function replyEmail(emailId){
@@ -19875,12 +20032,11 @@ function replyEmail(emailId){
   const subject=email.subject?.startsWith('Re:')?email.subject:`Re: ${email.subject}`;
   const orig=`
 
---- Original Message ---
+——— Original Message ———
 From: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}
 
 ${email.bodyPreview}`;
-  openCompose(to,subject,orig);
-  document.querySelector('#mo-compose .mo-title').textContent='Reply';
+  openCompose(to,subject,orig,'Reply');
 }
 
 function forwardEmail(emailId){
@@ -19888,61 +20044,77 @@ function forwardEmail(emailId){
   const subject=email.subject?.startsWith('Fw:')?email.subject:`Fw: ${email.subject}`;
   const orig=`
 
---- Forwarded Message ---
+——— Forwarded Message ———
 From: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}
 Subject: ${email.subject}
 
 ${email.bodyPreview}`;
-  openCompose('',subject,orig);
-  document.querySelector('#mo-compose .mo-title').textContent='Forward';
+  openCompose('',subject,orig,'Forward');
 }
 
 async function sendEmail(){
   const to=document.getElementById('compose-to').value.trim();
+  const cc=document.getElementById('compose-cc').value.trim();
+  const bcc=document.getElementById('compose-bcc')?.value.trim()||'';
   const subject=document.getElementById('compose-subject').value.trim();
   const body=document.getElementById('compose-body').value.trim();
-  if(!to||!subject){toast('Please fill in To and Subject');return;}
-  const btn=document.querySelector('#mo-compose .btn-primary');
-  btn.disabled=true;btn.textContent='Sending...';
-  try {
+  if(!to){toast('Please add at least one recipient');return;}
+  if(!subject){toast('Please add a subject');return;}
+  const btn=document.getElementById('compose-send-btn');
+  if(btn){btn.disabled=true;btn.innerHTML='Sending...';}
+  try{
     const token=await getAccessToken();
+    const toRecipients=to.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address);
+    const ccRecipients=cc?cc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
+    const bccRecipients=bcc?bcc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
+    const message={subject,body:{contentType:'Text',content:body},toRecipients,saveToSentItems:true};
+    if(ccRecipients.length)message.ccRecipients=ccRecipients;
+    if(bccRecipients.length)message.bccRecipients=bccRecipients;
     await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
       method:'POST',
       headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({message:{subject,body:{contentType:'Text',content:body},toRecipients:[{emailAddress:{address:to}}]},saveToSentItems:true})
+      body:JSON.stringify({message,saveToSentItems:true})
     });
     closeMo('mo-compose');
-    btn.disabled=false;btn.textContent='Send';
-    // Auto create task if sent to DPEG staff
-    if(to.toLowerCase().includes('@dhananipeg.com')){
-      const recipient=PEOPLE_DB.find(p=>p.email.toLowerCase()===to.toLowerCase());
-      const newTask={id:Date.now(),title:subject,summary:body.slice(0,255),person:recipient?.name||to.split('@')[0],email:to,dept:recipient?.dept||'Unknown',date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
-      tasks.unshift(newTask);
+    if(btn){btn.disabled=false;btn.innerHTML='<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Send';}
+    // Auto create tasks for all DPEG recipients in To and CC
+    const dpegRecipients=getDpegRecipients(to,cc);
+    if(dpegRecipients.length){
+      for(const email of dpegRecipients){
+        const p=PEOPLE_DB.find(x=>x.email.toLowerCase()===email.toLowerCase());
+        const newTask={id:Date.now()+Math.random(),title:subject,summary:body.slice(0,255),person:p?.name||email.split('@')[0],email,dept:p?.dept||'Unknown',date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
+        tasks.unshift(newTask);
+      }
       await saveTasksToOneDrive();
       refreshAll();
-      toast('Email sent and task created in Action Log');
-    } else {
+      toast(`Email sent. ${dpegRecipients.length} task${dpegRecipients.length!==1?'s':''} created in Action Log.`);
+    }else{
       toast('Email sent');
     }
     if(currentFolder==='sent')loadFolder('sent');
-  } catch(err){
+  }catch(err){
     console.error('Send error:',err);
-    toast('Failed to send. Please try again.');
-    btn.disabled=false;btn.textContent='Send';
+    toast('Failed to send email. Please try again.');
+    if(btn){btn.disabled=false;btn.innerHTML='<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Send';}
   }
 }
 
 async function addTaskFromEmail(emailId){
   const email=emailCache[emailId];if(!email)return;
   const sender=email.from?.emailAddress;
-  const newTask={id:Date.now(),title:email.subject||'(no subject)',summary:email.bodyPreview||'',person:sender?.name||sender?.address||'Unknown',email:sender?.address||'',dept:PEOPLE_DB.find(p=>p.email?.toLowerCase()===sender?.address?.toLowerCase())?.dept||'Unknown',date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
+  const p=PEOPLE_DB.find(x=>x.email?.toLowerCase()===sender?.address?.toLowerCase());
+  const newTask={id:Date.now(),emailId,title:email.subject||'(no subject)',summary:email.bodyPreview||'',person:p?.name||sender?.name||sender?.address||'Unknown',email:sender?.address||'',dept:p?.dept||'Unknown',date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
   tasks.unshift(newTask);
+  trackedEmailIds.add(emailId);
   await saveTasksToOneDrive();
   refreshAll();
   toast('Task added to Action Log');
+  // Refresh reader to show tracked status
+  readEmail(emailId,currentFolder);
 }
 
 function refreshFolder(){loadFolder(currentFolder);}
+
 
 // ============================================================
 // INIT
