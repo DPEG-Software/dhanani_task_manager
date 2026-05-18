@@ -19303,8 +19303,15 @@ function fmtD(d) { return new Date(d).toLocaleDateString("en-US",{month:"short",
 function nstt(s) { return s==="In Progress"?"Pending":(s||"Pending"); }
 function normEmail(email) { return String(email||"").trim().toLowerCase(); }
 function staffKey(email,name) { return normEmail(email) || String(name||"").trim().toLowerCase(); }
-function findPersonByEmail(email) { return PEOPLE_DB.find(x=>normEmail(x.email)===normEmail(email)); }
-function findPersonByName(name) { return PEOPLE_DB.find(x=>x.name.toLowerCase()===String(name||"").toLowerCase()); }
+function findPersonByEmail(email) {
+  const e=normEmail(email);
+  const configured=Object.values(staffConfig).find(x=>normEmail(x.email)===e);
+  return configured || PEOPLE_DB.find(x=>normEmail(x.email)===e);
+}
+function findPersonByName(name) {
+  const n=String(name||"").trim().toLowerCase();
+  return staffConfig[n] || Object.values(staffConfig).find(x=>String(x.name||"").trim().toLowerCase()===n) || PEOPLE_DB.find(x=>x.name.toLowerCase()===n);
+}
 function configuredDept(email,name) {
   const key = staffKey(email,name);
   return (key && staffConfig[key]?.dept) || "";
@@ -19322,10 +19329,38 @@ function deptOptions(selected) {
 function saveStaffDeptForTask(t,dept) {
   const key = staffKey(t.email,t.person);
   if (!key) return;
-  staffConfig[key] = { name:t.person, email:t.email||"", dept };
+  staffConfig[key] = { ...(staffConfig[key]||{}), name:t.person, email:t.email||"", dept };
   tasks.forEach(x=>{
     if ((t.email && normEmail(x.email)===normEmail(t.email)) || (!t.email && x.person===t.person)) x.dept = dept;
   });
+}
+function saveStaffEmail(name,email){
+  const key=String(name||"").trim().toLowerCase();
+  if(!key)return;
+  const existing=findPersonByName(name)||{};
+  staffConfig[key]={...(staffConfig[key]||{}),name,email,dept:staffConfig[key]?.dept||existing.dept||"Needs Department",role:existing.role||""};
+  tasks.forEach(t=>{if(t.person===name)t.email=email;});
+}
+function emailSubject(t){return t.emailSubject||t.subject||t.title||"(no subject)";}
+function upsertTaskFromEmail(email,person,address,dept,date){
+  const conversationId=email.conversationId||"";
+  const existing=conversationId?tasks.find(t=>t.conversationId===conversationId):null;
+  if(existing){
+    existing.emailId=email.id||existing.emailId;
+    existing.lastMessageId=email.id||existing.lastMessageId||"";
+    existing.emailSubject=email.subject||existing.emailSubject||existing.title;
+    existing.title=existing.title||email.subject||"(no subject)";
+    existing.summary=email.bodyPreview||existing.summary||"";
+    existing.person=person||existing.person;
+    existing.email=address||existing.email||"";
+    existing.dept=dept||existing.dept;
+    existing.lastReplyAt=date||new Date().toISOString();
+    existing.replyCount=(existing.replyCount||1)+1;
+    return {task:existing,created:false};
+  }
+  const task={id:Date.now()+Math.random(),emailId:email.id,emailSubject:email.subject||'(no subject)',conversationId,lastMessageId:email.id||'',title:email.subject||'(no subject)',summary:email.bodyPreview||'',person,email:address,dept,date:(date?new Date(date):new Date()).toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0,replyCount:1,lastReplyAt:date||new Date().toISOString()};
+  tasks.unshift(task);
+  return {task,created:true};
 }
 function sbadge(s) {
   const st=nstt(s);
@@ -19341,7 +19376,7 @@ function pBadge(p) {
   return `<span class="${pr==="High"?"p-high":"p-low"}">${pr}</span>`;
 }
 function autofillPerson(val) {
-  const p=PEOPLE_DB.find(x=>x.name.toLowerCase()===val.toLowerCase());
+  const p=findPersonByName(val);
   if(p){document.getElementById("nt-email").value=p.email;document.getElementById("nt-dept").value=p.dept;}
 }
 function initSelects() {
@@ -19370,7 +19405,7 @@ function getVis(){
   const pf=document.getElementById("sf-priority")?.value||"all";
   return tasks.filter(t=>{
     const wm=t.weekOffset===curWeek||(nstt(t.status)!=="Done"&&t.weekOffset<=curWeek);
-    const sm=!curSearch||[t.title,t.person,t.dept,t.summary||""].some(x=>x.toLowerCase().includes(curSearch));
+    const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
     return wm&&sm&&(sf==="all"||nstt(t.status)===sf)&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
   });
 }
@@ -19381,7 +19416,7 @@ function renderMaster(){
     <tr onclick="openDetail(${t.id})">
       <td onclick="event.stopPropagation()"><input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)"></td>
       <td><span class="dept-pill"><span class="dept-dot" style="background:${dcolor(t.dept)}"></span>${t.dept}</span></td>
-      <td><div style="font-size:13px;font-weight:600;color:var(--body);margin-bottom:1px">${t.title}</div><div style="font-size:11.5px;color:var(--muted)">To: ${t.person}</div></td>
+      <td><div style="font-size:13px;font-weight:600;color:var(--body);margin-bottom:1px">${emailSubject(t)}</div><div style="font-size:11.5px;color:var(--muted)">To: ${t.person}${t.replyCount>1?` &bull; ${t.replyCount} messages`:''}</div></td>
       <td><div style="display:flex;align-items:center;gap:7px">${av(t.person,24)}<span style="font-size:12.5px">${t.person}</span></div></td>
       <td>${pBadge(t.priority)}</td>
       <td onclick="event.stopPropagation()"><div class="wed-btn${t.wednesday?" on":""}" onclick="togWed(${t.id})">${t.wednesday?"On Wed":"+ Wed"}</div></td>
@@ -19437,21 +19472,22 @@ function setDirectoryMode(mode){
 function selectPpl(name){
   curPplSel=name;renderPplList(curPplFilter);
   const pt=tasks.filter(t=>t.person===name);
-  const pdb=PEOPLE_DB.find(p=>p.name===name);
+  const pdb=findPersonByName(name);
   const primaryTask=pt[0]||{};
   const dept=personDept(primaryTask.email,name);
+  const email=pdb?.email||primaryTask.email||"";
   const dn=pt.filter(t=>nstt(t.status)==="Done").length;
   const pct=pt.length?Math.round(dn/pt.length*100):0;
   document.getElementById("ppl-right").innerHTML=`
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border)">
       ${av(name,44)}<div style="flex:1">
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:2px">${name}</div>
-        <div style="font-size:12px;color:var(--muted)">${pdb?.role||""} &bull; ${dept} &bull; ${pdb?.email||primaryTask.email||""}</div>
+        <div style="font-size:12px;color:var(--muted)">${pdb?.role||""} &bull; ${dept} &bull; <span id="ppl-email-label">${email||"No email saved"}</span></div>
         <div style="display:flex;gap:12px;margin-top:5px"><span style="font-size:12px;font-weight:600;color:#15803d">${dn} completed</span><span style="font-size:12px;font-weight:600;color:${pt.filter(t=>nstt(t.status)==="Overdue").length?"#b91c1c":"var(--muted)"}">${pt.filter(t=>nstt(t.status)!=="Done").length} open</span></div>
       </div>
       <div style="text-align:right"><div style="font-size:22px;font-weight:700;color:var(--body)">${pct}%</div><div class="prog-track" style="width:72px;margin-top:4px"><div class="prog-fill" style="width:${pct}%"></div></div></div>
     </div>
-    ${pt.length?`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.6px">Department</div><select class="form-sel" style="width:auto" onchange="updatePersonDept('${name}',this.value)">${deptOptions(dept)}</select></div>`:""}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.6px">Email</div><input class="form-in" id="ppl-email-input" style="max-width:280px;padding:7px 10px" value="${email}" placeholder="name@dhananipeg.com"><button class="btn btn-ghost btn-sm" onclick="updatePersonEmail('${name}')">Save Email</button></div>
     ${pt.length?`<table style="width:100%;border-collapse:collapse"><thead><tr>${["Task","Status","Priority","Date","Notes"].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:#f9fafb;border-bottom:1px solid var(--border)">${h}</th>`).join("")}</tr></thead><tbody>${pt.map(t=>`<tr style="border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openDetail(${t.id})"><td style="padding:10px"><div style="font-size:13px;font-weight:600;color:var(--body)">${t.title}</div></td><td style="padding:10px">${sbadge(t.status)}</td><td style="padding:10px">${pBadge(t.priority)}</td><td style="padding:10px;font-size:12px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td><td style="padding:10px;font-size:12px;color:var(--muted);font-style:${t.followup?"normal":"italic"}">${t.followup||"None"}</td></tr>`).join("")}</tbody></table>`:
     `<div class="empty-state"><div class="es-text">No tasks assigned yet</div></div>`}`;
 }
@@ -19461,6 +19497,14 @@ async function updatePersonDept(name,dept){
   saveStaffDeptForTask(t,dept);
   refreshAll();
   toast("Department saved");
+  await saveTasksToOneDrive();
+}
+async function updatePersonEmail(name){
+  const email=document.getElementById("ppl-email-input")?.value.trim()||"";
+  saveStaffEmail(name,email);
+  renderPplList(curPplFilter);
+  selectPpl(name);
+  toast("Email saved");
   await saveTasksToOneDrive();
 }
 function renderDeptList(){
@@ -19692,9 +19736,9 @@ function dlCSV(){
 // ============================================================
 function openDetail(id){
   const t=tasks.find(x=>x.id===id);if(!t)return;curTaskId=id;
-  document.getElementById("mo-title").textContent=t.title;
+  document.getElementById("mo-title").textContent=emailSubject(t);
   document.getElementById("mo-sub").textContent=`${t.person} • ${t.dept} • ${fmtD(t.date)}`;
-  document.getElementById("mo-sum").textContent=t.summary||"No summary available.";
+  document.getElementById("mo-sum").textContent=`Subject: ${emailSubject(t)}${t.replyCount>1?` (${t.replyCount} messages in thread)`:''}${t.summary?`\n\n${t.summary}`:""}`;
   document.getElementById("mo-person").textContent=t.person+(t.email?` (${t.email})`:"");
   document.getElementById("mo-dept").innerHTML=deptOptions(t.dept);
   document.getElementById("mo-date").textContent=fmtD(t.date);
@@ -19865,7 +19909,7 @@ const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts'};
 const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',untracked:'Untracked Emails'};
 
 function buildTrackedSet(){
-  trackedEmailIds = new Set(tasks.filter(t=>t.emailId).map(t=>t.emailId));
+  trackedEmailIds = new Set(tasks.flatMap(t=>[t.emailId,t.lastMessageId,t.conversationId]).filter(Boolean));
 }
 
 function getDpegRecipients(toStr,ccStr){
@@ -19906,7 +19950,7 @@ function renderEmailRows(folder,emails){
   if(!listEl)return;
   if(!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails found</div></div>';return;}
   const rows=emails.map(e=>{
-    const isTracked=trackedEmailIds.has(e.id);
+    const isTracked=trackedEmailIds.has(e.id)||trackedEmailIds.has(e.conversationId);
     const sender=folder==='sent'?(e.toRecipients?.[0]?.emailAddress?.name||e.toRecipients?.[0]?.emailAddress?.address||'Unknown'):(e.from?.emailAddress?.name||e.from?.emailAddress?.address||'Unknown');
     const dt=new Date(e.receivedDateTime||e.sentDateTime);
     const now=new Date();
@@ -19947,7 +19991,7 @@ async function loadFolder(folder){
   if(folder==='untracked'){await loadUntracked();return;}
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
@@ -19964,7 +20008,7 @@ async function loadFolder(folder){
     return;
     if(!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails found</div></div>';return;}
     listEl.innerHTML=emails.map(e=>{
-      const isTracked=trackedEmailIds.has(e.id);
+      const isTracked=trackedEmailIds.has(e.id)||trackedEmailIds.has(e.conversationId);
       const sender=folder==='sent'?(e.toRecipients?.[0]?.emailAddress?.name||e.toRecipients?.[0]?.emailAddress?.address||'Unknown'):(e.from?.emailAddress?.name||e.from?.emailAddress?.address||'Unknown');
       const dt=new Date(e.receivedDateTime||e.sentDateTime);
       const now=new Date();
@@ -20012,7 +20056,7 @@ async function loadUntracked(){
   const listEl=document.getElementById('ol-email-list');
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
@@ -20048,18 +20092,17 @@ async function loadUntracked(){
 async function quickAddTask(emailId){
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,sentDateTime,bodyPreview`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId`,{headers:{Authorization:`Bearer ${token}`}});
     const email=await res.json();
     const recipient=email.toRecipients?.[0]?.emailAddress;
     const p=findPersonByEmail(recipient?.address);
     const person=p?.name||recipient?.name||recipient?.address||'Unknown';
     const address=recipient?.address||'';
-    const newTask={id:Date.now(),emailId:emailId,title:email.subject||'(no subject)',summary:email.bodyPreview||'',person,email:address,dept:personDept(address,person),date:new Date(email.sentDateTime).toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
-    tasks.unshift(newTask);
+    const result=upsertTaskFromEmail(email,person,address,personDept(address,person),email.sentDateTime);
     trackedEmailIds.add(emailId);
     await saveTasksToOneDrive();
     refreshAll();
-    toast('Added to Action Log');
+    toast(result.created?'Added to Action Log':'Updated existing thread in Action Log');
     loadUntracked();
   }catch(err){toast('Could not add task');}
 }
@@ -20287,12 +20330,11 @@ async function addTaskFromEmail(emailId){
   const p=findPersonByEmail(sender?.address);
   const person=p?.name||sender?.name||sender?.address||'Unknown';
   const address=sender?.address||'';
-  const newTask={id:Date.now(),emailId,title:email.subject||'(no subject)',summary:email.bodyPreview||'',person,email:address,dept:personDept(address,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
-  tasks.unshift(newTask);
+  const result=upsertTaskFromEmail(email,person,address,personDept(address,person),email.receivedDateTime||email.sentDateTime||new Date().toISOString());
   trackedEmailIds.add(emailId);
   await saveTasksToOneDrive();
   refreshAll();
-  toast('Task added to Action Log');
+  toast(result.created?'Task added to Action Log':'Updated existing thread in Action Log');
   // Refresh reader to show tracked status
   readEmail(emailId,currentFolder);
 }
