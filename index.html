@@ -18450,7 +18450,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .wed-date-group{border-top:1px solid #eef3ef}
 .wed-date-group:first-child{border-top:none}
 .wed-date{display:flex;align-items:center;gap:8px;padding:12px 16px 6px;color:var(--ink);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.8px}
-.wed-date::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--forest);display:inline-block}
+.wed-date::before{content:none}
 .wed-card{margin:8px 16px 12px;border:1px solid var(--sage);border-radius:var(--rlg);background:#fff;overflow:hidden}
 .wed-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;background:var(--sage3);border-bottom:1px solid var(--sage);flex-wrap:wrap}
 .wed-card-title{font-size:14px;font-weight:800;color:var(--body);line-height:1.3;flex:1;min-width:180px}
@@ -18691,7 +18691,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       </div>
     </div>
     <div class="chart-grid">
-      <div class="ch-card" onclick="nav('people')"><div class="ch-ttl">People Responsiveness</div><div class="ch-sub">Assigned vs completed. Click to view People.</div><div class="ch-wrap"><canvas id="ch-person"></canvas></div></div>
+      <div class="ch-card" onclick="nav('people')"><div class="ch-ttl">Open Workload</div><div class="ch-sub">People with the most open tasks. Click to view People.</div><div class="ch-wrap"><canvas id="ch-person"></canvas></div></div>
       <div class="ch-card"><div class="ch-ttl">Status Breakdown</div><div class="ch-sub">Current distribution. Click a segment to filter.</div><div class="ch-wrap"><canvas id="ch-status"></canvas></div></div>
     </div>
   </div>
@@ -19560,7 +19560,7 @@ function renderWed(){
             ${t.followup?`<div style="font-size:12px;color:var(--forest);font-weight:500;margin-bottom:8px;padding:6px 10px;background:var(--sage3);border-radius:6px">Previous note: ${t.followup}</div>`:''}
             <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="2">${t.meetingNote||''}</textarea>
             <div class="ag-foot">
-              ${['Pending','In Progress','Done','Overdue'].map(s=>`<button class="ag-status-btn ${s.toLowerCase().replace(' ','-')}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
+              ${['Pending','Done','Overdue'].map(s=>`<button class="ag-status-btn ${s.toLowerCase().replace(' ','-')}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
               <button class="btn btn-ghost btn-xs" onclick="removeFromWed(${t.id})" style="margin-left:auto">Remove</button>
             </div>
           </div>
@@ -19771,13 +19771,14 @@ function mkChart(id,type,labels,datasets,opts={}){
 function renderCharts(){
   const dp={};tasks.forEach(t=>{if(!dp[t.dept])dp[t.dept]={tot:0,dn:0};dp[t.dept].tot++;if(nstt(t.status)==="Done")dp[t.dept].dn++;});
   DEPARTMENTS.forEach(d=>{if(!dp[d])dp[d]={tot:0,dn:0};});
-  const pp={};tasks.forEach(t=>{if(!pp[t.person])pp[t.person]={tot:0,dn:0};pp[t.person].tot++;if(nstt(t.status)==="Done")pp[t.person].dn++;});
-  const dk=DEPARTMENTS.filter(d=>dp[d].tot>0);const pk=Object.keys(pp).slice(0,7);
+  const pp={};tasks.forEach(t=>{if(!pp[t.person])pp[t.person]={tot:0,dn:0,open:0};pp[t.person].tot++;if(nstt(t.status)==="Done")pp[t.person].dn++;else pp[t.person].open++;});
+  const dk=DEPARTMENTS.filter(d=>dp[d].tot>0);
+  const pk=Object.keys(pp).sort((a,b)=>pp[b].open-pp[a].open||pp[b].tot-pp[a].tot||a.localeCompare(b)).slice(0,7);
   mkChart("ch-dept","bar",dk,[
     {label:"Pending",data:dk.map(d=>dp[d].tot-dp[d].dn),backgroundColor:"#CBD5E1",borderRadius:4,borderSkipped:false,maxBarThickness:22},
     {label:"Completed",data:dk.map(d=>dp[d].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:22},
   ],{legend:true,onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
-  if(pk.length){mkChart("ch-person","bar",pk.map(p=>p.split(" ")[0]),[{label:"Assigned",data:pk.map(p=>pp[p].tot),backgroundColor:"#E5E7EB",borderRadius:4,borderSkipped:false,maxBarThickness:18},{label:"Done",data:pk.map(p=>pp[p].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:18}],{legend:true});}
+  if(pk.length){mkChart("ch-person","bar",pk,[{label:"Open",data:pk.map(p=>pp[p].open),backgroundColor:"#F2B879",borderRadius:4,borderSkipped:false,maxBarThickness:18},{label:"Done",data:pk.map(p=>pp[p].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:18}],{legend:true,extra:{indexAxis:"y",scales:{x:{grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#374151"},border:{display:false}}}}});}
   const sc={"Pending":0,"Done":0,"Overdue":0};tasks.forEach(t=>sc[nstt(t.status)]=(sc[nstt(t.status)]||0)+1);
   mkChart("ch-status","doughnut",Object.keys(sc),[{data:Object.values(sc),backgroundColor:["#F2B879","#86C59B","#F08B8B"],hoverBackgroundColor:["#E9A35F","#6FB783","#E87575"],borderWidth:3,borderColor:"#fff",hoverOffset:8}],{legend:true,extra:{cutout:"58%"},onClick:(evt,elements)=>{if(elements.length){const s=Object.keys(sc)[elements[0].index];document.getElementById("sf-status").value=s;nav("master");}}});
 }
@@ -19857,6 +19858,8 @@ let currentFolder = 'inbox';
 let currentEmailId = null;
 let emailCache = {};
 let trackedEmailIds = new Set();
+let outlookFolderEmails = {};
+let outlookNextLinks = {};
 
 const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts'};
 const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',untracked:'Untracked Emails'};
@@ -19898,6 +19901,36 @@ function toggleBcc(){
   if(btn)btn.style.color=showing?'':'var(--ink)';
 }
 
+function renderEmailRows(folder,emails){
+  const listEl=document.getElementById('ol-email-list');
+  if(!listEl)return;
+  if(!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails found</div></div>';return;}
+  const rows=emails.map(e=>{
+    const isTracked=trackedEmailIds.has(e.id);
+    const sender=folder==='sent'?(e.toRecipients?.[0]?.emailAddress?.name||e.toRecipients?.[0]?.emailAddress?.address||'Unknown'):(e.from?.emailAddress?.name||e.from?.emailAddress?.address||'Unknown');
+    const dt=new Date(e.receivedDateTime||e.sentDateTime);
+    const now=new Date();
+    const isToday=dt.toDateString()===now.toDateString();
+    const dateStr=isToday?dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const isUnread=!e.isRead&&folder==='inbox';
+    return `<div class="ol-email-item${isUnread?' unread':''}" data-email-id="${e.id}" onclick="readEmail('${e.id}','${folder}')">
+      <div class="ol-email-top">
+        <div class="ol-email-sender">${sender}</div>
+        <div style="display:flex;align-items:center;gap:4px">
+          ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd)">✓ Tracked</span>`:''}
+          <div class="ol-email-date">${dateStr}</div>
+        </div>
+      </div>
+      <div class="ol-email-subject">${e.subject||'(no subject)'}</div>
+      <div class="ol-email-preview">${e.bodyPreview||''}</div>
+    </div>`;
+  }).join('');
+  const footer=outlookNextLinks[folder]
+    ?`<div style="padding:12px 14px;border-top:1px solid var(--border);background:#fff"><button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center" onclick="loadMoreEmails('${folder}')">Load more emails</button></div>`
+    :`<div style="padding:10px 14px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);text-align:center">Showing ${emails.length} emails</div>`;
+  listEl.innerHTML=rows+footer;
+}
+
 async function loadFolder(folder){
   currentFolder=folder;
   buildTrackedSet();
@@ -19914,10 +19947,12 @@ async function loadFolder(folder){
   if(folder==='untracked'){await loadUntracked();return;}
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=40&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
+    outlookFolderEmails[folder]=emails;
+    outlookNextLinks[folder]=data['@odata.nextLink']||'';
     if(folder==='inbox'){
       const unread=emails.filter(e=>!e.isRead).length;
       const ce=document.getElementById('ol-inbox-count');
@@ -19925,6 +19960,8 @@ async function loadFolder(folder){
       const nb=document.getElementById('nb-inbox');
       if(nb)nb.textContent=unread>0?unread:'0';
     }
+    renderEmailRows(folder,emails);
+    return;
     if(!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails found</div></div>';return;}
     listEl.innerHTML=emails.map(e=>{
       const isTracked=trackedEmailIds.has(e.id);
@@ -19952,11 +19989,30 @@ async function loadFolder(folder){
   }
 }
 
+async function loadMoreEmails(folder){
+  const next=outlookNextLinks[folder];
+  if(!next)return;
+  const listEl=document.getElementById('ol-email-list');
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(next,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Failed');
+    const data=await res.json();
+    const more=data.value||[];
+    outlookFolderEmails[folder]=[...(outlookFolderEmails[folder]||[]),...more];
+    outlookNextLinks[folder]=data['@odata.nextLink']||'';
+    renderEmailRows(folder,outlookFolderEmails[folder]);
+  }catch(err){
+    console.error('Load more email error:',err);
+    if(listEl)listEl.insertAdjacentHTML('beforeend','<div style="padding:10px 14px;font-size:11px;color:#b91c1c;text-align:center">Could not load more emails</div>');
+  }
+}
+
 async function loadUntracked(){
   const listEl=document.getElementById('ol-email-list');
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=50&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
@@ -20008,16 +20064,78 @@ async function quickAddTask(emailId){
   }catch(err){toast('Could not add task');}
 }
 
+function updateUnreadBadges(delta){
+  ['ol-inbox-count','nb-inbox'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    const next=Math.max(0,(parseInt(el.textContent,10)||0)+delta);
+    el.textContent=next>0?String(next):(id==='nb-inbox'?'0':'');
+    if(id==='ol-inbox-count')el.style.display=next>0?'':'none';
+  });
+}
+
+function openEmailInOutlook(emailId){
+  const email=emailCache[emailId];
+  if(email?.webLink)window.open(email.webLink,'_blank','noopener');
+}
+
+async function viewFullThread(emailId){
+  const email=emailCache[emailId];
+  if(!email?.conversationId){toast('Full thread is not available for this email');return;}
+  const readerEl=document.getElementById('ol-email-reader');
+  if(!readerEl)return;
+  readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading thread...</div></div>';
+  try{
+    const token=await getAccessToken();
+    const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
+    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink';
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Failed');
+    const data=await res.json();
+    const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+    readerEl.innerHTML=`
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
+        <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:6px">${email.subject||'(no subject)'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${messages.length} message${messages.length!==1?'s':''} in this thread</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="readEmail('${emailId}','${currentFolder}')">Back to Email</button>
+          ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
+        </div>
+      </div>
+      <div style="padding:12px 20px;overflow-y:auto;flex:1">
+        ${messages.map(m=>{
+          const from=m.from?.emailAddress;
+          const to=m.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
+          const dt=new Date(m.receivedDateTime||m.sentDateTime);
+          const body=m.body?.content||m.bodyPreview||'';
+          const isHtml=m.body?.contentType==='html';
+          return `<div style="padding:14px 0;border-bottom:1px solid var(--border)">
+            <div style="font-size:13px;font-weight:700;color:var(--body);margin-bottom:5px">${m.subject||'(no subject)'}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${from?.name||from?.address||''}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${to}</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+            <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?body:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${body}</pre>`}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  }catch(err){
+    console.error('Thread load error:',err);
+    toast('Could not load the full thread');
+    readEmail(emailId,currentFolder);
+  }
+}
+
 async function readEmail(emailId,folder){
   currentEmailId=emailId;
+  const clickedEl=(typeof event!=='undefined'&&event?.currentTarget)?event.currentTarget:document.querySelector(`[data-email-id="${emailId}"]`);
   document.querySelectorAll('.ol-email-item').forEach(e=>e.classList.remove('active'));
-  if(event&&event.currentTarget)event.currentTarget.classList.add('active');
+  if(clickedEl)clickedEl.classList.add('active');
   const readerEl=document.getElementById('ol-email-reader');
   if(!readerEl)return;
   readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading...</div></div>';
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const email=await res.json();
     emailCache[emailId]=email;
@@ -20045,6 +20163,8 @@ async function readEmail(emailId,folder){
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             Forward
           </button>
+          <button class="btn btn-ghost btn-sm" onclick="viewFullThread('${emailId}')">View Full Thread</button>
+          ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
           ${isTracked
             ?`<span class="btn btn-ghost btn-sm" style="color:var(--leaf);border-color:var(--leaf-bd);background:var(--leaf-bg);cursor:default">✓ In Action Log</span>`
             :`<button class="btn btn-primary btn-sm" onclick="addTaskFromEmail('${emailId}')">+ Add to Tasks</button>`
@@ -20055,7 +20175,14 @@ async function readEmail(emailId,folder){
         ${isHtml?bodyContent:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${bodyContent}</pre>`}
       </div>`;
     if(!email.isRead&&folder==='inbox'){
-      fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
+      const readRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
+      if(readRes.ok){
+        email.isRead=true;
+        if(clickedEl)clickedEl.classList.remove('unread');
+        const cached=(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId);
+        if(cached)cached.isRead=true;
+        updateUnreadBadges(-1);
+      }
     }
   }catch(err){
     readerEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load email</div></div>';
