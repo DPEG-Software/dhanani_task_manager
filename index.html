@@ -18941,8 +18941,8 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       <div class="form-grp"><label class="form-lbl">Task Title</label><input type="text" class="form-in" id="nt-title" placeholder="e.g. Q2 Budget Approval"></div>
       <div class="form-grp"><label class="form-lbl">Summary</label><textarea class="form-ta" id="nt-summary" placeholder="What needs to be done? Key details, deadlines..."></textarea></div>
       <div class="form-row">
+        <div class="form-grp"><label class="form-lbl">Email</label><input type="email" class="form-in" id="nt-email" list="email-dl" placeholder="Email address" oninput="autofillEmail(this.value)"><datalist id="email-dl"></datalist></div>
         <div class="form-grp"><label class="form-lbl">Assigned To</label><input type="text" class="form-in" id="nt-person" list="ppl-dl" placeholder="Name" oninput="autofillPerson(this.value)"><datalist id="ppl-dl"></datalist></div>
-        <div class="form-grp"><label class="form-lbl">Email</label><input type="email" class="form-in" id="nt-email" placeholder="Email address"></div>
       </div>
       <div class="form-row">
         <div class="form-grp"><label class="form-lbl">Department</label><select class="form-sel" id="nt-dept"></select></div>
@@ -19262,6 +19262,7 @@ async function loadTasksFromOneDrive() {
       await saveTasksToOneDrive();
     }
     setSyncStatus("synced", "Synced with OneDrive");
+    initSelects();
     refreshAll();
     renderCharts();
     renderActivity();
@@ -19382,9 +19383,26 @@ function shortenSentence(s,max=190){
   s=String(s||"").replace(/\s+/g," ").trim();
   return s.length>max?s.slice(0,max-3).replace(/\s+\S*$/,"")+"...":s;
 }
+function humanSubject(subject){
+  const s=cleanSubject(subject).replace(/\([^)]*\d{4,}[^)]*\)/g,"").replace(/\s+-\s+/g,": ").replace(/\s+/g," ").trim();
+  return s||"Email thread";
+}
+function firstMatch(sentences,patterns){
+  return sentences.find(s=>patterns.some(p=>p.test(s)))||"";
+}
+function makeManagerTakeaway(subject,sentences,latestSentence){
+  const attached=firstMatch(sentences,[/\battached\b/i,/\bproject plan\b/i,/\bproposal\b/i,/\bdocument\b/i]);
+  const confirm=firstMatch(sentences,[/\bconfirm\b/i,/\breply back\b/i,/\bstill work\b/i]);
+  const schedule=firstMatch(sentences,[/\btraining\b/i,/\bonsite\b/i,/\btravel\b/i,/\bbook\b/i,/\bschedule\b/i,/\bdates?\b/i]);
+  if(confirm&&schedule)return "The sender needs DPEG to confirm whether the proposed onsite training dates still work so travel/session arrangements can be booked.";
+  if(attached&&confirm)return `${shortenSentence(attached,120)} DPEG needs to respond with confirmation or next steps.`;
+  if(confirm)return `DPEG needs to respond: ${shortenSentence(confirm,150)}`;
+  if(attached)return `The thread includes an attachment/update that needs review: ${shortenSentence(attached,150)}`;
+  return shortenSentence(sentences[0]||latestSentence||`Review ${subject} and decide the next step.`,170);
+}
 function localThreadSummary(messages){
   const ordered=[...(messages||[])].sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime||0)-new Date(b.receivedDateTime||b.sentDateTime||0));
-  const subject=cleanSubject(ordered.at(-1)?.subject||ordered[0]?.subject);
+  const subject=humanSubject(ordered.at(-1)?.subject||ordered[0]?.subject);
   const text=ordered.map(m=>cleanEmailText(m.body?.contentType==="html"?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||"")).join(" ");
   const sentences=uniqueSentences((text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).map(s=>s.trim()).filter(s=>s.length>28&&s.length<300));
   const keywords=["please","need","needs","request","review","approve","approval","confirm","send","provide","question","issue","follow up","deadline","due","attached","proposal","contract","lease","invoice","payment","update","decision","training","schedule","dates","onsite","plan","status"];
@@ -19394,14 +19412,18 @@ function localThreadSummary(messages){
     .sort((a,b)=>a.i-b.i)
     .map(x=>shortenSentence(x.s));
   const latest=cleanEmailText(ordered.at(-1)?.body?.contentType==="html"?stripEmailHtml(ordered.at(-1)?.body?.content):ordered.at(-1)?.body?.content||ordered.at(-1)?.bodyPreview||"");
-  const latestSentence=uniqueSentences((latest.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).map(s=>s.trim())).find(s=>s.length>10&&s.length<220);
-  const action=sentences.find(s=>/(please|confirm|need|review|approve|send|provide|reply|book|schedule|deadline|due)/i.test(s));
+  const latestSentence=uniqueSentences((latest.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).map(s=>s.trim()))
+    .find(s=>s.length>10&&s.length<220&&!/^(good morning|good afternoon|hello|hi\b|thank you|thanks)/i.test(s));
+  const action=firstMatch(sentences,[/\bplease\b/i,/\bconfirm\b/i,/\bneed\b/i,/\breview\b/i,/\bapprove\b/i,/\bsend\b/i,/\bprovide\b/i,/\breply\b/i,/\bbook\b/i,/\bschedule\b/i,/\bdeadline\b/i,/\bdue\b/i]);
+  const takeaway=makeManagerTakeaway(subject,sentences,latestSentence);
   const bullets=[
-    `- Topic: ${subject}`,
-    ...(scored.length?scored.map(s=>`- Key point: ${s}`):[`- Key point: ${shortenSentence(latestSentence||ordered.at(-1)?.bodyPreview||"Review the email thread for details.")}`]),
-    `- Needed: ${shortenSentence(action||"Review the thread and decide the next step.")}`,
+    `• Topic: ${subject}`,
+    `• Manager takeaway: ${takeaway}`,
+    `• Needed: ${shortenSentence(action||"Review the thread and decide the next step.")}`,
   ];
-  if(latestSentence)bullets.push(`- Latest update: ${shortenSentence(latestSentence)}`);
+  const context=scored.find(s=>s!==action&&s!==takeaway);
+  if(context)bullets.splice(2,0,`• Context: ${context}`);
+  if(latestSentence)bullets.push(`• Latest update: ${shortenSentence(latestSentence)}`);
   return bullets.join("\n");
 }
 async function attachFreeThreadSummary(email){
@@ -19456,16 +19478,32 @@ function pBadge(p) {
   const pr=String(p||"Normal").toLowerCase()==="high"?"High":"Normal";
   return `<span class="${pr==="High"?"p-high":"p-low"}">${pr}</span>`;
 }
+function peopleOptions(){
+  const map=new Map();
+  PEOPLE_DB.forEach(p=>map.set(p.name.toLowerCase(),p));
+  Object.values(staffConfig).forEach(p=>{if(p?.name)map.set(p.name.toLowerCase(),p);});
+  tasks.forEach(t=>{if(t.person)map.set(t.person.toLowerCase(),{name:t.person,email:t.email||"",dept:t.dept||"Needs Department"});});
+  return [...map.values()].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+}
 function autofillPerson(val) {
   const p=findPersonByName(val);
   if(p){document.getElementById("nt-email").value=p.email;document.getElementById("nt-dept").value=p.dept;}
 }
+function autofillEmail(val) {
+  const p=findPersonByEmail(val);
+  if(p){
+    document.getElementById("nt-person").value=p.name||"";
+    document.getElementById("nt-dept").value=p.dept||"Needs Department";
+  }
+}
 function initSelects() {
+  ["sf-dept","sum-d"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="all">All Departments</option>';});
   DEPARTMENTS.forEach(d=>{
     ["sf-dept","sum-d"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML+=`<option>${d}</option>`;});
   });
   document.getElementById("nt-dept").innerHTML=DEPARTMENTS.map(d=>`<option>${d}</option>`).join("");
-  document.getElementById("ppl-dl").innerHTML=PEOPLE_DB.map(p=>`<option value="${p.name}">`).join("");
+  document.getElementById("ppl-dl").innerHTML=peopleOptions().map(p=>`<option value="${p.name}">`).join("");
+  document.getElementById("email-dl").innerHTML=peopleOptions().filter(p=>p.email).map(p=>`<option value="${p.email}">${p.name}</option>`).join("");
 }
 
 const WL=["This Week","Last Week","2 Weeks Ago","3 Weeks Ago","4 Weeks Ago"];
@@ -19583,6 +19621,7 @@ async function updatePersonDept(name,dept){
 async function updatePersonEmail(name){
   const email=document.getElementById("ppl-email-input")?.value.trim()||"";
   saveStaffEmail(name,email);
+  initSelects();
   renderPplList(curPplFilter);
   selectPpl(name);
   toast("Email saved");
