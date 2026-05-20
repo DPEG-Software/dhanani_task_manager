@@ -19342,6 +19342,58 @@ function saveStaffEmail(name,email){
   tasks.forEach(t=>{if(t.person===name)t.email=email;});
 }
 function emailSubject(t){return t.emailSubject||t.subject||t.title||"(no subject)";}
+function stripEmailHtml(html){
+  const div=document.createElement("div");
+  div.innerHTML=html||"";
+  div.querySelectorAll("style,script").forEach(x=>x.remove());
+  return div.textContent||div.innerText||"";
+}
+function cleanEmailText(text){
+  return String(text||"")
+    .replace(/\r/g,"\n")
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(x=>x&&!/^>/.test(x))
+    .filter(x=>!(/^(from|sent|to|cc|subject):/i.test(x)))
+    .filter(x=>!(/^(thanks|thank you|regards|best|sent from my|confidentiality notice)/i.test(x)))
+    .join(" ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+function localThreadSummary(messages){
+  const ordered=[...(messages||[])].sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime||0)-new Date(b.receivedDateTime||b.sentDateTime||0));
+  const text=ordered.map(m=>cleanEmailText(m.body?.contentType==="html"?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||"")).join(" ");
+  const sentences=text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[];
+  const useful=sentences.map(s=>s.trim()).filter(s=>s.length>35&&s.length<260);
+  const keywords=["please","need","needs","request","review","approve","approval","confirm","send","provide","question","issue","follow up","deadline","due","attached","proposal","contract","lease","invoice","payment","update","decision"];
+  const scored=useful.map((s,i)=>({s,i,score:keywords.reduce((n,k)=>n+(s.toLowerCase().includes(k)?2:0),0)+(i<3?1:0)}))
+    .sort((a,b)=>b.score-a.score||a.i-b.i)
+    .slice(0,3)
+    .sort((a,b)=>a.i-b.i)
+    .map(x=>x.s);
+  const latest=cleanEmailText(ordered.at(-1)?.body?.contentType==="html"?stripEmailHtml(ordered.at(-1)?.body?.content):ordered.at(-1)?.body?.content||ordered.at(-1)?.bodyPreview||"");
+  const latestSentence=(latest.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).map(s=>s.trim()).find(s=>s.length>10&&s.length<220);
+  const summary=scored.length?scored.join(" "):(latestSentence||ordered.at(-1)?.bodyPreview||"No summary available.");
+  return latestSentence&&summary!==latestSentence?`${summary}\n\nLatest reply: ${latestSentence}`:summary;
+}
+async function attachFreeThreadSummary(email){
+  try{
+    if(!email.conversationId){
+      email.threadSummary=localThreadSummary([email]);
+      return email;
+    }
+    const token=await getAccessToken();
+    const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
+    const select='id,subject,receivedDateTime,sentDateTime,body,bodyPreview';
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error("Thread summary fetch failed");
+    const data=await res.json();
+    email.threadSummary=localThreadSummary(data.value?.length?data.value:[email]);
+  }catch(err){
+    email.threadSummary=localThreadSummary([email]);
+  }
+  return email;
+}
 function upsertTaskFromEmail(email,person,address,dept,date){
   const conversationId=email.conversationId||"";
   const existing=conversationId?tasks.find(t=>t.conversationId===conversationId):null;
@@ -19350,7 +19402,8 @@ function upsertTaskFromEmail(email,person,address,dept,date){
     existing.lastMessageId=email.id||existing.lastMessageId||"";
     existing.emailSubject=email.subject||existing.emailSubject||existing.title;
     existing.title=existing.title||email.subject||"(no subject)";
-    existing.summary=email.bodyPreview||existing.summary||"";
+    existing.summary=email.threadSummary||email.bodyPreview||existing.summary||"";
+    existing.threadSummary=email.threadSummary||existing.threadSummary||"";
     existing.person=person||existing.person;
     existing.email=address||existing.email||"";
     existing.dept=dept||existing.dept;
@@ -19358,7 +19411,7 @@ function upsertTaskFromEmail(email,person,address,dept,date){
     existing.replyCount=(existing.replyCount||1)+1;
     return {task:existing,created:false};
   }
-  const task={id:Date.now()+Math.random(),emailId:email.id,emailSubject:email.subject||'(no subject)',conversationId,lastMessageId:email.id||'',title:email.subject||'(no subject)',summary:email.bodyPreview||'',person,email:address,dept,date:(date?new Date(date):new Date()).toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0,replyCount:1,lastReplyAt:date||new Date().toISOString()};
+  const task={id:Date.now()+Math.random(),emailId:email.id,emailSubject:email.subject||'(no subject)',conversationId,lastMessageId:email.id||'',title:email.subject||'(no subject)',summary:email.threadSummary||email.bodyPreview||'',threadSummary:email.threadSummary||'',person,email:address,dept,date:(date?new Date(date):new Date()).toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0,replyCount:1,lastReplyAt:date||new Date().toISOString()};
   tasks.unshift(task);
   return {task,created:true};
 }
@@ -20098,6 +20151,7 @@ async function quickAddTask(emailId){
     const p=findPersonByEmail(recipient?.address);
     const person=p?.name||recipient?.name||recipient?.address||'Unknown';
     const address=recipient?.address||'';
+    await attachFreeThreadSummary(email);
     const result=upsertTaskFromEmail(email,person,address,personDept(address,person),email.sentDateTime);
     trackedEmailIds.add(emailId);
     await saveTasksToOneDrive();
@@ -20330,6 +20384,7 @@ async function addTaskFromEmail(emailId){
   const p=findPersonByEmail(sender?.address);
   const person=p?.name||sender?.name||sender?.address||'Unknown';
   const address=sender?.address||'';
+  await attachFreeThreadSummary(email);
   const result=upsertTaskFromEmail(email,person,address,personDept(address,person),email.receivedDateTime||email.sentDateTime||new Date().toISOString());
   trackedEmailIds.add(emailId);
   await saveTasksToOneDrive();
