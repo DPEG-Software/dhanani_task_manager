@@ -18518,7 +18518,11 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .sum-row .lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding-top:1px}
 .sum-row .val{font-size:12.5px;color:var(--body);line-height:1.5}
 .sum-row.s-involved .val{font-weight:600;color:var(--forest)}
-.sum-row.s-takeaway .val{color:var(--ink)}
+.sum-row.s-action{background:rgba(46,125,63,.06);border-radius:4px;padding:6px 6px}
+.sum-row.s-action .lbl{color:var(--fern)}
+.sum-row.s-action .val{color:var(--ink);font-weight:600}
+.sum-row.s-facts .lbl{color:var(--muted)}
+.sum-row.s-facts .val{font-family:monospace;font-size:11.5px;color:var(--sub)}
 .sum-link-row{margin-top:10px;padding-top:8px;border-top:1px solid var(--sage)}
 .sum-empty{font-size:12.5px;color:var(--muted);font-style:italic}
 .form-grp{margin-bottom:13px}
@@ -19373,7 +19377,7 @@ function formatSummaryHTML(summary){
       const lbl=inner.slice(0,ci).trim();
       const val=inner.slice(ci+1).trim();
       const key=lbl.toLowerCase();
-      const cls=key.includes('involved')?'s-involved':key.includes('takeaway')||key.includes('manager')?'s-takeaway':'';
+      const cls=key.includes('involved')?'s-involved':key.includes('action')?'s-action':key.includes('key info')||key.includes('detail')?'s-facts':'';
       return `<div class="sum-row${cls?' '+cls:''}"><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`;
     }
     return `<div class="sum-row"><span class="val" style="grid-column:1/-1">${inner}</span></div>`;
@@ -19394,7 +19398,18 @@ function threadLinkButton(t,label="Open Email Thread"){
 function stripEmailHtml(html){
   const div=document.createElement("div");
   div.innerHTML=html||"";
-  div.querySelectorAll("style,script").forEach(x=>x.remove());
+  // Remove quoted/forwarded blocks — Outlook, Gmail, Apple Mail
+  div.querySelectorAll([
+    "style","script","blockquote","hr",
+    "[id='divRplyFwdMsg']","[id='divTaggedMessage']",
+    "[class*='gmail_quote']","[class*='gmail_extra']",
+    "[class*='x_gmail_quote']","[class*='OutlookMessageHeader']",
+    "[class*='WordSection']","[class*='MsoNormal']"
+  ].join(",")).forEach(x=>x.remove());
+  // Insert newlines before block/cell elements so adjacent cells don't merge
+  div.querySelectorAll("p,div,br,tr,td,li,h1,h2,h3,h4,h5,h6").forEach(x=>{
+    x.insertAdjacentText("afterbegin","\n");
+  });
   return div.textContent||div.innerText||"";
 }
 function cleanEmailText(text){
@@ -19405,11 +19420,15 @@ function cleanEmailText(text){
     .replace(/\S+@\S+\.\S+/g," ")
     .split("\n")
     .map(x=>x.trim())
-    .filter(x=>x&&!/^>/.test(x))
-    .filter(x=>!(/^(from|sent|to|cc|subject):/i.test(x)))
-    .filter(x=>!(/^(thanks|thank you|regards|best|sent from my|confidentiality notice|this message|external email)/i.test(x)))
+    .filter(x=>x.length>3)
+    .filter(x=>!/^>/.test(x))
+    .filter(x=>!(/^(from|sent|to|cc|bcc|subject|date)\s*:/i.test(x)))
+    .filter(x=>!(/^(thanks|thank you|regards|best|sincerely|cheers|yours|sent from my|confidentiality|this message|external email|unsubscribe|disclaimer)/i.test(x)))
+    .filter(x=>!(/^\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(x)))
+    .filter(x=>!(/^\d+\s+[A-Z][a-z]/.test(x)))
+    .filter(x=>!(/^(main|direct|cell|fax|phone|tel|mobile|office)\s*:/i.test(x)))
+    .filter(x=>!(/\b[A-Z]{2}\s+\d{5}\b/.test(x)))
     .join(" ")
-    .replace(/\b(com|company|services|independent-consultants)\b/gi," ")
     .replace(/\s+/g," ")
     .trim();
 }
@@ -19433,9 +19452,6 @@ function humanSubject(subject){
   const s=cleanSubject(subject).replace(/\([^)]*\d{4,}[^)]*\)/g,"").replace(/\s+-\s+/g,": ").replace(/\s+/g," ").trim();
   return s||"Email thread";
 }
-function firstMatch(sentences,patterns){
-  return sentences.find(s=>patterns.some(p=>p.test(s)))||"";
-}
 function dpegPeopleInThread(messages){
   const people=new Map();
   (messages||[]).forEach(m=>{
@@ -19450,41 +19466,80 @@ function dpegPeopleInThread(messages){
   });
   return [...people.values()].sort((a,b)=>a.localeCompare(b));
 }
-function makeManagerTakeaway(subject,sentences,latestSentence){
-  const attached=firstMatch(sentences,[/\battached\b/i,/\bproject plan\b/i,/\bproposal\b/i,/\bdocument\b/i]);
-  const confirm=firstMatch(sentences,[/\bconfirm\b/i,/\breply back\b/i,/\bstill work\b/i]);
-  const schedule=firstMatch(sentences,[/\btraining\b/i,/\bonsite\b/i,/\btravel\b/i,/\bbook\b/i,/\bschedule\b/i,/\bdates?\b/i]);
-  if(confirm&&schedule)return "The sender needs DPEG to confirm whether the proposed onsite training dates still work so travel/session arrangements can be booked.";
-  if(attached&&confirm)return `${shortenSentence(attached,120)} DPEG needs to respond with confirmation or next steps.`;
-  if(confirm)return `DPEG needs to respond: ${shortenSentence(confirm,150)}`;
-  if(attached)return `The thread includes an attachment/update that needs review: ${shortenSentence(attached,150)}`;
-  return shortenSentence(sentences[0]||latestSentence||`Review ${subject} and decide the next step.`,170);
-}
 function localThreadSummary(messages){
   const ordered=[...(messages||[])].sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime||0)-new Date(b.receivedDateTime||b.sentDateTime||0));
   const subject=humanSubject(ordered.at(-1)?.subject||ordered[0]?.subject);
   const involved=dpegPeopleInThread(ordered);
-  const text=ordered.map(m=>cleanEmailText(m.body?.contentType==="html"?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||"")).join(" ");
-  const sentences=uniqueSentences((text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).map(s=>s.trim()).filter(s=>s.length>28&&s.length<300));
-  const keywords=["please","need","needs","request","review","approve","approval","confirm","send","provide","question","issue","follow up","deadline","due","attached","proposal","contract","lease","invoice","payment","update","decision","training","schedule","dates","onsite","plan","status"];
-  const scored=sentences.map((s,i)=>({s,i,score:keywords.reduce((n,k)=>n+(s.toLowerCase().includes(k)?2:0),0)+(i<3?1:0)}))
-    .sort((a,b)=>b.score-a.score||a.i-b.i)
-    .slice(0,2)
-    .sort((a,b)=>a.i-b.i)
-    .map(x=>shortenSentence(x.s));
-  const latest=cleanEmailText(ordered.at(-1)?.body?.contentType==="html"?stripEmailHtml(ordered.at(-1)?.body?.content):ordered.at(-1)?.body?.content||ordered.at(-1)?.bodyPreview||"");
-  const latestSentence=uniqueSentences((latest.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).map(s=>s.trim()))
-    .find(s=>s.length>10&&s.length<220&&!/^(good morning|good afternoon|hello|hi\b|thank you|thanks)/i.test(s));
-  const action=firstMatch(sentences,[/\bplease\b/i,/\bconfirm\b/i,/\bneed\b/i,/\breview\b/i,/\bapprove\b/i,/\bsend\b/i,/\bprovide\b/i,/\breply\b/i,/\bbook\b/i,/\bschedule\b/i,/\bdeadline\b/i,/\bdue\b/i]);
-  const takeaway=makeManagerTakeaway(subject,sentences,latestSentence);
-  const bullets=[
-    `• Topic: ${subject}`,
-    `• Manager takeaway: ${takeaway}`,
-    `• Needed: ${shortenSentence(action||"Review the thread and decide the next step.")}`,
-  ];
-  const context=scored.find(s=>s!==action&&s!==takeaway);
-  if(context)bullets.splice(2,0,`• Context: ${context}`);
-  if(latestSentence)bullets.push(`• Latest update: ${shortenSentence(latestSentence)}`);
+
+  // Find the primary external sender name
+  const sender=(()=>{
+    for(const m of ordered){
+      const addr=normEmail(m.from?.emailAddress?.address||'');
+      if(addr&&!addr.includes('@dhananipeg.com'))
+        return (m.from?.emailAddress?.name||addr.split('@')[0]).replace(/["'<>]/g,'').trim();
+    }
+    return null;
+  })();
+
+  function getClean(m){return cleanEmailText(m.body?.contentType==="html"?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||"");}
+  const allText=ordered.map(getClean).join(" ");
+  const latestText=getClean(ordered.at(-1));
+
+  function pickSentences(text){
+    return uniqueSentences(
+      (text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[])
+        .map(s=>s.trim())
+        .filter(s=>s.length>22&&s.length<260)
+        .filter(s=>s.split(/\s+/).length>=5)
+        .filter(s=>!/(?:^|\s)(?:com)?from\s*:/i.test(s))
+        .filter(s=>!/\b\d{5}\b/.test(s))
+        .filter(s=>!/(main|cell|fax|direct)\s*:\s*[\d.]/i.test(s))
+    );
+  }
+
+  const allSentences=pickSentences(allText);
+  const latestSentences=pickSentences(latestText);
+
+  // Sentence classifiers — distinct purposes so bullets don't repeat each other
+  const ACTION=/\bplease\b|\bneed(?:s)?\s+(you|us|dpeg|the\s+team)\b|\bcan\s+you\b|\bcould\s+you\b|\bwould\s+you\b|\brequest(?:ing)?\b|\brequire(?:s|d)?\b|\bconfirm\b|\bapprove\b|\bprovide\b|\bfollow[\s-]up\b|\bdeadline\b|\bdue\s+(by|on|date)\b|\burgent\b|\baction\s+required\b|\brespond\b|\bpending\s+your\b/i;
+  const CONTEXT=/\battach(?:ed|ment)\b|\bproposal\b|\bagreement\b|\blease\b|\bcontract\b|\binvoice\b|\bquote\b|\bpresentation\b|\breport\b|\bschedule\b|\bas\s+discussed\b|\bper\s+our\b|\bfollowing\s+(our|up)\b|\bregarding\b|\bpursuant\b|\bplease\s+find\b|\b(am|is)\s+(writing|reaching|following)\b|\bwanted\s+to\b|\bwriting\s+to\b|\bthis\s+(email|message|note)\b/i;
+
+  const actionSentence=allSentences.find(s=>ACTION.test(s));
+  const contextSentence=allSentences.find(s=>CONTEXT.test(s)&&s!==actionSentence);
+
+  // Entity extraction — concrete facts to surface
+  const amounts=(allText.match(/\$[\d,]+(?:\.\d{2})?(?:\s*(?:million|M|billion|B|thousand|k))?\b/gi)||[]).slice(0,2);
+  const deadline=(allText.match(/\b(?:by|before|deadline|due(?:\s+by)?)\s+[A-Z][a-z]+(?:\s+\d{1,2})?(?:,?\s*\d{4})?\b/i)||[])[0];
+  const sqft=(allText.match(/[\d,]+\s*(?:sq\.?\s*ft\.?|square\s+feet|sqft|SF)\b/gi)||[])[0];
+  const pct=(allText.match(/\b\d+(?:\.\d+)?%/g)||[])[0];
+
+  // Latest meaningful sentence from the most recent email only
+  const latestSentence=latestSentences.find(s=>s!==actionSentence&&s!==contextSentence&&s.split(/\s+/).length>=6);
+
+  const bullets=[];
+  bullets.push(`• Topic: ${subject}`);
+
+  if(contextSentence){
+    bullets.push(`• About: ${shortenSentence(contextSentence,175)}`);
+  }else if(sender){
+    const verb=ordered.length>1?'discussed':'sent an email about';
+    bullets.push(`• About: ${sender} ${verb} ${subject.toLowerCase()}.`);
+  }
+
+  if(actionSentence){
+    bullets.push(`• Action needed: ${shortenSentence(actionSentence,195)}`);
+  }else{
+    bullets.push(`• Action needed: Review this thread and determine next steps.`);
+  }
+
+  const facts=[];
+  if(deadline)facts.push(deadline);
+  if(amounts.length)facts.push(amounts.join(', '));
+  if(sqft)facts.push(sqft);
+  if(pct&&!amounts.length)facts.push(pct);
+  if(facts.length)bullets.push(`• Key info: ${facts.join(' · ')}`);
+
+  if(latestSentence)bullets.push(`• Latest: ${shortenSentence(latestSentence,165)}`);
   if(involved.length)bullets.push(`• DPEG involved: ${involved.join(", ")}`);
   return bullets.join("\n");
 }
