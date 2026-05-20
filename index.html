@@ -18525,6 +18525,18 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .sum-row.s-facts .val{font-family:monospace;font-size:11.5px;color:var(--sub)}
 .sum-link-row{margin-top:10px;padding-top:8px;border-top:1px solid var(--sage)}
 .sum-empty{font-size:12.5px;color:var(--muted);font-style:italic}
+.sum-ai-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:var(--fern);background:var(--leaf-bg);border:1px solid var(--leaf-bd);border-radius:10px;padding:1px 7px;margin-left:8px;vertical-align:middle;letter-spacing:.2px}
+/* AI Settings */
+.ai-status-bar{border-radius:var(--r);padding:9px 12px;font-size:12.5px;font-weight:500;margin-bottom:12px;line-height:1.45}
+.ai-status-bar.ai-ok{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+.ai-status-bar.ai-err{background:#fff1f2;color:#9f1239;border:1px solid #fecdd3}
+/* Pre-send unread thread cards */
+.unread-thread-card{border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
+.unread-thread-card:last-child{margin-bottom:0}
+.unread-thread-head{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--sage3);border-bottom:1px solid var(--sage);flex-wrap:wrap}
+.unread-thread-title{font-size:13px;font-weight:700;color:var(--body);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.unread-thread-meta{display:flex;gap:10px;padding:7px 12px;font-size:11.5px;border-bottom:1px solid var(--border);background:var(--white)}
+.unread-thread-summary{padding:10px 12px;background:var(--white)}
 .form-grp{margin-bottom:13px}
 .form-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--sub);margin-bottom:4px;display:block}
 .form-in,.form-sel,.form-ta{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:13px;color:var(--body);outline:none;transition:border .15s;background:var(--white)}
@@ -18643,6 +18655,11 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   <div class="sb-foot">
     <div class="acct-menu" id="acct-menu">
       <div style="padding:6px 8px 4px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Account</div>
+      <button class="acct-option" onclick="openAISettings();closeAccountMenu()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm0 0v4m0 14v-4m10-6h-4M6 12H2m15.07-7.07-2.83 2.83M8.76 15.24l-2.83 2.83m0-11.14 2.83 2.83m6.48 6.48 2.83 2.83" stroke-width="2" stroke-linecap="round"/></svg>
+        AI Settings
+        <span id="ai-status-dot" style="width:7px;height:7px;border-radius:50%;background:#d1d5db;margin-left:auto;flex-shrink:0"></span>
+      </button>
       <button class="acct-option danger" onclick="signOut()">Sign Out</button>
     </div>
     <div class="user-row" id="acct-btn" onclick="toggleAccountMenu(event)">
@@ -18928,6 +18945,60 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 
   </div>
 </main>
+
+<!-- AI SETTINGS MODAL -->
+<div class="mo" id="mo-ai-settings">
+  <div class="mo-box" style="max-width:480px">
+    <div class="mo-hdr">
+      <div>
+        <div class="mo-title">AI Settings</div>
+        <div class="mo-sub">Connect your Azure OpenAI function for smart email summaries</div>
+      </div>
+      <button class="mo-x" onclick="closeMo('mo-ai-settings')">&#10005;</button>
+    </div>
+    <div class="mo-body">
+      <div class="ai-status-bar" id="ai-settings-status"></div>
+      <div class="form-grp">
+        <label class="form-lbl">Azure Function URL</label>
+        <input type="url" class="form-in" id="ai-fn-url" placeholder="https://dpeg-ai-summarize.systemmanager1.workers.dev/">
+        <div style="font-size:11px;color:var(--muted);margin-top:5px">Paste your Cloudflare Worker URL. See setup steps below.</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="testAIConnection()" id="ai-test-btn" style="margin-bottom:14px">Test Connection</button>
+      <div style="background:var(--sage3);border:1px solid var(--sage);border-radius:var(--r);padding:12px 14px;font-size:12px;color:var(--sub);line-height:1.7">
+        <div style="font-weight:700;color:var(--body);margin-bottom:6px">Setup steps</div>
+        <div><b>1.</b> Go to <b>dash.cloudflare.com</b> → Workers &amp; Pages → <b>dpeg-ai-summarize</b></div>
+        <div><b>2.</b> Click <b>Edit Code</b> → delete everything → paste the code from <code style="background:var(--sage2);padding:1px 5px;border-radius:3px">cloudflare-worker/worker.js</code></div>
+        <div><b>3.</b> Click <b>Save and Deploy</b></div>
+        <div><b>4.</b> Paste your Worker URL above and click <b>Test Connection</b></div>
+        <div style="margin-top:6px;color:var(--fern);font-weight:600">✓ Groq key already set as secret — you're good.</div>
+      </div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-ai-settings')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveAISettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- PRE-SEND UNREAD THREADS MODAL -->
+<div class="mo" id="mo-unread-check">
+  <div class="mo-box" style="max-width:560px">
+    <div class="mo-hdr" style="background:var(--amber-bg,#fffbeb);border-bottom:1px solid var(--amber-bd,#fde68a)">
+      <div>
+        <div class="mo-title" style="color:var(--amber,#92400e)" id="unread-check-title">Unread threads with this recipient</div>
+        <div class="mo-sub" id="unread-check-sub">Review before sending</div>
+      </div>
+      <button class="mo-x" onclick="closeMo('mo-unread-check')">&#10005;</button>
+    </div>
+    <div class="mo-body" style="max-height:60vh;overflow-y:auto">
+      <div id="unread-check-list"></div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-unread-check')">Go back</button>
+      <button class="btn btn-primary btn-sm" onclick="closeMo('mo-unread-check');proceedSend()">Send anyway</button>
+    </div>
+  </div>
+</div>
 
 <!-- DETAIL MODAL -->
 <div class="mo" id="mo-detail">
@@ -19386,7 +19457,8 @@ function formatSummaryHTML(summary){
 }
 function renderSumBox(t){
   const badge=t.replyCount>1?`<span class="sum-thread-badge">${t.replyCount} messages</span>`:'';
-  const hdr=`<div class="sum-hdr">${emailSubject(t)}${badge}</div>`;
+  const aiBadge=t.aiGenerated?`<span class="sum-ai-badge">✦ AI</span>`:'';
+  const hdr=`<div class="sum-hdr">${emailSubject(t)}${badge}${aiBadge}</div>`;
   const body=t.summary?formatSummaryHTML(t.summary):'<span class="sum-empty">No summary yet — click Refresh Summary to generate one.</span>';
   const lnk=threadLinkButton(t);
   const linkRow=lnk?`<div class="sum-link-row">${lnk}</div>`:'';
@@ -19543,19 +19615,106 @@ function localThreadSummary(messages){
   if(involved.length)bullets.push(`• DPEG involved: ${involved.join(", ")}`);
   return bullets.join("\n");
 }
+// ============================================================
+// AI SETTINGS
+// ============================================================
+const WORKER_URL='https://dpeg-ai-summarize.systemmanager1.workers.dev/';
+function loadAIConfig(){
+  const url=localStorage.getItem('dpeg_ai_fn_url')||'';
+  const el=document.getElementById('ai-fn-url');
+  if(el)el.value=url||WORKER_URL;
+  updateAIStatusDot(!!url);
+  return url;
+}
+function saveAISettings(){
+  const url=(document.getElementById('ai-fn-url')?.value||'').trim();
+  localStorage.setItem('dpeg_ai_fn_url',url);
+  updateAIStatusDot(!!url);
+  closeMo('mo-ai-settings');
+  toast(url?'AI summarization enabled':'AI summarization disabled — using local algorithm');
+}
+function openAISettings(){
+  loadAIConfig();
+  document.getElementById('ai-settings-status').innerHTML='';
+  document.getElementById('mo-ai-settings').classList.add('open');
+}
+function updateAIStatusDot(active){
+  const dot=document.getElementById('ai-status-dot');
+  if(dot)dot.style.background=active?'#22c55e':'#d1d5db';
+}
+async function testAIConnection(){
+  const url=(document.getElementById('ai-fn-url')?.value||'').trim();
+  const statusEl=document.getElementById('ai-settings-status');
+  const btn=document.getElementById('ai-test-btn');
+  if(!url){statusEl.innerHTML='<div class="ai-status-bar ai-err">Please enter a URL first.</div>';return;}
+  btn.disabled=true;btn.textContent='Testing...';
+  statusEl.innerHTML='';
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body:JSON.stringify({subject:'Test connection',emailText:'This is a test message to verify the connection is working.',senderName:'Test',messageCount:1})
+    });
+    if(res.ok){
+      const d=await res.json();
+      statusEl.innerHTML=`<div class="ai-status-bar ai-ok">✓ Connected — AI returned a summary successfully.</div>`;
+    }else{
+      statusEl.innerHTML=`<div class="ai-status-bar ai-err">✗ Function returned ${res.status}. Check deployment and env vars.</div>`;
+    }
+  }catch(err){
+    statusEl.innerHTML=`<div class="ai-status-bar ai-err">✗ Could not reach function: ${err.message}</div>`;
+  }finally{
+    btn.disabled=false;btn.textContent='Test Connection';
+  }
+}
+
+// ============================================================
+// AI SUMMARIZATION
+// ============================================================
+async function callAISummary(messages, subject){
+  const fnUrl=localStorage.getItem('dpeg_ai_fn_url');
+  if(!fnUrl)return null;
+  try{
+    const token=await getAccessToken();
+    const ordered=[...(messages||[])].sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime||0)-new Date(b.receivedDateTime||b.sentDateTime||0));
+    const sender=(()=>{
+      for(const m of ordered){
+        const addr=normEmail(m.from?.emailAddress?.address||'');
+        if(addr&&!addr.includes('@dhananipeg.com'))
+          return (m.from?.emailAddress?.name||addr.split('@')[0]).replace(/["'<>]/g,'').trim();
+      }
+      return null;
+    })();
+    const emailText=ordered.map(m=>cleanEmailText(m.body?.contentType==="html"?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||"")).join("\n\n---\n\n");
+    const res=await fetch(fnUrl,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body:JSON.stringify({subject:subject||'Email thread',emailText,senderName:sender||'',messageCount:ordered.length})
+    });
+    if(!res.ok)return null;
+    const data=await res.json();
+    return data.summary||null;
+  }catch{
+    return null;
+  }
+}
+
 async function attachFreeThreadSummary(email){
   try{
-    if(!email.conversationId){
-      email.threadSummary=localThreadSummary([email]);
-      return email;
+    let messages=[email];
+    if(email.conversationId){
+      const token=await getAccessToken();
+      const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
+      const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview';
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+      if(res.ok){const d=await res.json();if(d.value?.length)messages=d.value;}
     }
-    const token=await getAccessToken();
-    const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
-    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview';
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
-    if(!res.ok)throw new Error("Thread summary fetch failed");
-    const data=await res.json();
-    email.threadSummary=localThreadSummary(data.value?.length?data.value:[email]);
+    // Try AI first, fall back to local algorithm
+    const subject=email.subject||email.emailSubject||'';
+    const aiSummary=await callAISummary(messages,subject);
+    email.threadSummary=aiSummary||localThreadSummary(messages);
+    if(aiSummary)email.aiGenerated=true;
   }catch(err){
     email.threadSummary=localThreadSummary([email]);
   }
@@ -20586,6 +20745,71 @@ ${email.bodyPreview}`;
   openCompose('',subject,orig,'Forward');
 }
 
+// ============================================================
+// PRE-SEND UNREAD THREAD CHECK
+// ============================================================
+let _pendingSendCallback=null;
+
+function proceedSend(){
+  if(_pendingSendCallback){const fn=_pendingSendCallback;_pendingSendCallback=null;fn();}
+}
+
+async function checkUnreadThreadsForRecipients(emails){
+  // Find open tasks in the action log that match any of the recipient emails
+  const lower=emails.map(e=>e.toLowerCase());
+  return tasks.filter(t=>{
+    if(nstt(t.status)==='Done')return false;
+    return lower.some(e=>normEmail(t.email||'')===e);
+  });
+}
+
+async function showUnreadCheckIfNeeded(recipientStr, onProceed){
+  const emails=recipientStr.split(',').map(e=>e.trim().toLowerCase()).filter(Boolean);
+  if(!emails.length){onProceed();return;}
+  const openThreads=await checkUnreadThreadsForRecipients(emails);
+  if(!openThreads.length){onProceed();return;}
+
+  // Build gist cards for each open thread
+  const listEl=document.getElementById('unread-check-list');
+  document.getElementById('unread-check-title').textContent=
+    `${openThreads.length} open thread${openThreads.length!==1?'s':''} with this recipient`;
+  document.getElementById('unread-check-sub').textContent=
+    'Review before sending — you may want to address these first.';
+
+  listEl.innerHTML=openThreads.map(t=>`
+    <div class="unread-thread-card">
+      <div class="unread-thread-head">
+        <div class="unread-thread-title">${emailSubject(t)}</div>
+        ${sbadge(t.status)}
+      </div>
+      <div class="unread-thread-meta">
+        <span style="font-weight:600">${t.person}</span>
+        <span style="color:var(--muted)">${t.dept}</span>
+        <span style="color:var(--muted)">${fmtD(t.date)}</span>
+      </div>
+      <div class="unread-thread-summary" id="uc-sum-${t.id}">
+        ${t.summary?formatSummaryHTML(t.summary):'<span style="color:var(--muted);font-style:italic;font-size:12px">Loading AI gist…</span>'}
+      </div>
+      ${threadLinkButton(t)?`<div style="margin-top:6px">${threadLinkButton(t)}</div>`:''}
+    </div>`).join('');
+
+  document.getElementById('mo-unread-check').classList.add('open');
+  _pendingSendCallback=onProceed;
+
+  // If any thread has no summary yet, generate one in the background
+  for(const t of openThreads){
+    if(!t.summary&&(t.conversationId||t.emailId)){
+      const emailProxy={id:t.emailId||t.lastMessageId,subject:t.emailSubject||t.title,conversationId:t.conversationId,bodyPreview:t.summary||''};
+      attachFreeThreadSummary(emailProxy).then(()=>{
+        t.summary=emailProxy.threadSummary||t.summary;
+        t.threadSummary=emailProxy.threadSummary||t.threadSummary||'';
+        const el=document.getElementById(`uc-sum-${t.id}`);
+        if(el&&t.summary)el.innerHTML=formatSummaryHTML(t.summary);
+      }).catch(()=>{});
+    }
+  }
+}
+
 async function sendEmail(){
   const to=document.getElementById('compose-to').value.trim();
   const cc=document.getElementById('compose-cc').value.trim();
@@ -20594,6 +20818,14 @@ async function sendEmail(){
   const body=document.getElementById('compose-body').value.trim();
   if(!to){toast('Please add at least one recipient');return;}
   if(!subject){toast('Please add a subject');return;}
+
+  // Check for open threads with any recipient before sending
+  const allRecipients=[...to.split(','),...(cc?cc.split(','):[])]
+    .map(e=>e.trim().toLowerCase()).filter(Boolean);
+  await showUnreadCheckIfNeeded(allRecipients.join(','), ()=>doSendEmail(to,cc,bcc,subject,body));
+}
+
+async function doSendEmail(to,cc,bcc,subject,body){
   const btn=document.getElementById('compose-send-btn');
   if(btn){btn.disabled=true;btn.innerHTML='Sending...';}
   try{
@@ -20678,6 +20910,7 @@ function refreshFolder(){loadFolder(currentFolder);}
 initSelects();
 chWeek(0);
 syncBadges();
+loadAIConfig();
 
 // msal is bundled inline above — check it loaded correctly
 if (typeof msal !== 'undefined' && typeof msal.PublicClientApplication === 'function') {
