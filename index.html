@@ -18507,7 +18507,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .mo-x:hover{background:#fee2e2;color:#dc2626;border-color:#fca5a5}
 .mo-body{padding:16px 20px}
 .mo-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:7px;justify-content:flex-end}
-.sum-box{background:var(--sage3);border-left:3px solid var(--fern);padding:10px 14px;font-size:12.5px;color:var(--sub);line-height:1.6;margin-bottom:14px;border-radius:0 var(--r) var(--r) 0}
+.sum-box{background:var(--sage3);border-left:3px solid var(--fern);padding:10px 14px;font-size:12.5px;color:var(--sub);line-height:1.6;margin-bottom:14px;border-radius:0 var(--r) var(--r) 0;white-space:pre-wrap}
 .form-grp{margin-bottom:13px}
 .form-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--sub);margin-bottom:4px;display:block}
 .form-in,.form-sel,.form-ta{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:13px;color:var(--body);outline:none;transition:border .15s;background:var(--white)}
@@ -18925,6 +18925,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       <div class="form-grp" style="margin-top:10px"><label class="form-lbl">Follow-up Note</label><input type="text" class="form-in" id="mo-followup" placeholder="Add a note..."></div>
     </div>
     <div class="mo-foot">
+      <button class="btn btn-ghost btn-sm" id="mo-refresh-summary" onclick="refreshTaskSummary()">Refresh Summary</button>
       <button class="btn btn-ghost btn-sm" onclick="movToWed()">Move to Wednesday</button>
       <button class="btn btn-primary btn-sm" onclick="saveDetail()">Save Changes</button>
     </div>
@@ -19050,7 +19051,7 @@ const DEPARTMENTS = [
   "Investor Relations","Accounting","Acquisitions","Development",
   "Construction","Property Management","Maintenance","Marketing",
   "Legal and Title","Leasing","IT","Operations","Lending",
-  "Insurance","Multifamily","EB-5",
+  "Insurance","Multifamily","EB-5","Outside DPEG",
 ];
 
 const DEPT_COLORS = {
@@ -19059,6 +19060,7 @@ const DEPT_COLORS = {
   "Maintenance":"#37474F","Marketing":"#4A148C","Legal and Title":"#6D4C41",
   "Leasing":"#0D47A1","IT":"#1B5E20","Operations":"#212121",
   "Lending":"#880E4F","Insurance":"#E65100","Multifamily":"#33691E","EB-5":"#1A237E",
+  "Outside DPEG":"#475569",
 };
 
 // ============================================================
@@ -19351,30 +19353,56 @@ function stripEmailHtml(html){
 function cleanEmailText(text){
   return String(text||"")
     .replace(/\r/g,"\n")
+    .replace(/https?:\/\/\S+/gi," ")
+    .replace(/\b[\w.-]+(\/[\w.-]+){2,}\b/g," ")
+    .replace(/\S+@\S+\.\S+/g," ")
     .split("\n")
     .map(x=>x.trim())
     .filter(x=>x&&!/^>/.test(x))
     .filter(x=>!(/^(from|sent|to|cc|subject):/i.test(x)))
-    .filter(x=>!(/^(thanks|thank you|regards|best|sent from my|confidentiality notice)/i.test(x)))
+    .filter(x=>!(/^(thanks|thank you|regards|best|sent from my|confidentiality notice|this message|external email)/i.test(x)))
     .join(" ")
+    .replace(/\b(com|company|services|independent-consultants)\b/gi," ")
     .replace(/\s+/g," ")
     .trim();
 }
+function cleanSubject(subject){
+  return String(subject||"(no subject)").replace(/^\s*(re|fw|fwd):\s*/ig,"").trim();
+}
+function uniqueSentences(sentences){
+  const seen=new Set();
+  return sentences.filter(s=>{
+    const key=s.toLowerCase().replace(/[^a-z0-9 ]/g,"").replace(/\s+/g," ").slice(0,120);
+    if(!key||seen.has(key))return false;
+    seen.add(key);
+    return true;
+  });
+}
+function shortenSentence(s,max=190){
+  s=String(s||"").replace(/\s+/g," ").trim();
+  return s.length>max?s.slice(0,max-3).replace(/\s+\S*$/,"")+"...":s;
+}
 function localThreadSummary(messages){
   const ordered=[...(messages||[])].sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime||0)-new Date(b.receivedDateTime||b.sentDateTime||0));
+  const subject=cleanSubject(ordered.at(-1)?.subject||ordered[0]?.subject);
   const text=ordered.map(m=>cleanEmailText(m.body?.contentType==="html"?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||"")).join(" ");
-  const sentences=text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[];
-  const useful=sentences.map(s=>s.trim()).filter(s=>s.length>35&&s.length<260);
-  const keywords=["please","need","needs","request","review","approve","approval","confirm","send","provide","question","issue","follow up","deadline","due","attached","proposal","contract","lease","invoice","payment","update","decision"];
-  const scored=useful.map((s,i)=>({s,i,score:keywords.reduce((n,k)=>n+(s.toLowerCase().includes(k)?2:0),0)+(i<3?1:0)}))
+  const sentences=uniqueSentences((text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).map(s=>s.trim()).filter(s=>s.length>28&&s.length<300));
+  const keywords=["please","need","needs","request","review","approve","approval","confirm","send","provide","question","issue","follow up","deadline","due","attached","proposal","contract","lease","invoice","payment","update","decision","training","schedule","dates","onsite","plan","status"];
+  const scored=sentences.map((s,i)=>({s,i,score:keywords.reduce((n,k)=>n+(s.toLowerCase().includes(k)?2:0),0)+(i<3?1:0)}))
     .sort((a,b)=>b.score-a.score||a.i-b.i)
-    .slice(0,3)
+    .slice(0,2)
     .sort((a,b)=>a.i-b.i)
-    .map(x=>x.s);
+    .map(x=>shortenSentence(x.s));
   const latest=cleanEmailText(ordered.at(-1)?.body?.contentType==="html"?stripEmailHtml(ordered.at(-1)?.body?.content):ordered.at(-1)?.body?.content||ordered.at(-1)?.bodyPreview||"");
-  const latestSentence=(latest.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).map(s=>s.trim()).find(s=>s.length>10&&s.length<220);
-  const summary=scored.length?scored.join(" "):(latestSentence||ordered.at(-1)?.bodyPreview||"No summary available.");
-  return latestSentence&&summary!==latestSentence?`${summary}\n\nLatest reply: ${latestSentence}`:summary;
+  const latestSentence=uniqueSentences((latest.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[]).map(s=>s.trim())).find(s=>s.length>10&&s.length<220);
+  const action=sentences.find(s=>/(please|confirm|need|review|approve|send|provide|reply|book|schedule|deadline|due)/i.test(s));
+  const bullets=[
+    `- Topic: ${subject}`,
+    ...(scored.length?scored.map(s=>`- Key point: ${s}`):[`- Key point: ${shortenSentence(latestSentence||ordered.at(-1)?.bodyPreview||"Review the email thread for details.")}`]),
+    `- Needed: ${shortenSentence(action||"Review the thread and decide the next step.")}`,
+  ];
+  if(latestSentence)bullets.push(`- Latest update: ${shortenSentence(latestSentence)}`);
+  return bullets.join("\n");
 }
 async function attachFreeThreadSummary(email){
   try{
@@ -19797,12 +19825,34 @@ function openDetail(id){
   document.getElementById("mo-date").textContent=fmtD(t.date);
   document.getElementById("mo-status").value=nstt(t.status);
   document.getElementById("mo-followup").value=t.followup||"";
+  const rs=document.getElementById("mo-refresh-summary");
+  if(rs)rs.style.display=t.conversationId||t.emailId?"inline-flex":"none";
   document.getElementById("mo-detail").classList.add("open");
 }
 async function saveDetail(){
   const t=tasks.find(x=>x.id===curTaskId);
   if(t){t.status=document.getElementById("mo-status").value;t.followup=document.getElementById("mo-followup").value;saveStaffDeptForTask(t,document.getElementById("mo-dept").value);}
   closeMo("mo-detail");refreshAll();toast("Changes saved");await saveTasksToOneDrive();
+}
+async function refreshTaskSummary(){
+  const t=tasks.find(x=>x.id===curTaskId);
+  if(!t)return;
+  const btn=document.getElementById("mo-refresh-summary");
+  if(btn){btn.disabled=true;btn.textContent="Refreshing...";}
+  try{
+    const email={id:t.emailId||t.lastMessageId,subject:t.emailSubject||t.title,conversationId:t.conversationId,bodyPreview:t.summary||""};
+    await attachFreeThreadSummary(email);
+    t.summary=email.threadSummary||t.summary;
+    t.threadSummary=email.threadSummary||t.threadSummary||"";
+    document.getElementById("mo-sum").textContent=`Subject: ${emailSubject(t)}${t.replyCount>1?` (${t.replyCount} messages in thread)`:''}${t.summary?`\n\n${t.summary}`:""}`;
+    refreshAll();
+    toast("Summary refreshed");
+    await saveTasksToOneDrive();
+  }catch(err){
+    toast("Could not refresh summary");
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent="Refresh Summary";}
+  }
 }
 async function movToWed(){const t=tasks.find(x=>x.id===curTaskId);if(t)t.wednesday=true;closeMo("mo-detail");refreshAll();toast("Moved to agenda");await saveTasksToOneDrive();}
 function closeMo(id){document.getElementById(id).classList.remove("open");}
