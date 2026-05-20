@@ -18457,7 +18457,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .wed-card-dept{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:4px;background:#fff;border:1px solid var(--sage);color:var(--forest);font-size:11px;font-weight:800;white-space:nowrap}
 .wed-card-body{padding:11px 12px}
 .wed-card-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:11.5px;color:var(--muted);font-weight:600}
-.wed-card-summary{font-size:12.5px;color:var(--sub);line-height:1.55;margin-bottom:10px;white-space:pre-wrap}
+.wed-card-summary{font-size:12.5px;color:var(--sub);line-height:1.55;margin-bottom:10px}
 .email-link-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);background:#fff;color:var(--forest);border-radius:6px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;margin-top:8px}
 .email-link-btn:hover{background:var(--sage3);border-color:var(--sage)}
 .ag-ta{width:100%;padding:8px 10px;border:1px solid var(--sage);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:12.5px;color:var(--body);outline:none;transition:border .15s;resize:vertical;min-height:42px;line-height:1.45;background:#fff}
@@ -18509,7 +18509,18 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .mo-x:hover{background:#fee2e2;color:#dc2626;border-color:#fca5a5}
 .mo-body{padding:16px 20px}
 .mo-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:7px;justify-content:flex-end}
-.sum-box{background:var(--sage3);border-left:3px solid var(--fern);padding:10px 14px;font-size:12.5px;color:var(--sub);line-height:1.6;margin-bottom:14px;border-radius:0 var(--r) var(--r) 0;white-space:pre-wrap}
+.sum-box{background:var(--sage3);border-left:3px solid var(--fern);padding:10px 14px;font-size:12.5px;color:var(--sub);line-height:1.6;margin-bottom:14px;border-radius:0 var(--r) var(--r) 0}
+.sum-hdr{font-size:13px;font-weight:700;color:var(--body);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--sage);display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.4}
+.sum-thread-badge{font-size:10.5px;color:var(--muted);font-weight:400;background:var(--sage2);padding:1px 7px;border-radius:10px;border:1px solid var(--sage);white-space:nowrap}
+.sum-rows{display:flex;flex-direction:column}
+.sum-row{display:grid;grid-template-columns:90px 1fr;gap:2px 10px;padding:5px 0;border-bottom:1px solid var(--sage);align-items:baseline}
+.sum-row:last-child{border-bottom:none}
+.sum-row .lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding-top:1px}
+.sum-row .val{font-size:12.5px;color:var(--body);line-height:1.5}
+.sum-row.s-involved .val{font-weight:600;color:var(--forest)}
+.sum-row.s-takeaway .val{color:var(--ink)}
+.sum-link-row{margin-top:10px;padding-top:8px;border-top:1px solid var(--sage)}
+.sum-empty{font-size:12.5px;color:var(--muted);font-style:italic}
 .form-grp{margin-bottom:13px}
 .form-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--sub);margin-bottom:4px;display:block}
 .form-in,.form-sel,.form-ta{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:13px;color:var(--body);outline:none;transition:border .15s;background:var(--white)}
@@ -19352,6 +19363,31 @@ function emailLinkButton(t,label="Open Full Email"){
   const id=taskEmailId(t);
   return id?`<button class="email-link-btn" onclick="event.stopPropagation();openTaskEmail('${id}')">${label}</button>`:"";
 }
+function formatSummaryHTML(summary){
+  if(!summary)return '<span class="sum-empty">No summary available.</span>';
+  const lines=summary.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  const rows=lines.map(line=>{
+    const inner=line.replace(/^(?:•|â€¢)\s*/,'').trim();
+    const ci=inner.indexOf(':');
+    if(ci>0&&ci<30){
+      const lbl=inner.slice(0,ci).trim();
+      const val=inner.slice(ci+1).trim();
+      const key=lbl.toLowerCase();
+      const cls=key.includes('involved')?'s-involved':key.includes('takeaway')||key.includes('manager')?'s-takeaway':'';
+      return `<div class="sum-row${cls?' '+cls:''}"><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`;
+    }
+    return `<div class="sum-row"><span class="val" style="grid-column:1/-1">${inner}</span></div>`;
+  });
+  return `<div class="sum-rows">${rows.join('')}</div>`;
+}
+function renderSumBox(t){
+  const badge=t.replyCount>1?`<span class="sum-thread-badge">${t.replyCount} messages</span>`:'';
+  const hdr=`<div class="sum-hdr">${emailSubject(t)}${badge}</div>`;
+  const body=t.summary?formatSummaryHTML(t.summary):'<span class="sum-empty">No summary yet — click Refresh Summary to generate one.</span>';
+  const lnk=threadLinkButton(t);
+  const linkRow=lnk?`<div class="sum-link-row">${lnk}</div>`:'';
+  return hdr+body+linkRow;
+}
 function threadLinkButton(t,label="Open Email Thread"){
   return (t.conversationId||taskEmailId(t))?`<button class="email-link-btn" onclick="event.stopPropagation();openTaskThread(${t.id})">${label}</button>`:"";
 }
@@ -19449,7 +19485,7 @@ function localThreadSummary(messages){
   const context=scored.find(s=>s!==action&&s!==takeaway);
   if(context)bullets.splice(2,0,`• Context: ${context}`);
   if(latestSentence)bullets.push(`• Latest update: ${shortenSentence(latestSentence)}`);
-  if(involved.length)bullets.push(`â€¢ DPEG involved: ${involved.join(", ")}`);
+  if(involved.length)bullets.push(`• DPEG involved: ${involved.join(", ")}`);
   return bullets.join("\n");
 }
 async function attachFreeThreadSummary(email){
@@ -19746,7 +19782,7 @@ function renderWed(){
               <span style="font-weight:600;color:var(--body)">${t.person}</span>
               ${pBadge(t.priority||'Normal')}
             </div>
-            <div class="wed-card-summary">${t.summary||'No summary available.'}${threadLinkButton(t)}</div>
+            <div class="wed-card-summary">${formatSummaryHTML(t.summary)}${threadLinkButton(t)?`<div style="margin-top:8px">${threadLinkButton(t)}</div>`:''}</div>
             ${t.followup?`<div style="font-size:12px;color:var(--forest);font-weight:500;margin-bottom:8px;padding:6px 10px;background:var(--sage3);border-radius:6px">Previous note: ${t.followup}</div>`:''}
             <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="2">${t.meetingNote||''}</textarea>
             <div class="ag-foot">
@@ -19884,7 +19920,7 @@ function openDetail(id){
   const t=tasks.find(x=>x.id===id);if(!t)return;curTaskId=id;
   document.getElementById("mo-title").textContent=emailSubject(t);
   document.getElementById("mo-sub").textContent=`${t.person} • ${t.dept} • ${fmtD(t.date)}`;
-  document.getElementById("mo-sum").innerHTML=`Subject: ${emailSubject(t)}${t.replyCount>1?` (${t.replyCount} messages in thread)`:''}${t.summary?`\n\n${t.summary}`:""}${threadLinkButton(t)}`;
+  document.getElementById("mo-sum").innerHTML=renderSumBox(t);
   document.getElementById("mo-person").textContent=t.person+(t.email?` (${t.email})`:"");
   document.getElementById("mo-dept").innerHTML=deptOptions(t.dept);
   document.getElementById("mo-date").textContent=fmtD(t.date);
@@ -19909,7 +19945,7 @@ async function refreshTaskSummary(){
     await attachFreeThreadSummary(email);
     t.summary=email.threadSummary||t.summary;
     t.threadSummary=email.threadSummary||t.threadSummary||"";
-    document.getElementById("mo-sum").innerHTML=`Subject: ${emailSubject(t)}${t.replyCount>1?` (${t.replyCount} messages in thread)`:''}${t.summary?`\n\n${t.summary}`:""}${threadLinkButton(t)}`;
+    document.getElementById("mo-sum").innerHTML=renderSumBox(t);
     refreshAll();
     toast("Summary refreshed");
     await saveTasksToOneDrive();
