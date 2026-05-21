@@ -21091,55 +21091,51 @@ async function forwardEmail(emailId){
 // TASK ASSIGNMENT NOTIFICATION
 // ============================================================
 async function createToDoTask(task){
+  const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+
+  // ── 1. Current user's To Do via silent delegated token (Tasks.ReadWrite) ──
   try{
-    // Use a silent-only token request with Tasks.ReadWrite scope.
-    // If this scope hasn't been consented yet, acquireTokenSilent throws and we
-    // skip To Do creation entirely — never blocking login or triggering a popup.
-    let token;
-    try{
-      const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_TODO,account:currentAccount});
-      token=r.accessToken;
-    }catch{return;}// scope not consented — skip silently
+    const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_TODO,account:currentAccount});
+    const token=r.accessToken;
     const due=task.date?new Date(task.date):null;
     const taskBody={
       title:`[${task.person}] ${task.title||'Task'}`,
-      body:{content:`Assigned to: ${task.person}\nEmail: ${task.email||''}\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}\n\n${(task.summary||'').replace(/[•*▾▲]/g,'').slice(0,500)}`,contentType:'text'},
+      body:{content:`Assigned to: ${task.person}\nEmail: ${task.email||''}\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}\n\n${(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,500)}`,contentType:'text'},
       importance:task.priority==='High'?'high':'normal',
       status:'notStarted',
     };
     if(due&&!isNaN(due))taskBody.dueDateTime={dateTime:due.toISOString(),timeZone:'UTC'};
-
-    // 1. Find or create "DPEG Assigned Tasks" list in current user's To Do
     const listsRes=await fetch('https://graph.microsoft.com/v1.0/me/todo/lists',{headers:{Authorization:`Bearer ${token}`}});
-    let listId=null;
     if(listsRes.ok){
       const ld=await listsRes.json();
+      let listId=null;
       const existing=(ld.value||[]).find(l=>l.displayName==='DPEG Assigned Tasks');
       if(existing){listId=existing.id;}
       else{
         const cr=await fetch('https://graph.microsoft.com/v1.0/me/todo/lists',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({displayName:'DPEG Assigned Tasks'})});
         if(cr.ok){const cd=await cr.json();listId=cd.id;}
       }
+      if(listId)await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(taskBody)});
     }
-    if(listId){
-      await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(taskBody)});
-    }
+  }catch{/* Tasks.ReadWrite not yet admin-consented — skip silently */}
 
-    // 2. Try to create task in the recipient's To Do (requires Tasks.ReadWrite.All admin consent)
-    if(task.email&&task.email.includes('@dhananipeg.com')){
-      const recLR=await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(task.email)}/todo/lists`,{headers:{Authorization:`Bearer ${token}`}});
-      if(recLR.ok){
-        const recLists=await recLR.json();
-        const defList=(recLists.value||[]).find(l=>l.isDefaultList)||(recLists.value||[])[0];
-        if(defList){
-          const recTask={title:task.title||'Task',body:{content:`This task was assigned to you via DPEG Task Manager\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}\n\n${(task.summary||'').replace(/[•*▾▲]/g,'').slice(0,400)}`,contentType:'text'},importance:task.priority==='High'?'high':'normal',status:'notStarted'};
-          if(due&&!isNaN(due))recTask.dueDateTime={dateTime:due.toISOString(),timeZone:'UTC'};
-          await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(task.email)}/todo/lists/${defList.id}/tasks`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(recTask)});
-        }
-      }
-    }
+  // ── 2. Recipient's To Do via Cloudflare Worker app credentials ──
+  if(!task.email||!task.email.includes('@dhananipeg.com')||!fnUrl)return;
+  try{
+    const userToken=await getAccessToken();
+    await fetch(`${fnUrl}/todo`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${userToken}`},
+      body:JSON.stringify({
+        recipientEmail:task.email,
+        title:task.title||'Task',
+        summary:(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,600),
+        priority:task.priority||'Normal',
+        date:task.date||'',
+      }),
+    });
   }catch(err){
-    console.warn('To Do task creation failed:',err.message);
+    console.warn('Recipient To Do (Worker) failed:',err.message);
   }
 }
 
