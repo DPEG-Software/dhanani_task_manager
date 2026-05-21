@@ -18775,7 +18775,22 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <select class="sel-f" id="sf-dept" onchange="renderMaster()"><option value="all">All Departments</option></select>
         <select class="sel-f" id="sf-priority" onchange="renderMaster()"><option value="all">All Priorities</option><option>High</option><option>Normal</option></select>
       </div>
-      <div id="master-list" class="task-list"></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:32px"></th>
+              <th>Task</th>
+              <th style="width:110px">Status</th>
+              <th style="width:80px">Priority</th>
+              <th style="width:80px">Agenda</th>
+              <th style="width:90px">Date</th>
+              <th style="width:36px"></th>
+            </tr>
+          </thead>
+          <tbody id="master-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -19861,39 +19876,36 @@ function getVis(){
   });
 }
 function renderMaster(){
-  const list=getVis();
-  const container=document.getElementById("master-list");
+  const list=getVis(),tb=document.getElementById("master-tbody");
   if(!list.length){
-    container.innerHTML=`<div class="empty-state" style="padding:40px 20px"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div>`;
+    tb.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
     return;
   }
-  container.innerHTML=list.map(t=>{
-    const done=nstt(t.status)==="Done";
-    const overdue=nstt(t.status)==="Overdue";
-    return `<div class="task-row${done?" done-row":overdue?" overdue-row":""}" onclick="openDetail(${t.id})">
-      <div class="task-row-left" onclick="event.stopPropagation()">
-        <input type="checkbox" class="chk" ${done?"checked":""} onchange="toggleDone(${t.id},this.checked)">
-      </div>
-      <div class="task-row-mid">
-        <div class="task-row-title">${emailSubject(t)}</div>
-        <div class="task-row-meta">
+  tb.innerHTML=list.map(t=>`
+    <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6':''}">
+      <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 16px">
+        <input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)">
+      </td>
+      <td style="padding:10px 14px">
+        <div style="font-size:13px;font-weight:600;color:var(--body);margin-bottom:3px;line-height:1.3">${emailSubject(t)}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${av(t.person,16)}
-          <span style="font-weight:600;color:var(--body);font-size:12px">${t.person}</span>
-          <span class="task-sep">&bull;</span>
+          <span style="font-size:11.5px;color:var(--muted)">${t.person}</span>
+          <span style="color:var(--border)">·</span>
           <span class="dept-pill" style="font-size:10.5px;padding:1px 6px"><span class="dept-dot" style="background:${dcolor(t.dept)}"></span>${t.dept}</span>
-          <span class="task-sep">&bull;</span>
-          <span style="white-space:nowrap">${fmtD(t.date)}</span>
-          ${t.replyCount>1?`<span class="task-sep">&bull;</span><span>${t.replyCount} msgs</span>`:""}
-          <span style="flex-shrink:0">${pBadge(t.priority)}</span>
+          ${t.replyCount>1?`<span style="font-size:11px;color:var(--muted)">· ${t.replyCount} msgs</span>`:""}
         </div>
-      </div>
-      <div class="task-row-right" onclick="event.stopPropagation()">
-        ${sbadge(t.status)}
-        <div class="wed-btn${t.wednesday?" on":""}" style="width:auto;padding:0 9px;font-size:10.5px" onclick="togWed(${t.id})" title="${t.wednesday?"Remove from agenda":"Add to agenda"}">${t.wednesday?"On Wed":"+ Wed"}</div>
-        <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:2px 7px;font-size:11px;min-width:0" onclick="removeTask(${t.id})" title="Remove from Action Log">&#10005;</button>
-      </div>
-    </div>`;
-  }).join("");
+      </td>
+      <td style="padding:10px 8px">${sbadge(t.status)}</td>
+      <td style="padding:10px 8px">${pBadge(t.priority)}</td>
+      <td onclick="event.stopPropagation()" style="padding:10px 8px">
+        <div class="wed-btn${t.wednesday?" on":""}" style="width:auto;padding:0 8px;font-size:10.5px;white-space:nowrap" onclick="togWed(${t.id})">${t.wednesday?"On Wed":"+ Wed"}</div>
+      </td>
+      <td style="padding:10px 8px;font-size:11.5px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td>
+      <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 4px;text-align:right">
+        <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:1px 6px;font-size:11px;min-width:0;opacity:.7" onclick="removeTask(${t.id})" title="Remove">&#10005;</button>
+      </td>
+    </tr>`).join("");
 }
 async function toggleDone(id,checked){
   const t=tasks.find(x=>x.id===id);
