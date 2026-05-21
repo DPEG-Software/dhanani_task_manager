@@ -18386,6 +18386,36 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .bd{background:var(--leaf-bg);color:var(--leaf);border:1px solid var(--leaf-bd)}
 .bo{background:var(--ruby-bg);color:var(--ruby);border:1px solid var(--ruby-bd)}
 
+/* COMPOSE AUTOCOMPLETE */
+.compose-ac{position:absolute;left:50px;right:0;top:100%;z-index:9999;background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:0 6px 24px rgba(0,0,0,.12);max-height:280px;overflow-y:auto;margin-top:0}
+.compose-ac-item{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-bottom:1px solid #f3f4f6;transition:background .1s}
+.compose-ac-item:last-child{border-bottom:none}
+.compose-ac-item:hover,.compose-ac-item.ac-focused{background:var(--sage3)}
+.compose-ac-name{font-size:13px;font-weight:600;color:var(--body);line-height:1.2}
+.compose-ac-email{font-size:11.5px;color:var(--muted);margin-top:1px}
+.compose-ac-role{font-size:10.5px;color:var(--forest);font-weight:600;margin-top:1px}
+
+/* ACTION LOG CARD LIST */
+.task-list{background:#fff;border-radius:0 0 var(--rlg) var(--rlg);overflow:hidden}
+.task-row{display:flex;align-items:center;gap:0;padding:11px 16px;border-bottom:1px solid #f3f4f6;cursor:pointer;transition:background .1s;background:#fff}
+.task-row:last-child{border-bottom:none}
+.task-row:hover{background:#f9fafb}
+.task-row.done-row{opacity:.6}
+.task-row.overdue-row .task-row-title{color:#b91c1c}
+.task-row-left{display:flex;align-items:center;flex-shrink:0;width:28px}
+.task-row-mid{flex:1;min-width:0;padding:0 14px}
+.task-row-title{font-size:13.5px;font-weight:600;color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+.task-row-meta{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);flex-wrap:nowrap;overflow:hidden}
+.task-row-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.task-sep{color:#d1d5db}
+
+/* COMPACT WED CARDS */
+.wed-sum-clip{max-height:80px;overflow:hidden;position:relative}
+.wed-sum-clip.expanded{max-height:none}
+.wed-sum-clip:not(.expanded)::after{content:'';position:absolute;bottom:0;left:0;right:0;height:28px;background:linear-gradient(transparent,#fff);pointer-events:none}
+.wed-expand-btn{font-size:11px;color:var(--forest);background:none;border:none;cursor:pointer;padding:0;font-weight:600;margin-bottom:8px;display:inline-block;letter-spacing:.2px}
+.wed-card-compact-body{padding:10px 12px}
+
 /* FILTER */
 .sel-f{padding:5px 9px;border-radius:var(--r);border:1px solid var(--border);font-family:'Inter',sans-serif;font-size:12px;color:var(--sub);background:var(--white);outline:none;cursor:pointer}
 
@@ -18745,10 +18775,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <select class="sel-f" id="sf-dept" onchange="renderMaster()"><option value="all">All Departments</option></select>
         <select class="sel-f" id="sf-priority" onchange="renderMaster()"><option value="all">All Priorities</option><option>High</option><option>Normal</option></select>
       </div>
-      <div style="overflow-x:auto"><table>
-        <thead><tr><th style="width:32px">Done</th><th>Department</th><th>Task</th><th>Assigned To</th><th>Priority</th><th>Wednesday</th><th>Status</th><th>Date</th></tr></thead>
-        <tbody id="master-tbody"></tbody>
-      </table></div>
+      <div id="master-list" class="task-list"></div>
     </div>
   </div>
 
@@ -18905,20 +18932,29 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       </div>
       <div class="mo-body" style="padding:14px 18px">
         <!-- TO -->
-        <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
-          <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">To</span>
-          <input type="text" id="compose-to" placeholder="Add recipients..." list="ppl-dl" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showCcBcc()">
-          <button onclick="toggleBcc()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;font-weight:600;padding:2px 6px;border-radius:4px;transition:all .12s" id="bcc-toggle-btn" title="Add BCC">BCC</button>
+        <div style="position:relative">
+          <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+            <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">To</span>
+            <input type="text" id="compose-to" placeholder="Type a name or email..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showCcBcc();showComposeAC('compose-to','to-ac')" onkeydown="acKeyNav(event,'to-ac','compose-to')" onblur="hideComposeAC('to-ac')">
+            <button onclick="toggleBcc()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;font-weight:600;padding:2px 6px;border-radius:4px;transition:all .12s" id="bcc-toggle-btn" title="Add BCC">BCC</button>
+          </div>
+          <div id="to-ac" class="compose-ac" style="display:none"></div>
         </div>
         <!-- CC -->
-        <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px" id="cc-row">
-          <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">CC</span>
-          <input type="text" id="compose-cc" placeholder="Add CC recipients..." list="ppl-dl" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+        <div style="position:relative" id="cc-row">
+          <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+            <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">CC</span>
+            <input type="text" id="compose-cc" placeholder="Add CC recipients..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showComposeAC('compose-cc','cc-ac')" onkeydown="acKeyNav(event,'cc-ac','compose-cc')" onblur="hideComposeAC('cc-ac')">
+          </div>
+          <div id="cc-ac" class="compose-ac" style="display:none"></div>
         </div>
         <!-- BCC — hidden by default -->
-        <div style="display:none;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px" id="bcc-row">
-          <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">BCC</span>
-          <input type="text" id="compose-bcc" placeholder="Add BCC recipients..." list="ppl-dl" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+        <div style="display:none;position:relative" id="bcc-row">
+          <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+            <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">BCC</span>
+            <input type="text" id="compose-bcc" placeholder="Add BCC recipients..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showComposeAC('compose-bcc','bcc-ac')" onkeydown="acKeyNav(event,'bcc-ac','compose-bcc')" onblur="hideComposeAC('bcc-ac')">
+          </div>
+          <div id="bcc-ac" class="compose-ac" style="display:none"></div>
         </div>
         <!-- SUBJECT -->
         <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:8px">
@@ -19092,7 +19128,7 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
+const SCOPES_GRAPH = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send", "Tasks.ReadWrite"];
 const ONEDRIVE_FOLDER = "DPEGTaskManager";
 
 // PRINCIPALS — those with Wednesday Review vs Discussion Notes
@@ -19824,20 +19860,39 @@ function getVis(){
   });
 }
 function renderMaster(){
-  const list=getVis(),tb=document.getElementById("master-tbody");
-  if(!list.length){tb.innerHTML=`<tr><td colspan="9"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks will appear here automatically when you forward emails</div></div></td></tr>`;return;}
-  tb.innerHTML=list.map(t=>`
-    <tr onclick="openDetail(${t.id})">
-      <td onclick="event.stopPropagation()"><input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)"></td>
-      <td><span class="dept-pill"><span class="dept-dot" style="background:${dcolor(t.dept)}"></span>${t.dept}</span></td>
-      <td><div style="font-size:13px;font-weight:600;color:var(--body);margin-bottom:1px">${emailSubject(t)}</div><div style="font-size:11.5px;color:var(--muted)">To: ${t.person}${t.replyCount>1?` &bull; ${t.replyCount} messages`:''}</div>${threadLinkButton(t)}</td>
-      <td><div style="display:flex;align-items:center;gap:7px">${av(t.person,24)}<span style="font-size:12.5px">${t.person}</span></div></td>
-      <td>${pBadge(t.priority)}</td>
-      <td onclick="event.stopPropagation()"><div class="wed-btn${t.wednesday?" on":""}" onclick="togWed(${t.id})">${t.wednesday?"On Wed":"+ Wed"}</div></td>
-      <td>${sbadge(t.status)}</td>
-      <td style="font-size:12px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td>
-      <td onclick="event.stopPropagation()" style="text-align:right"><button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:2px 7px;font-size:11px;min-width:0" onclick="removeTask(${t.id})" title="Remove from Action Log">&#10005;</button></td>
-    </tr>`).join("");
+  const list=getVis();
+  const container=document.getElementById("master-list");
+  if(!list.length){
+    container.innerHTML=`<div class="empty-state" style="padding:40px 20px"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div>`;
+    return;
+  }
+  container.innerHTML=list.map(t=>{
+    const done=nstt(t.status)==="Done";
+    const overdue=nstt(t.status)==="Overdue";
+    return `<div class="task-row${done?" done-row":overdue?" overdue-row":""}" onclick="openDetail(${t.id})">
+      <div class="task-row-left" onclick="event.stopPropagation()">
+        <input type="checkbox" class="chk" ${done?"checked":""} onchange="toggleDone(${t.id},this.checked)">
+      </div>
+      <div class="task-row-mid">
+        <div class="task-row-title">${emailSubject(t)}</div>
+        <div class="task-row-meta">
+          ${av(t.person,16)}
+          <span style="font-weight:600;color:var(--body);font-size:12px">${t.person}</span>
+          <span class="task-sep">&bull;</span>
+          <span class="dept-pill" style="font-size:10.5px;padding:1px 6px"><span class="dept-dot" style="background:${dcolor(t.dept)}"></span>${t.dept}</span>
+          <span class="task-sep">&bull;</span>
+          <span style="white-space:nowrap">${fmtD(t.date)}</span>
+          ${t.replyCount>1?`<span class="task-sep">&bull;</span><span>${t.replyCount} msgs</span>`:""}
+          <span style="flex-shrink:0">${pBadge(t.priority)}</span>
+        </div>
+      </div>
+      <div class="task-row-right" onclick="event.stopPropagation()">
+        ${sbadge(t.status)}
+        <div class="wed-btn${t.wednesday?" on":""}" style="width:auto;padding:0 9px;font-size:10.5px" onclick="togWed(${t.id})" title="${t.wednesday?"Remove from agenda":"Add to agenda"}">${t.wednesday?"On Wed":"+ Wed"}</div>
+        <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:2px 7px;font-size:11px;min-width:0" onclick="removeTask(${t.id})" title="Remove from Action Log">&#10005;</button>
+      </div>
+    </div>`;
+  }).join("");
 }
 async function toggleDone(id,checked){
   const t=tasks.find(x=>x.id===id);
@@ -20007,21 +20062,25 @@ function renderWed(){
       html+=deptTasks.map(t=>`
         <div class="wed-card">
           <div class="wed-card-head">
-            <div class="wed-card-title">${t.title}</div>
-            ${sbadge(t.status)}
-            <button class="rm-btn" onclick="removeFromWed(${t.id})" title="Remove from agenda">&#215;</button>
+            <div class="wed-card-title">${emailSubject(t)}</div>
+            <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
+              ${sbadge(t.status)}
+              <button class="rm-btn" onclick="removeFromWed(${t.id})" title="Remove from agenda">&#215;</button>
+            </div>
           </div>
-          <div class="wed-card-body">
-            <div class="wed-card-meta">
+          <div class="wed-card-compact-body">
+            <div class="wed-card-meta" style="margin-bottom:6px">
               <span style="font-weight:600;color:var(--body)">${t.person}</span>
               ${pBadge(t.priority||'Normal')}
+              ${t.replyCount>1?`<span style="font-size:11px;color:var(--muted)">&bull; ${t.replyCount} msgs</span>`:''}
             </div>
-            <div class="wed-card-summary">${formatSummaryHTML(t.summary)}${threadLinkButton(t)?`<div style="margin-top:8px">${threadLinkButton(t)}</div>`:''}</div>
-            ${t.followup?`<div style="font-size:12px;color:var(--forest);font-weight:500;margin-bottom:8px;padding:6px 10px;background:var(--sage3);border-radius:6px">Previous note: ${t.followup}</div>`:''}
-            <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="2">${t.meetingNote||''}</textarea>
-            <div class="ag-foot">
-              ${['Pending','Done','Overdue'].map(s=>`<button class="ag-status-btn ${s.toLowerCase().replace(' ','-')}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
-              <button class="btn btn-ghost btn-xs" onclick="removeFromWed(${t.id})" style="margin-left:auto">Remove</button>
+            ${t.summary?`<div class="wed-sum-clip" id="wsum-${t.id}"><div class="wed-card-summary" style="margin-bottom:0">${formatSummaryHTML(t.summary)}</div></div><button class="wed-expand-btn" id="wexp-${t.id}" onclick="toggleWedSum(${t.id})">Show more &#9662;</button>`:''}
+            ${t.followup?`<div style="font-size:11.5px;color:var(--forest);font-weight:500;margin-bottom:7px;padding:5px 9px;background:var(--sage3);border-radius:5px">Note: ${t.followup}</div>`:''}
+            ${threadLinkButton(t)?`<div style="margin-bottom:7px">${threadLinkButton(t)}</div>`:''}
+            <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="1" style="min-height:32px">${t.meetingNote||''}</textarea>
+            <div class="ag-foot" style="margin-top:6px">
+              ${['Pending','Done','Overdue'].map(s=>`<button class="ag-status-btn ${s.toLowerCase()}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
+              <button class="btn btn-ghost btn-xs" onclick="removeFromWed(${t.id})" style="margin-left:auto;font-size:10.5px">Remove</button>
             </div>
           </div>
         </div>`).join('');
@@ -20040,11 +20099,13 @@ function renderWed(){
       <div class="wed-card">
         <div class="wed-card-head">
           <div class="wed-card-title">${n.text}</div>
-          <span style="font-size:11px;color:var(--muted)">Added ${n.time}</span>
-          <button class="rm-btn" onclick="removeCN(${i})" title="Remove note">&#215;</button>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <span style="font-size:11px;color:var(--muted)">${n.time}</span>
+            <button class="rm-btn" onclick="removeCN(${i})" title="Remove note">&#215;</button>
+          </div>
         </div>
-        <div class="wed-card-body">
-          <textarea class="ag-ta" placeholder="Add discussion notes here..." id="cn-note-${i}" rows="2">${n.meetingNote||''}</textarea>
+        <div class="wed-card-compact-body">
+          <textarea class="ag-ta" placeholder="Add discussion notes here..." id="cn-note-${i}" rows="1" style="min-height:32px">${n.meetingNote||''}</textarea>
         </div>
       </div>`).join('');
     html+=`</div>`;
@@ -20053,6 +20114,15 @@ function renderWed(){
   el.innerHTML=html;
 }
 
+
+function toggleWedSum(id){
+  const clip=document.getElementById(`wsum-${id}`);
+  const btn=document.getElementById(`wexp-${id}`);
+  if(!clip||!btn)return;
+  const expanded=clip.classList.contains('expanded');
+  if(expanded){clip.classList.remove('expanded');btn.innerHTML='Show more &#9662;';}
+  else{clip.classList.add('expanded');btn.innerHTML='Show less &#9650;';}
+}
 
 function addCN(){const v=document.getElementById("cn-in").value.trim();if(!v)return;customNotes.unshift({text:v,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),meetingNote:""});document.getElementById("cn-in").value="";renderWed();syncBadges();toast("Note added");}
 function removeCN(i){const el=document.getElementById("cn-note-"+i);if(el)customNotes[i].meetingNote=el.value;customNotes.splice(i,1);renderWed();syncBadges();}
@@ -20376,11 +20446,86 @@ function showRecipientPreview(){
   }
 }
 
+// ============================================================
+// COMPOSE AUTOCOMPLETE (Outlook-style people picker)
+// ============================================================
+function showComposeAC(inputId, acId){
+  const input=document.getElementById(inputId);
+  const ac=document.getElementById(acId);
+  if(!input||!ac)return;
+  const val=input.value;
+  const lastSep=Math.max(val.lastIndexOf(','),val.lastIndexOf(';'));
+  const token=(lastSep>=0?val.slice(lastSep+1):val).trim().toLowerCase();
+  if(token.length<1){ac.style.display='none';return;}
+  const seen=new Set();
+  const matches=[...PEOPLE_DB,...Object.values(staffConfig).filter(p=>p?.email&&p?.name)]
+    .filter(p=>{
+      const k=normEmail(p.email||'');
+      if(!k||seen.has(k))return false;
+      seen.add(k);
+      return (p.name||'').toLowerCase().includes(token)||(k).includes(token)||(p.role||'').toLowerCase().includes(token);
+    }).slice(0,8);
+  if(!matches.length){ac.style.display='none';return;}
+  ac.innerHTML=matches.map(p=>`
+    <div class="compose-ac-item"
+      onmousedown="event.preventDefault();selectComposeAC('${inputId}','${acId}','${(p.email||'').replace(/'/g,"\\'")}')"
+      onmouseover="document.querySelectorAll('#${acId} .compose-ac-item').forEach(x=>x.classList.remove('ac-focused'));this.classList.add('ac-focused')">
+      ${av(p.name||'?',30)}
+      <div style="flex:1;min-width:0;overflow:hidden">
+        <div class="compose-ac-name">${p.name||p.email}</div>
+        <div class="compose-ac-email">${p.email||''}</div>
+        ${p.role||p.dept?`<div class="compose-ac-role">${p.role||p.dept}</div>`:''}
+      </div>
+    </div>`).join('');
+  ac.style.display='block';
+}
+
+function selectComposeAC(inputId,acId,email){
+  const input=document.getElementById(inputId);
+  const ac=document.getElementById(acId);
+  if(!input)return;
+  const val=input.value;
+  const lastSep=Math.max(val.lastIndexOf(','),val.lastIndexOf(';'));
+  const prefix=lastSep>=0?val.slice(0,lastSep+1)+' ':'';
+  input.value=prefix+email+', ';
+  if(ac)ac.style.display='none';
+  input.focus();
+  showRecipientPreview();
+}
+
+function hideComposeAC(acId){
+  setTimeout(()=>{const ac=document.getElementById(acId);if(ac)ac.style.display='none';},180);
+}
+
+function acKeyNav(e,acId,inputId){
+  const ac=document.getElementById(acId);
+  if(!ac||ac.style.display==='none')return;
+  const items=ac.querySelectorAll('.compose-ac-item');
+  if(!items.length)return;
+  const focused=ac.querySelector('.ac-focused');
+  if(e.key==='ArrowDown'){
+    e.preventDefault();
+    const next=focused?focused.nextElementSibling||items[0]:items[0];
+    items.forEach(i=>i.classList.remove('ac-focused'));
+    if(next)next.classList.add('ac-focused');
+  }else if(e.key==='ArrowUp'){
+    e.preventDefault();
+    const prev=focused?focused.previousElementSibling||items[items.length-1]:items[items.length-1];
+    items.forEach(i=>i.classList.remove('ac-focused'));
+    if(prev)prev.classList.add('ac-focused');
+  }else if((e.key==='Enter'||e.key==='Tab')&&focused){
+    e.preventDefault();
+    focused.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+  }else if(e.key==='Escape'){
+    ac.style.display='none';
+  }
+}
+
 function toggleBcc(){
   const row=document.getElementById('bcc-row');
   if(!row)return;
   const showing=row.style.display!=='none'&&row.style.display!=='';
-  row.style.display=showing?'none':'flex';
+  row.style.display=showing?'none':'block';
   const btn=document.getElementById('bcc-toggle-btn');
   if(btn)btn.style.color=showing?'':'var(--ink)';
 }
@@ -20944,6 +21089,52 @@ async function forwardEmail(emailId){
 // ============================================================
 // TASK ASSIGNMENT NOTIFICATION
 // ============================================================
+async function createToDoTask(task){
+  try{
+    const token=await getAccessToken();
+    const due=task.date?new Date(task.date):null;
+    const taskBody={
+      title:`[${task.person}] ${task.title||'Task'}`,
+      body:{content:`Assigned to: ${task.person}\nEmail: ${task.email||''}\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}\n\n${(task.summary||'').replace(/[•*▾▲]/g,'').slice(0,500)}`,contentType:'text'},
+      importance:task.priority==='High'?'high':'normal',
+      status:'notStarted',
+    };
+    if(due&&!isNaN(due))taskBody.dueDateTime={dateTime:due.toISOString(),timeZone:'UTC'};
+
+    // 1. Find or create "DPEG Assigned Tasks" list in current user's To Do
+    const listsRes=await fetch('https://graph.microsoft.com/v1.0/me/todo/lists',{headers:{Authorization:`Bearer ${token}`}});
+    let listId=null;
+    if(listsRes.ok){
+      const ld=await listsRes.json();
+      const existing=(ld.value||[]).find(l=>l.displayName==='DPEG Assigned Tasks');
+      if(existing){listId=existing.id;}
+      else{
+        const cr=await fetch('https://graph.microsoft.com/v1.0/me/todo/lists',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({displayName:'DPEG Assigned Tasks'})});
+        if(cr.ok){const cd=await cr.json();listId=cd.id;}
+      }
+    }
+    if(listId){
+      await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(taskBody)});
+    }
+
+    // 2. Try to create task in the recipient's To Do (requires Tasks.ReadWrite.All admin consent)
+    if(task.email&&task.email.includes('@dhananipeg.com')){
+      const recLR=await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(task.email)}/todo/lists`,{headers:{Authorization:`Bearer ${token}`}});
+      if(recLR.ok){
+        const recLists=await recLR.json();
+        const defList=(recLists.value||[]).find(l=>l.isDefaultList)||(recLists.value||[])[0];
+        if(defList){
+          const recTask={title:task.title||'Task',body:{content:`This task was assigned to you via DPEG Task Manager\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}\n\n${(task.summary||'').replace(/[•*▾▲]/g,'').slice(0,400)}`,contentType:'text'},importance:task.priority==='High'?'high':'normal',status:'notStarted'};
+          if(due&&!isNaN(due))recTask.dueDateTime={dateTime:due.toISOString(),timeZone:'UTC'};
+          await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(task.email)}/todo/lists/${defList.id}/tasks`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(recTask)});
+        }
+      }
+    }
+  }catch(err){
+    console.warn('To Do task creation failed:',err.message);
+  }
+}
+
 async function sendTaskNotification(task){
   if(!task.email)return;
   const addr=(task.email||'').trim().toLowerCase();
@@ -20968,6 +21159,8 @@ async function sendTaskNotification(task){
     lines.push('','Please open the DPEG Task Manager to view and update this task.','','Best regards,','DPEG Task Manager');
     const message={subject,body:{contentType:'Text',content:lines.join('\n')},toRecipients:[{emailAddress:{address:addr}}]};
     await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:false})});
+    // Also create in Microsoft To Do (silently, no await so it doesn't block)
+    createToDoTask(task).catch(()=>{});
   }catch(err){
     console.warn('Task notification failed:',err.message);
   }
