@@ -19128,7 +19128,8 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send", "Tasks.ReadWrite"];
+const SCOPES_GRAPH = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
+const SCOPES_TODO  = ["User.Read", "Tasks.ReadWrite"];
 const ONEDRIVE_FOLDER = "DPEGTaskManager";
 
 // PRINCIPALS — those with Wednesday Review vs Discussion Notes
@@ -21091,7 +21092,14 @@ async function forwardEmail(emailId){
 // ============================================================
 async function createToDoTask(task){
   try{
-    const token=await getAccessToken();
+    // Use a silent-only token request with Tasks.ReadWrite scope.
+    // If this scope hasn't been consented yet, acquireTokenSilent throws and we
+    // skip To Do creation entirely — never blocking login or triggering a popup.
+    let token;
+    try{
+      const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_TODO,account:currentAccount});
+      token=r.accessToken;
+    }catch{return;}// scope not consented — skip silently
     const due=task.date?new Date(task.date):null;
     const taskBody={
       title:`[${task.person}] ${task.title||'Task'}`,
