@@ -19000,6 +19000,24 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   </div>
 </div>
 
+<!-- FORWARD GAP WARNING MODAL -->
+<div class="mo" id="mo-fwd-gap">
+  <div class="mo-box" style="max-width:580px">
+    <div class="mo-hdr" style="background:#fff7ed;border-bottom:1px solid #fed7aa">
+      <div>
+        <div class="mo-title" style="color:#c2410c">Thread Gap Detected</div>
+        <div class="mo-sub" id="fwd-gap-sub"></div>
+      </div>
+      <button class="mo-x" onclick="closeMo('mo-fwd-gap')">&#10005;</button>
+    </div>
+    <div class="mo-body" id="fwd-gap-body" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="mo-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-fwd-gap')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="proceedForward()">Forward Anyway</button>
+    </div>
+  </div>
+</div>
+
 <!-- DETAIL MODAL -->
 <div class="mo" id="mo-detail">
   <div class="mo-box">
@@ -19015,6 +19033,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     <div class="mo-foot">
       <button class="btn btn-ghost btn-sm" id="mo-refresh-summary" onclick="refreshTaskSummary()">Refresh Summary</button>
       <button class="btn btn-ghost btn-sm" onclick="movToWed()">Move to Wednesday</button>
+      <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="removeTask(curTaskId)">Remove Task</button>
       <button class="btn btn-primary btn-sm" onclick="saveDetail()">Save Changes</button>
     </div>
   </div>
@@ -19806,7 +19825,7 @@ function getVis(){
 }
 function renderMaster(){
   const list=getVis(),tb=document.getElementById("master-tbody");
-  if(!list.length){tb.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks will appear here automatically when you forward emails</div></div></td></tr>`;return;}
+  if(!list.length){tb.innerHTML=`<tr><td colspan="9"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks will appear here automatically when you forward emails</div></div></td></tr>`;return;}
   tb.innerHTML=list.map(t=>`
     <tr onclick="openDetail(${t.id})">
       <td onclick="event.stopPropagation()"><input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)"></td>
@@ -19817,6 +19836,7 @@ function renderMaster(){
       <td onclick="event.stopPropagation()"><div class="wed-btn${t.wednesday?" on":""}" onclick="togWed(${t.id})">${t.wednesday?"On Wed":"+ Wed"}</div></td>
       <td>${sbadge(t.status)}</td>
       <td style="font-size:12px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td>
+      <td onclick="event.stopPropagation()" style="text-align:right"><button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:2px 7px;font-size:11px;min-width:0" onclick="removeTask(${t.id})" title="Remove from Action Log">&#10005;</button></td>
     </tr>`).join("");
 }
 async function toggleDone(id,checked){
@@ -20188,7 +20208,9 @@ async function addTask(){
   saveStaffDeptForTask(task,dept);
   closeMo("mo-add");
   ["nt-title","nt-summary","nt-person","nt-email"].forEach(i=>document.getElementById(i).value="");
-  refreshAll();toast(`Task saved${email?`. Notification will go to ${email}`:""}`);
+  refreshAll();
+  sendTaskNotification(task).catch(()=>{});
+  toast(`Task saved${email?`. Notification sent to ${email}`:""}`);
   await saveTasksToOneDrive();
 }
 
@@ -20564,6 +20586,7 @@ async function openTaskThread(taskId){
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+    window._emailFrameBodies=[];
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:6px">${emailSubject(t)}</div>
@@ -20576,15 +20599,17 @@ async function openTaskThread(taskId){
           const dt=new Date(m.receivedDateTime||m.sentDateTime);
           const body=m.body?.content||m.bodyPreview||'';
           const isHtml=m.body?.contentType==='html';
+          const bIdx=isHtml?(window._emailFrameBodies.push(body)-1):-1;
           return `<div style="padding:14px 0;border-bottom:1px solid var(--border)">
             <div style="font-size:13px;font-weight:700;color:var(--body);margin-bottom:5px">${m.subject||'(no subject)'}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${from?.name||from?.address||''}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${to}</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
-            <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?body:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${body}</pre>`}</div>
+            <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?`<iframe data-bidx="${bIdx}" style="width:100%;border:none;display:block;min-height:200px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${body}</pre>`}</div>
           </div>`;
         }).join('')}
       </div>`;
+    readerEl.querySelectorAll('iframe[data-bidx]').forEach(fr=>{const c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',()=>{try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}});fr.srcdoc=c;}});
   }catch(err){
     toast('Could not open email thread');
   }
@@ -20609,6 +20634,7 @@ async function viewFullThread(emailId){
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+    window._emailFrameBodies=[];
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:6px">${email.subject||'(no subject)'}</div>
@@ -20625,15 +20651,17 @@ async function viewFullThread(emailId){
           const dt=new Date(m.receivedDateTime||m.sentDateTime);
           const body=m.body?.content||m.bodyPreview||'';
           const isHtml=m.body?.contentType==='html';
+          const bIdx=isHtml?(window._emailFrameBodies.push(body)-1):-1;
           return `<div style="padding:14px 0;border-bottom:1px solid var(--border)">
             <div style="font-size:13px;font-weight:700;color:var(--body);margin-bottom:5px">${m.subject||'(no subject)'}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${from?.name||from?.address||''}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${to}</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
-            <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?body:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${body}</pre>`}</div>
+            <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?`<iframe data-bidx="${bIdx}" style="width:100%;border:none;display:block;min-height:200px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${body}</pre>`}</div>
           </div>`;
         }).join('')}
       </div>`;
+    readerEl.querySelectorAll('iframe[data-bidx]').forEach(fr=>{const c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',()=>{try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}});fr.srcdoc=c;}});
   }catch(err){
     console.error('Thread load error:',err);
     toast('Could not load the full thread');
@@ -20682,14 +20710,15 @@ async function readEmail(emailId,folder){
           <button class="btn btn-ghost btn-sm" onclick="viewFullThread('${emailId}')">View Full Thread</button>
           ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
           ${isTracked
-            ?`<span class="btn btn-ghost btn-sm" style="color:var(--leaf);border-color:var(--leaf-bd);background:var(--leaf-bg);cursor:default">✓ In Action Log</span><button class="btn btn-ghost btn-sm" onclick="updateTrackedThreadFromEmail('${emailId}')">Update Task Summary</button>`
+            ?`<span class="btn btn-ghost btn-sm" style="color:var(--leaf);border-color:var(--leaf-bd);background:var(--leaf-bg);cursor:default">✓ In Action Log</span><button class="btn btn-ghost btn-sm" onclick="updateTrackedThreadFromEmail('${emailId}')">Update Summary</button><button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="removeTaskByEmail('${emailId}')">Remove</button>`
             :`<button class="btn btn-primary btn-sm" onclick="addTaskFromEmail('${emailId}')">+ Add to Tasks</button>`
           }
         </div>
       </div>
-      <div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:var(--body);overflow-y:auto;flex:1">
-        ${isHtml?bodyContent:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${bodyContent}</pre>`}
+      <div style="overflow-y:auto;flex:1;min-height:0">
+        ${isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:var(--body)"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${bodyContent}</pre></div>`}
       </div>`;
+    if(isHtml){const _f=readerEl.querySelector('#email-body-frame');if(_f){_f.addEventListener('load',()=>{try{const h=Math.max(_f.contentDocument.body.scrollHeight,400);_f.style.height=h+'px';}catch(e){}});_f.srcdoc=bodyContent;}}
     if(!email.isRead&&folder==='inbox'){
       const readRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
       if(readRes.ok){
@@ -20732,18 +20761,6 @@ ${email.bodyPreview}`;
   openCompose(to,subject,orig,'Reply');
 }
 
-function forwardEmail(emailId){
-  const email=emailCache[emailId];if(!email)return;
-  const subject=email.subject?.startsWith('Fw:')?email.subject:`Fw: ${email.subject}`;
-  const orig=`
-
-——— Forwarded Message ———
-From: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}
-Subject: ${email.subject}
-
-${email.bodyPreview}`;
-  openCompose('',subject,orig,'Forward');
-}
 
 // ============================================================
 // PRE-SEND UNREAD THREAD CHECK
@@ -20855,6 +20872,7 @@ async function doSendEmail(to,cc,bcc,subject,body){
         const person=p?.name||email.split('@')[0];
         const newTask={id:Date.now()+Math.random(),title:subject,summary:body.slice(0,255),person,email,dept:personDept(email,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
         tasks.unshift(newTask);
+        sendTaskNotification(newTask).catch(()=>{});
       }
       await saveTasksToOneDrive();
       refreshAll();
@@ -20870,6 +20888,117 @@ async function doSendEmail(to,cc,bcc,subject,body){
   }
 }
 
+// ============================================================
+// FORWARD THREAD GAP CHECK
+// ============================================================
+let _pendingForwardFn=null;
+function proceedForward(){closeMo('mo-fwd-gap');if(_pendingForwardFn){const fn=_pendingForwardFn;_pendingForwardFn=null;fn();}}
+
+async function forwardEmail(emailId){
+  const email=emailCache[emailId];if(!email)return;
+  const subject=email.subject?.startsWith('Fw:')?email.subject:`Fw: ${email.subject}`;
+  const orig=`\n\n——— Forwarded Message ———\nFrom: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}\nSubject: ${email.subject}\n\n${email.bodyPreview}`;
+  const doForward=()=>openCompose('',subject,orig,'Forward');
+  if(!email.conversationId){doForward();return;}
+  try{
+    const token=await getAccessToken();
+    const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=id,subject,from,receivedDateTime,sentDateTime,bodyPreview&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok){doForward();return;}
+    const data=await res.json();
+    const allMsgs=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+    const emailDate=new Date(email.receivedDateTime||email.sentDateTime);
+    const missed=allMsgs.filter(m=>new Date(m.receivedDateTime||m.sentDateTime)>emailDate);
+    if(!missed.length){doForward();return;}
+    _pendingForwardFn=doForward;
+    const cnt=missed.length;
+    document.getElementById('fwd-gap-sub').textContent=`${cnt} newer message${cnt!==1?'s':''} in this thread won't be forwarded`;
+    const bodyEl=document.getElementById('fwd-gap-body');
+    bodyEl.innerHTML=`
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:12px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:#c2410c;margin-bottom:3px">You are forwarding an older message</div>
+        <div style="font-size:12px;color:#9a3412">The recipient will not see the ${cnt} newer repl${cnt!==1?'ies':'y'} below.</div>
+      </div>
+      <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.7px;margin-bottom:8px">Messages that will be skipped</div>
+      ${missed.map(m=>{const from=m.from?.emailAddress;const dt=new Date(m.receivedDateTime||m.sentDateTime);return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:7px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:12px;font-weight:600;color:var(--body)">${from?.name||from?.address||'Unknown'}</span><span style="font-size:11px;color:var(--muted)">${dt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span></div><div style="font-size:12px;color:var(--sub);line-height:1.5">${(m.bodyPreview||'').slice(0,160)}${(m.bodyPreview||'').length>160?'…':''}</div></div>`;}).join('')}
+      <div id="fwd-gap-gist"></div>`;
+    document.getElementById('mo-fwd-gap').classList.add('open');
+    // Generate AI gist of missed messages in background
+    const fnUrl=localStorage.getItem('dpeg_ai_fn_url');
+    if(fnUrl){
+      const gistEl=document.getElementById('fwd-gap-gist');
+      if(gistEl){
+        gistEl.innerHTML='<div style="margin-top:10px;padding:10px 12px;background:var(--leaf-bg,#f0fdf4);border:1px solid var(--leaf-bd,#86efac);border-radius:6px"><div style="font-size:11px;font-weight:700;color:var(--fern,#166534);margin-bottom:4px">✦ AI Gist of skipped messages</div><div style="font-size:12px;color:var(--muted);font-style:italic">Generating…</div></div>';
+        callAISummary(missed,`Missed replies in: ${email.subject||''}`).then(gist=>{
+          if(gist&&gistEl.isConnected)gistEl.innerHTML=`<div style="margin-top:10px;padding:10px 12px;background:var(--leaf-bg,#f0fdf4);border:1px solid var(--leaf-bd,#86efac);border-radius:6px"><div style="font-size:11px;font-weight:700;color:var(--fern,#166534);margin-bottom:4px">✦ AI Gist of skipped messages</div>${formatSummaryHTML(gist)}</div>`;
+          else if(gistEl.isConnected){const localG=localThreadSummary(missed);gistEl.innerHTML=`<div style="margin-top:10px;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:6px"><div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px">Gist of skipped messages</div>${formatSummaryHTML(localG)}</div>`;}
+        }).catch(()=>{if(gistEl.isConnected){const localG=localThreadSummary(missed);gistEl.innerHTML=`<div style="margin-top:10px;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:6px"><div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px">Gist of skipped messages</div>${formatSummaryHTML(localG)}</div>`;}});
+      }
+    }
+  }catch(err){
+    console.error('Forward gap check:',err);
+    doForward();
+  }
+}
+
+// ============================================================
+// TASK ASSIGNMENT NOTIFICATION
+// ============================================================
+async function sendTaskNotification(task){
+  if(!task.email)return;
+  const addr=(task.email||'').trim().toLowerCase();
+  if(!addr||!addr.includes('@'))return;
+  // Only notify internal DPEG addresses
+  if(!addr.includes('@dhananipeg.com')&&!addr.includes('@dpeg'))return;
+  try{
+    const token=await getAccessToken();
+    const subject=`Task Assigned to You: ${task.title||'(no subject)'}`;
+    const lines=[
+      `Hi ${task.person||''},`,
+      '',
+      'A task has been assigned to you in the DPEG Task Manager.',
+      '',
+      `Task:       ${task.title||''}`,
+      `Status:     ${task.status||'Pending'}`,
+      `Priority:   ${task.priority||'Normal'}`,
+      `Date:       ${task.date||''}`,
+      `Department: ${task.dept||''}`,
+    ];
+    if(task.summary)lines.push('','Details:',task.summary.replace(/[•\*]/g,'').slice(0,400));
+    lines.push('','Please open the DPEG Task Manager to view and update this task.','','Best regards,','DPEG Task Manager');
+    const message={subject,body:{contentType:'Text',content:lines.join('\n')},toRecipients:[{emailAddress:{address:addr}}]};
+    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:false})});
+  }catch(err){
+    console.warn('Task notification failed:',err.message);
+  }
+}
+
+// ============================================================
+// REMOVE TASK
+// ============================================================
+async function removeTask(id){
+  if(!confirm('Remove this task from the Action Log?'))return;
+  tasks=tasks.filter(t=>t.id!==id);
+  closeMo('mo-detail');
+  syncBadges();refreshAll();
+  toast('Task removed from Action Log');
+  await saveTasksToOneDrive();
+}
+
+async function removeTaskByEmail(emailId){
+  const email=emailCache[emailId];if(!email)return;
+  const idx=tasks.findIndex(t=>t.conversationId===email.conversationId||t.emailId===emailId||t.lastMessageId===emailId);
+  if(idx<0){toast('Task not found in Action Log');return;}
+  if(!confirm('Remove this task from the Action Log?'))return;
+  tasks.splice(idx,1);
+  trackedEmailIds.delete(emailId);
+  if(email.conversationId)trackedEmailIds.delete(email.conversationId);
+  syncBadges();refreshAll();
+  toast('Task removed from Action Log');
+  await saveTasksToOneDrive();
+  readEmail(emailId,currentFolder);
+}
+
 async function addTaskFromEmail(emailId){
   const email=emailCache[emailId];if(!email)return;
   const sender=email.from?.emailAddress;
@@ -20881,6 +21010,7 @@ async function addTaskFromEmail(emailId){
   trackedEmailIds.add(emailId);
   await saveTasksToOneDrive();
   refreshAll();
+  if(result.created)sendTaskNotification(result.task).catch(()=>{});
   toast(result.created?'Task added to Action Log':'Updated existing thread in Action Log');
   // Refresh reader to show tracked status
   readEmail(emailId,currentFolder);
