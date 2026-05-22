@@ -19236,7 +19236,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     <div style="width:40pt;height:40pt;background:#0E3416;border-radius:6pt;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15pt;font-weight:900;flex-shrink:0">DP</div>
     <div>
       <div style="font-size:18pt;font-weight:900;color:#0E3416;letter-spacing:.5pt;line-height:1.1">DHANANI PRIVATE EQUITY GROUP</div>
-      <div style="font-size:9pt;color:#555;margin-top:2pt;letter-spacing:.3pt">Nikhil Dhanani &nbsp;&bull;&nbsp; President &nbsp;&bull;&nbsp; Confidential Internal Report</div>
+      <div style="font-size:9pt;color:#555;margin-top:2pt;letter-spacing:.3pt" id="print-user-label">Confidential Internal Report</div>
     </div>
     <div style="margin-left:auto;text-align:right">
       <div style="font-size:9.5pt;color:#333;font-weight:600" id="print-date-label"></div>
@@ -19553,6 +19553,7 @@ async function loadTasksFromOneDrive() {
     refreshAll();
     renderCharts();
     renderActivity();
+    autoSyncContacts();
   } catch (err) {
     setSyncStatus("error", "Sync failed");
     console.error("OneDrive load error:", err);
@@ -19560,6 +19561,7 @@ async function loadTasksFromOneDrive() {
     refreshAll();
     renderCharts();
     renderActivity();
+    autoSyncContacts();
   }
 }
 
@@ -19997,6 +19999,46 @@ async function syncContacts(){
     btn.disabled=false;btn.textContent='Sync from Outlook';
   }
 }
+
+async function autoSyncContacts(){
+  try{
+    let token;
+    try{
+      const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_CONTACTS,account:currentAccount});
+      token=r.accessToken;
+    }catch{return;}
+    let changed=false;
+    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=150&$select=displayName,emailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
+    if(pRes.ok){
+      const pd=await pRes.json();
+      (pd.value||[]).forEach(p=>{
+        const email=(p.emailAddresses?.[0]?.address||'').toLowerCase();
+        if(!email||!email.includes('@'))return;
+        const name=p.displayName||email.split('@')[0];
+        const dept=p.department||'Needs Department';
+        const role=p.jobTitle||'';
+        const key=staffKey(email,name);
+        if(!staffConfig[key]){staffConfig[key]={name,email,dept,role};changed=true;}
+        else if(!staffConfig[key].name){staffConfig[key].name=name;changed=true;}
+      });
+    }
+    const cRes=await fetch('https://graph.microsoft.com/v1.0/me/contacts?$top=150&$select=displayName,emailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
+    if(cRes.ok){
+      const cd=await cRes.json();
+      (cd.value||[]).forEach(c=>{
+        const email=(c.emailAddresses?.[0]?.address||'').toLowerCase();
+        if(!email||!email.includes('@'))return;
+        const name=c.displayName||email.split('@')[0];
+        const dept=c.department||'Needs Department';
+        const role=c.jobTitle||'';
+        const key=staffKey(email,name);
+        staffConfig[key]={...(staffConfig[key]||{}),name,email,dept:staffConfig[key]?.dept||dept,role:staffConfig[key]?.role||role};
+        changed=true;
+      });
+    }
+    if(changed)await saveTasksToOneDrive();
+  }catch{}
+}
 async function testAIConnection(){
   const url=(document.getElementById('ai-fn-url')?.value||'').trim();
   const statusEl=document.getElementById('ai-settings-status');
@@ -20128,6 +20170,7 @@ function peopleOptions(){
 }
 function showAddTaskAC(val){
   const ac=document.getElementById('nt-ac');if(!ac)return;
+  const input=document.getElementById('nt-person');
   const token=(val||'').trim().toLowerCase();
   const clearBtn=document.getElementById('nt-clear-btn');
   if(clearBtn)clearBtn.style.display=token?'block':'none';
@@ -20149,6 +20192,7 @@ function showAddTaskAC(val){
         ${p.dept||p.role?`<div class="compose-ac-role">${p.dept||p.role}</div>`:''}
       </div>
     </div>`).join('');
+  if(input){const rect=input.getBoundingClientRect();ac.style.position='fixed';ac.style.left=rect.left+'px';ac.style.top=(rect.bottom+2)+'px';ac.style.width=rect.width+'px';ac.style.right='auto';}
   ac.style.display='block';
 }
 function selectAddTaskAC(name,email,dept){
@@ -20563,12 +20607,14 @@ function clearWed(){tasks.forEach(t=>t.wednesday=false);customNotes=[];renderWed
 function dpegPrint(){
   const dateLabel=document.getElementById('print-date-label');
   const pageLabel=document.getElementById('print-page-label');
+  const userLabel=document.getElementById('print-user-label');
   const now=new Date();
   const dateStr=now.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const activePage=document.querySelector('.page.active');
   const pageTitle=activePage?.id==='page-wednesday'?(isWednesdayUser?'Wednesday Review':'Discussion Notes'):'Summary Report';
   if(dateLabel)dateLabel.textContent=dateStr;
   if(pageLabel)pageLabel.textContent=pageTitle;
+  if(userLabel&&currentUser)userLabel.textContent=`${currentUser.name} • ${currentUser.role} • Confidential Internal Report`;
   window.print();
 }
 async function updStatus(id,v){
@@ -20791,7 +20837,7 @@ function renderCharts(){
     {label:"Pending",data:dk.map(d=>dp[d].tot-dp[d].dn),backgroundColor:"#CBD5E1",borderRadius:4,borderSkipped:false,maxBarThickness:22},
     {label:"Completed",data:dk.map(d=>dp[d].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:22},
   ],{legend:true,onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
-  if(pk.length){mkChart("ch-person","bar",pk,[{label:"Open",data:pk.map(p=>pp[p].open),backgroundColor:"#F2B879",borderRadius:4,borderSkipped:false,maxBarThickness:18},{label:"Done",data:pk.map(p=>pp[p].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:18}],{legend:true,tooltipCallbacks:{title:items=>items.length?[items[0].label]:[],label:item=>`${item.dataset.label}: ${item.parsed.x}`},onClick:(evt,elements)=>{if(elements.length){const person=pk[elements[0].index];nav('people');setTimeout(()=>{curPplFilter=person.toLowerCase();filterPpl(person);selectPpl(person);},150);}},extra:{indexAxis:"y",scales:{x:{grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#374151"},border:{display:false}}}}});}
+  if(pk.length){mkChart("ch-person","bar",pk,[{label:"Open",data:pk.map(p=>pp[p].open),backgroundColor:"#F2B879",borderRadius:4,borderSkipped:false,maxBarThickness:18},{label:"Done",data:pk.map(p=>pp[p].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:18}],{legend:true,tooltipCallbacks:{title:items=>items.length?[items[0].label]:[],label:item=>`${item.dataset.label}: ${item.parsed.x}`},onClick:(evt,elements)=>{if(elements.length){const person=pk[elements[0].index];nav('people');setTimeout(()=>{curPplFilter=person.toLowerCase();filterPpl(person);selectPpl(person);},150);}},extra:{indexAxis:"y",interaction:{mode:'index',axis:'y',intersect:false},scales:{x:{grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#374151"},border:{display:false}}}}});}
   const sc={"Pending":0,"Done":0,"Overdue":0};tasks.forEach(t=>sc[nstt(t.status)]=(sc[nstt(t.status)]||0)+1);
   mkChart("ch-status","doughnut",Object.keys(sc),[{data:Object.values(sc),backgroundColor:["#F2B879","#86C59B","#F08B8B"],hoverBackgroundColor:["#E9A35F","#6FB783","#E87575"],borderWidth:3,borderColor:"#fff",hoverOffset:8}],{legend:true,extra:{cutout:"58%"},onClick:(evt,elements)=>{if(elements.length){const s=Object.keys(sc)[elements[0].index];document.getElementById("sf-status").value=s;nav("master");}}});
 }
@@ -20937,6 +20983,12 @@ function showComposeAC(inputId, acId){
         ${p.role||p.dept?`<div class="compose-ac-role">${p.role||p.dept}</div>`:''}
       </div>
     </div>`).join('');
+  const rect=input.getBoundingClientRect();
+  ac.style.position='fixed';
+  ac.style.left=rect.left+'px';
+  ac.style.top=(rect.bottom+2)+'px';
+  ac.style.width=rect.width+'px';
+  ac.style.right='auto';
   ac.style.display='block';
 }
 
