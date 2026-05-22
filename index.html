@@ -18580,6 +18580,11 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .deadline-btn{padding:3px 9px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:4px;background:var(--white);color:var(--muted);cursor:pointer;transition:all .12s;white-space:nowrap}
 .deadline-btn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
 .deadline-btn:hover:not(.active){background:var(--sage3);border-color:var(--sage);color:var(--body)}
+.admin-tab{padding:10px 16px;font-size:12.5px;font-weight:600;border:none;background:none;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;transition:all .15s;margin-bottom:-1px}
+.admin-tab.active{color:var(--ink);border-bottom-color:var(--ink)}
+.admin-tab:hover:not(.active){color:var(--body)}
+.admin-person-row{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px}
+.admin-person-row:last-child{border-bottom:none}
 .principal-tag{font-size:9.5px;font-weight:700;background:var(--sage2);color:var(--ink);border:1px solid var(--sage);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px}
 
 .sec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -18619,7 +18624,30 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .sync-dot.error{background:#b91c1c}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
-@media print{.sb,.topbar,.btn,.wed-btn,button{display:none!important}.main{margin-left:0}}
+@media print{
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .sb,.topbar,.btn,.wed-btn,button,.acct-menu,.week-bar,.tbl-hdr,
+  .cn-row,.wed-actions,.rm-btn,.ag-foot,.compose-ac,.deadline-btn,
+  #mo-ai-settings,#mo-admin,.sync-bar,.mo{display:none!important}
+  .main{margin-left:0!important;padding:16pt 24pt}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#111;background:#fff;font-size:10pt}
+  #print-header{display:block!important;margin-bottom:20pt;padding-bottom:12pt;border-bottom:2pt solid #0E3416}
+  .wed-date-group{break-inside:avoid;margin-bottom:14pt}
+  .wed-card{break-inside:avoid;border:1pt solid #ccc;border-radius:4pt;margin:4pt 0;padding:8pt 10pt;background:#fff}
+  .wed-card-head{margin-bottom:4pt}
+  .wed-card-title{font-size:11pt;font-weight:700;color:#111}
+  .wed-card-summary,.wed-card-meta{font-size:9.5pt;color:#333;margin-bottom:3pt}
+  .wed-date{font-size:12pt;font-weight:800;color:#0E3416;padding:6pt 0 3pt;border-bottom:1pt solid #d1d5db;margin-bottom:6pt}
+  .wed-sum-clip{max-height:none!important}
+  .wed-sum-clip::after{display:none!important}
+  .wed-expand-btn{display:none!important}
+  .ag-ta{display:none}
+  .dept-pill{font-size:8.5pt;padding:1pt 5pt;border-radius:3pt}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1pt solid #ddd;padding:5pt 8pt;font-size:9pt}
+  th{background:#f0f4f0;font-weight:700}
+  .empty-state{display:none}
+}
 </style>
 </head>
 <body>
@@ -18692,6 +18720,11 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm0 0v4m0 14v-4m10-6h-4M6 12H2m15.07-7.07-2.83 2.83M8.76 15.24l-2.83 2.83m0-11.14 2.83 2.83m6.48 6.48 2.83 2.83" stroke-width="2" stroke-linecap="round"/></svg>
         AI Settings
         <span id="ai-status-dot" style="width:7px;height:7px;border-radius:50%;background:#d1d5db;margin-left:auto;flex-shrink:0"></span>
+      </button>
+      <button class="acct-option" id="admin-settings-btn" style="display:none" onclick="openAdminSettings();closeAccountMenu()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Admin Settings
+        <span style="font-size:9px;background:#0E3416;color:#fff;padding:1px 5px;border-radius:3px;margin-left:auto;font-weight:700">ADMIN</span>
       </button>
       <button class="acct-option danger" onclick="signOut()">Sign Out</button>
     </div>
@@ -18777,15 +18810,12 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <select class="sel-f" id="sf-status" onchange="renderMaster()"><option value="all">All Statuses</option><option>Pending</option><option>Done</option><option>Overdue</option></select>
         <select class="sel-f" id="sf-dept" onchange="renderMaster()"><option value="all">All Departments</option></select>
         <select class="sel-f" id="sf-priority" onchange="renderMaster()"><option value="all">All Priorities</option><option>High</option><option>Normal</option></select>
-        <button class="btn btn-ghost btn-sm" onclick="moveSelectedToWed()">Send Selected to Review</button>
-        <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="deleteSelectedTasks()">Delete Selected</button>
       </div>
       <div style="overflow-x:auto">
         <table>
           <thead>
             <tr>
-              <th style="width:32px"></th>
-              <th style="width:32px"><input type="checkbox" class="chk" onchange="toggleAllSelected(this.checked)"></th>
+              <th style="width:44px"></th>
               <th>Task</th>
               <th style="width:140px">Assigned To</th>
               <th style="width:130px">Department</th>
@@ -18840,7 +18870,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         </div>
       </div>
       <div class="wed-actions">
-        <button class="btn btn-ghost btn-sm" onclick="window.print()">Print</button>
+        <button class="btn btn-ghost btn-sm" onclick="dpegPrint()">Print</button>
         <button class="btn btn-primary btn-sm" id="wed-save-btn" onclick="saveMeeting()">Save and Archive</button>
       </div>
       <div class="cn-card">
@@ -18872,7 +18902,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       <select class="sel-f" id="sum-d" onchange="renderSum()"><option value="all">All Departments</option></select>
       <select class="sel-f" id="sum-s" onchange="renderSum()"><option value="all">All Statuses</option><option>Pending</option><option>Done</option><option>Overdue</option></select>
       <button class="btn btn-primary btn-sm" onclick="dlCSV()">Download CSV</button>
-      <button class="btn btn-ghost btn-sm" onclick="window.print()">Print</button>
+      <button class="btn btn-ghost btn-sm" onclick="dpegPrint()">Print</button>
       <span id="sum-cnt" style="font-size:12px;color:var(--muted);font-weight:500"></span>
     </div>
     <div class="tbl-wrap">
@@ -19047,6 +19077,50 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   </div>
 </div>
 
+<!-- ADMIN SETTINGS MODAL -->
+<div class="mo" id="mo-admin">
+  <div class="mo-box" style="width:720px;max-height:92vh">
+    <div class="mo-hdr" style="background:var(--ink)">
+      <div>
+        <div class="mo-title" style="color:#fff">Admin Settings</div>
+        <div class="mo-sub" style="color:rgba(255,255,255,.65)">Manage contacts, people and department assignments</div>
+      </div>
+      <button class="mo-x" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" onclick="closeMo('mo-admin')">&#10005;</button>
+    </div>
+    <div class="mo-body" style="padding:0">
+      <!-- Tabs -->
+      <div style="display:flex;border-bottom:1px solid var(--border);padding:0 18px">
+        <button class="admin-tab active" id="atab-contacts" onclick="switchAdminTab('contacts')">Contacts &amp; People</button>
+        <button class="admin-tab" id="atab-depts" onclick="switchAdminTab('depts')">Department Assignments</button>
+      </div>
+      <!-- Contacts tab -->
+      <div id="admin-contacts-pane" style="padding:18px">
+        <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="syncContacts()" id="sync-contacts-btn">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Sync from Outlook
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="addPersonManually()">+ Add Person</button>
+          <div id="sync-status" style="font-size:12px;color:var(--muted);padding-top:6px"></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:8px 10px;background:var(--sage3);border-radius:var(--r);border:1px solid var(--sage)">
+          Syncing pulls your Outlook contacts and colleagues into the autocomplete and directory. Contacts are stored in your OneDrive task file — not sent anywhere externally.
+        </div>
+        <div id="admin-people-list" style="max-height:380px;overflow-y:auto"></div>
+      </div>
+      <!-- Dept assignments tab -->
+      <div id="admin-depts-pane" style="padding:18px;display:none">
+        <div style="font-size:13px;color:var(--body);margin-bottom:12px">Drag or select a department for each person. Changes save immediately to your task data.</div>
+        <div id="admin-dept-editor" style="max-height:420px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-admin')">Close</button>
+      <button class="btn btn-primary btn-sm" onclick="saveAdminSettings()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- PRE-SEND UNREAD THREADS MODAL -->
 <div class="mo" id="mo-unread-check">
   <div class="mo-box" style="max-width:560px">
@@ -19156,6 +19230,21 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   </div>
 </div>
 
+<!-- PRINT HEADER — hidden on screen, visible only when printing -->
+<div id="print-header" style="display:none">
+  <div style="display:flex;align-items:center;gap:18pt;margin-bottom:8pt">
+    <div style="width:40pt;height:40pt;background:#0E3416;border-radius:6pt;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15pt;font-weight:900;flex-shrink:0">DP</div>
+    <div>
+      <div style="font-size:18pt;font-weight:900;color:#0E3416;letter-spacing:.5pt;line-height:1.1">DHANANI PRIVATE EQUITY GROUP</div>
+      <div style="font-size:9pt;color:#555;margin-top:2pt;letter-spacing:.3pt">Nikhil Dhanani &nbsp;&bull;&nbsp; President &nbsp;&bull;&nbsp; Confidential Internal Report</div>
+    </div>
+    <div style="margin-left:auto;text-align:right">
+      <div style="font-size:9.5pt;color:#333;font-weight:600" id="print-date-label"></div>
+      <div style="font-size:9pt;color:#888" id="print-page-label">DPEG Task Manager</div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -19176,8 +19265,11 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
-const SCOPES_TODO  = ["User.Read", "Tasks.ReadWrite"];
+const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
+const SCOPES_TODO     = ["User.Read", "Tasks.ReadWrite"];
+const SCOPES_CONTACTS = ["User.Read", "Contacts.Read", "People.Read"];
+const ADMIN_EMAILS    = ["propertymanagement2@dhananipeg.com", "systemmanager1@dhananipeg.com"];
+function isAdmin(){ return currentUser && ADMIN_EMAILS.includes(currentUser.email?.toLowerCase()); }
 const ONEDRIVE_FOLDER = "DPEGTaskManager";
 
 // PRINCIPALS — those with Wednesday Review vs Discussion Notes
@@ -19368,6 +19460,8 @@ function updateUI() {
   document.getElementById("user-name").textContent = u.name;
   document.getElementById("user-role").textContent = u.role;
   document.getElementById("user-avatar").textContent = u.name.split(" ").map(x=>x[0]).join("").toUpperCase().slice(0,2);
+  const adminBtn=document.getElementById("admin-settings-btn");
+  if(adminBtn)adminBtn.style.display=isAdmin()?'flex':'none';
 
   // Wednesday vs Discussion Notes
   const wedLabel = document.getElementById("nav-wednesday-label");
@@ -19764,6 +19858,145 @@ function updateAIStatusDot(active){
   const dot=document.getElementById('ai-status-dot');
   if(dot)dot.style.background=active?'#22c55e':'#d1d5db';
 }
+
+// ============================================================
+// ADMIN SETTINGS
+// ============================================================
+function openAdminSettings(){
+  if(!isAdmin()){toast('Admin access only');return;}
+  renderAdminPeopleList();
+  renderAdminDeptEditor();
+  document.getElementById('mo-admin').classList.add('open');
+}
+function switchAdminTab(tab){
+  document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));
+  document.getElementById('atab-'+tab)?.classList.add('active');
+  document.getElementById('admin-contacts-pane').style.display=tab==='contacts'?'block':'none';
+  document.getElementById('admin-depts-pane').style.display=tab==='depts'?'block':'none';
+}
+function allKnownPeople(){
+  const map={};
+  PEOPLE_DB.forEach(p=>{const k=normEmail(p.email||'');if(k)map[k]={...p,src:'default'};});
+  Object.values(staffConfig).forEach(p=>{if(!p?.email)return;const k=normEmail(p.email);map[k]={...map[k],...p,src:'custom'};});
+  return Object.values(map).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+}
+function renderAdminPeopleList(){
+  const people=allKnownPeople();
+  const el=document.getElementById('admin-people-list');
+  if(!el)return;
+  if(!people.length){el.innerHTML='<div style="color:var(--muted);font-size:12px;padding:12px 0">No contacts yet. Click "Sync from Outlook" to import.</div>';return;}
+  el.innerHTML=`<div class="admin-person-row" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);border-bottom:2px solid var(--border)"><span>Name / Email</span><span>Department</span><span>Role</span><span></span></div>`+
+    people.map((p,i)=>`
+    <div class="admin-person-row" id="apr-${i}">
+      <div>${av(p.name||'?',26)} <div style="display:inline-block;vertical-align:middle;margin-left:6px"><div style="font-size:12.5px;font-weight:600;color:var(--body)">${p.name||'Unknown'}</div><div style="font-size:11px;color:var(--muted)">${p.email||''}</div></div></div>
+      <select class="form-sel" style="font-size:11.5px;padding:3px 6px" onchange="updatePersonDept('${(p.email||'').replace(/'/g,"\\'")}','${(p.name||'').replace(/'/g,"\\'")}',this.value)">
+        ${DEPARTMENTS.map(d=>`<option${d===p.dept?' selected':''}>${d}</option>`).join('')}
+        <option${p.dept==='Needs Department'?' selected':''}>Needs Department</option>
+      </select>
+      <div style="font-size:11.5px;color:var(--muted)">${p.role||''}</div>
+      <button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5" onclick="removeAdminPerson('${(p.email||'').replace(/'/g,"\\'")}')">&#10005;</button>
+    </div>`).join('');
+}
+function renderAdminDeptEditor(){
+  const people=allKnownPeople();
+  const el=document.getElementById('admin-dept-editor');if(!el)return;
+  const byDept={};
+  people.forEach(p=>{const d=p.dept||'Needs Department';if(!byDept[d])byDept[d]=[];byDept[d].push(p);});
+  el.innerHTML=Object.entries(byDept).sort(([a],[b])=>a.localeCompare(b)).map(([dept,pp])=>`
+    <div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${dcolor(dept)};display:inline-block"></span>
+        <span style="font-size:12px;font-weight:700;color:var(--body)">${dept}</span>
+        <span style="font-size:11px;color:var(--muted)">${pp.length} ${pp.length===1?'person':'people'}</span>
+      </div>
+      <div style="padding-left:18px">${pp.map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px">${av(p.name||'?',22)}<span>${p.name}</span><span style="color:var(--muted);font-size:11px">${p.email||''}</span></div>`).join('')}</div>
+    </div>`).join('');
+}
+function updatePersonDept(email,name,dept){
+  const key=staffKey(email,name);
+  staffConfig[key]={...(staffConfig[key]||{}),name,email,dept};
+}
+function removeAdminPerson(email){
+  const key=Object.keys(staffConfig).find(k=>normEmail(staffConfig[k]?.email||'')=== normEmail(email));
+  if(key)delete staffConfig[key];
+  renderAdminPeopleList();renderAdminDeptEditor();
+}
+function addPersonManually(){
+  const name=prompt('Full name:');if(!name)return;
+  const email=prompt('Email address:');if(!email)return;
+  const dept=prompt('Department (or leave blank):')||'Needs Department';
+  const key=staffKey(email,name);
+  staffConfig[key]={name,email,dept,role:''};
+  renderAdminPeopleList();renderAdminDeptEditor();
+  toast(`${name} added`);
+}
+async function saveAdminSettings(){
+  await saveTasksToOneDrive();
+  closeMo('mo-admin');
+  initSelects();
+  toast('Admin settings saved');
+}
+async function syncContacts(){
+  if(!isAdmin()){toast('Admin access only');return;}
+  const btn=document.getElementById('sync-contacts-btn');
+  const status=document.getElementById('sync-status');
+  btn.disabled=true;btn.textContent='Syncing...';
+  status.textContent='';
+  try{
+    let token;
+    try{
+      const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_CONTACTS,account:currentAccount});
+      token=r.accessToken;
+    }catch{
+      const r=await msalInstance.acquireTokenPopup({scopes:SCOPES_CONTACTS});
+      token=r.accessToken;
+    }
+    let synced=0;
+    // Fetch Outlook contacts
+    const cRes=await fetch('https://graph.microsoft.com/v1.0/me/contacts?$top=150&$select=displayName,emailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
+    if(cRes.ok){
+      const cd=await cRes.json();
+      (cd.value||[]).forEach(c=>{
+        const email=(c.emailAddresses?.[0]?.address||'').toLowerCase();
+        if(!email||!email.includes('@'))return;
+        const name=c.displayName||email.split('@')[0];
+        const dept=c.department||'Needs Department';
+        const role=c.jobTitle||'';
+        const key=staffKey(email,name);
+        staffConfig[key]={...(staffConfig[key]||{}),name,email,dept:staffConfig[key]?.dept||dept,role:staffConfig[key]?.role||role};
+        synced++;
+      });
+    }
+    // Fetch People (colleagues)
+    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=100&$select=displayName,emailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
+    if(pRes.ok){
+      const pd=await pRes.json();
+      (pd.value||[]).forEach(p=>{
+        const email=(p.emailAddresses?.[0]?.address||'').toLowerCase();
+        if(!email||!email.includes('@'))return;
+        const name=p.displayName||email.split('@')[0];
+        const dept=p.department||'Needs Department';
+        const role=p.jobTitle||'';
+        const key=staffKey(email,name);
+        if(!staffConfig[key]){
+          staffConfig[key]={name,email,dept,role};
+          synced++;
+        }
+      });
+    }
+    await saveTasksToOneDrive();
+    renderAdminPeopleList();renderAdminDeptEditor();
+    initSelects();
+    status.textContent=`✓ Synced ${synced} contacts`;
+    status.style.color='var(--forest)';
+    toast(`${synced} contacts synced from Outlook`);
+  }catch(err){
+    status.textContent=`✗ Sync failed: ${err.message}`;
+    status.style.color='#dc2626';
+  }finally{
+    btn.disabled=false;btn.textContent='Sync from Outlook';
+  }
+}
 async function testAIConnection(){
   const url=(document.getElementById('ai-fn-url')?.value||'').trim();
   const statusEl=document.getElementById('ai-settings-status');
@@ -19998,16 +20231,13 @@ function getVis(){
 function renderMaster(){
   const list=getVis(),tb=document.getElementById("master-tbody");
   if(!list.length){
-    tb.innerHTML=`<tr><td colspan="10"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
+    tb.innerHTML=`<tr><td colspan="9"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
     return;
   }
   tb.innerHTML=list.map(t=>`
     <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6':''}">
       <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 16px">
         <input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)">
-      </td>
-      <td onclick="event.stopPropagation()" style="padding:10px 8px">
-        <input type="checkbox" class="chk task-select" ${selectedTaskIds.has(t.id)?"checked":""} onchange="toggleTaskSelected(${t.id},this.checked)">
       </td>
       <td style="padding:10px 14px">
         <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}</div>
@@ -20227,10 +20457,36 @@ function renderWed(){
       return a.localeCompare(b);
     });
 
+    // Department tiles navigation strip
+    html+=`<div style="display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 16px;border-bottom:1px solid var(--border);margin-bottom:16px">`;
+    depts.forEach(dept=>{
+      const dt=groups[dept];
+      const dc=DEPT_COLORS[dept]||'#374151';
+      const dn=dt.filter(t=>nstt(t.status)==='Done').length;
+      const ov=dt.filter(t=>nstt(t.status)==='Overdue').length;
+      const pct=dt.length?Math.round(dn/dt.length*100):0;
+      html+=`<button onclick="document.getElementById('wed-dept-${dept.replace(/[^a-zA-Z0-9]/g,'-')}')?.scrollIntoView({behavior:'smooth',block:'nearest'})"
+        style="display:flex;flex-direction:column;gap:3px;padding:10px 13px;border:1px solid var(--border);border-radius:var(--r);background:var(--white);cursor:pointer;transition:all .15s;text-align:left;min-width:100px;border-top:3px solid ${dc}"
+        onmouseover="this.style.boxShadow='0 2px 12px rgba(0,0,0,.09)';this.style.borderColor='${dc}'"
+        onmouseout="this.style.boxShadow='';this.style.borderColor='var(--border)';this.style.borderTopColor='${dc}'">
+        <div style="font-size:12px;font-weight:700;color:var(--body);white-space:nowrap">${dept}</div>
+        <div style="display:flex;gap:5px;align-items:center">
+          <span style="font-size:17px;font-weight:800;color:${dc}">${dt.length}</span>
+          <span style="font-size:10px;color:var(--muted)">${dt.length===1?'task':'tasks'}</span>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:1px">
+          ${ov?`<span style="font-size:9.5px;color:#b91c1c;font-weight:600">${ov} overdue</span>`:''}
+          ${dn?`<span style="font-size:9.5px;color:var(--forest);font-weight:600">${pct}% done</span>`:''}
+        </div>
+      </button>`;
+    });
+    html+=`</div>`;
+
     depts.forEach(dept=>{
       const deptTasks=groups[dept];
       const dcolor_val=DEPT_COLORS[dept]||'#374151';
-      html+=`<div class="wed-date-group">
+      const safeId='wed-dept-'+dept.replace(/[^a-zA-Z0-9]/g,'-');
+      html+=`<div class="wed-date-group" id="${safeId}">
         <div class="wed-date" style="display:flex;align-items:center;gap:8px">
           <span style="width:10px;height:10px;border-radius:50%;background:${dcolor_val};display:inline-block;flex-shrink:0"></span>
           ${dept} <span style="font-size:10px;opacity:.6;font-weight:500;text-transform:none;letter-spacing:0">${deptTasks.length} item${deptTasks.length!==1?'s':''}</span>
@@ -20304,6 +20560,17 @@ function addCN(){const v=document.getElementById("cn-in").value.trim();if(!v)ret
 function removeCN(i){const el=document.getElementById("cn-note-"+i);if(el)customNotes[i].meetingNote=el.value;customNotes.splice(i,1);renderWed();syncBadges();}
 function removeFromWed(id){const t=tasks.find(x=>x.id===id);if(t)t.wednesday=false;renderWed();toast("Removed from agenda");}
 function clearWed(){tasks.forEach(t=>t.wednesday=false);customNotes=[];renderWed();syncBadges();toast("Cleared");}
+function dpegPrint(){
+  const dateLabel=document.getElementById('print-date-label');
+  const pageLabel=document.getElementById('print-page-label');
+  const now=new Date();
+  const dateStr=now.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const activePage=document.querySelector('.page.active');
+  const pageTitle=activePage?.id==='page-wednesday'?(isWednesdayUser?'Wednesday Review':'Discussion Notes'):'Summary Report';
+  if(dateLabel)dateLabel.textContent=dateStr;
+  if(pageLabel)pageLabel.textContent=pageTitle;
+  window.print();
+}
 async function updStatus(id,v){
   const t=tasks.find(x=>x.id===id);const note=document.getElementById("wn-"+id);
   if(t){if(note)t.meetingNote=note.value;t.status=v;}
@@ -20506,7 +20773,7 @@ function mkChart(id,type,labels,datasets,opts={}){
     responsive:true,maintainAspectRatio:false,interaction:{mode:"nearest",intersect:true},
     plugins:{
       legend:{display:!!opts.legend,position:"bottom",labels:{font:{family:"Inter",size:11,weight:"600"},padding:12,boxWidth:9,color:"#374151"}},
-      tooltip:{backgroundColor:"#111827",titleColor:"#f9fafb",bodyColor:"#d1d5db",titleFont:{family:"Inter",size:12,weight:"700"},bodyFont:{family:"Inter",size:12},cornerRadius:6,padding:10,displayColors:!!opts.legend,filter:(item)=>!item.dataset.hidden,...((type==="doughnut"||type==="pie")?{callbacks:{title:items=>items.length?[items[0].label]:[],label:item=>`  ${item.parsed} tasks`}}:{})}
+      tooltip:{backgroundColor:"#111827",titleColor:"#f9fafb",bodyColor:"#d1d5db",titleFont:{family:"Inter",size:12,weight:"700"},bodyFont:{family:"Inter",size:12},cornerRadius:6,padding:10,displayColors:!!opts.legend,filter:(item)=>!item.dataset.hidden,...(opts.tooltipCallbacks?{callbacks:opts.tooltipCallbacks}:(type==="doughnut"||type==="pie")?{callbacks:{title:items=>items.length?[items[0].label]:[],label:item=>`  ${item.parsed} tasks`}}:{})}
     },
     scales:type!=="pie"&&type!=="doughnut"?{
       x:{grid:{display:false},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280"},border:{display:false}},
@@ -20524,7 +20791,7 @@ function renderCharts(){
     {label:"Pending",data:dk.map(d=>dp[d].tot-dp[d].dn),backgroundColor:"#CBD5E1",borderRadius:4,borderSkipped:false,maxBarThickness:22},
     {label:"Completed",data:dk.map(d=>dp[d].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:22},
   ],{legend:true,onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
-  if(pk.length){mkChart("ch-person","bar",pk,[{label:"Open",data:pk.map(p=>pp[p].open),backgroundColor:"#F2B879",borderRadius:4,borderSkipped:false,maxBarThickness:18},{label:"Done",data:pk.map(p=>pp[p].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:18}],{legend:true,onClick:(evt,elements)=>{if(elements.length){const person=pk[elements[0].index];nav('people');setTimeout(()=>{curPplFilter=person.toLowerCase();filterPpl(person);selectPpl(person);},150);}},extra:{indexAxis:"y",scales:{x:{grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#374151"},border:{display:false}}}}});}
+  if(pk.length){mkChart("ch-person","bar",pk,[{label:"Open",data:pk.map(p=>pp[p].open),backgroundColor:"#F2B879",borderRadius:4,borderSkipped:false,maxBarThickness:18},{label:"Done",data:pk.map(p=>pp[p].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:18}],{legend:true,tooltipCallbacks:{title:items=>items.length?[items[0].label]:[],label:item=>`${item.dataset.label}: ${item.parsed.x}`},onClick:(evt,elements)=>{if(elements.length){const person=pk[elements[0].index];nav('people');setTimeout(()=>{curPplFilter=person.toLowerCase();filterPpl(person);selectPpl(person);},150);}},extra:{indexAxis:"y",scales:{x:{grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#374151"},border:{display:false}}}}});}
   const sc={"Pending":0,"Done":0,"Overdue":0};tasks.forEach(t=>sc[nstt(t.status)]=(sc[nstt(t.status)]||0)+1);
   mkChart("ch-status","doughnut",Object.keys(sc),[{data:Object.values(sc),backgroundColor:["#F2B879","#86C59B","#F08B8B"],hoverBackgroundColor:["#E9A35F","#6FB783","#E87575"],borderWidth:3,borderColor:"#fff",hoverOffset:8}],{legend:true,extra:{cutout:"58%"},onClick:(evt,elements)=>{if(elements.length){const s=Object.keys(sc)[elements[0].index];document.getElementById("sf-status").value=s;nav("master");}}});
 }
