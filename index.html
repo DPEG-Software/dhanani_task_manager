@@ -18530,15 +18530,15 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 /* MODAL */
 .mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:200;align-items:center;justify-content:center;padding:20px}
 .mo.open{display:flex}
-.mo-box{background:var(--white);border-radius:var(--rlg);width:500px;max-width:100%;max-height:90vh;overflow-y:auto;box-shadow:var(--sh3);animation:moIn .18s ease}
+.mo-box{background:var(--white);border-radius:var(--rlg);width:500px;max-width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--sh3);animation:moIn .18s ease}
 @keyframes moIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
 .mo-hdr{padding:18px 20px 13px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .mo-title{font-size:16px;font-weight:700;color:var(--body)}
 .mo-sub{font-size:11px;color:var(--muted);margin-top:2px}
 .mo-x{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:none;cursor:pointer;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:all .12s;flex-shrink:0}
 .mo-x:hover{background:#fee2e2;color:#dc2626;border-color:#fca5a5}
-.mo-body{padding:16px 20px}
-.mo-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:7px;justify-content:flex-end}
+.mo-body{padding:16px 20px;overflow-y:auto;min-height:0}
+.mo-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;background:#fff}
 .sum-box{background:var(--sage3);border-left:3px solid var(--fern);padding:10px 14px;font-size:12.5px;color:var(--sub);line-height:1.6;margin-bottom:14px;border-radius:0 var(--r) var(--r) 0}
 .sum-hdr{font-size:13px;font-weight:700;color:var(--body);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--sage);display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.4}
 .sum-thread-badge{font-size:10.5px;color:var(--muted);font-weight:400;background:var(--sage2);padding:1px 7px;border-radius:10px;border:1px solid var(--sage);white-space:nowrap}
@@ -18577,6 +18577,9 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .d-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);width:80px;flex-shrink:0;padding-top:2px}
 .d-val{font-size:13px;color:var(--body);flex:1;line-height:1.4}
 .info-bar{background:var(--sage3);border:1px solid var(--sage);border-radius:var(--r);padding:9px 12px;font-size:12px;color:var(--forest);margin-bottom:13px;line-height:1.5;font-weight:500}
+.deadline-btn{padding:3px 9px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:4px;background:var(--white);color:var(--muted);cursor:pointer;transition:all .12s;white-space:nowrap}
+.deadline-btn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+.deadline-btn:hover:not(.active){background:var(--sage3);border-color:var(--sage);color:var(--body)}
 .principal-tag{font-size:9.5px;font-weight:700;background:var(--sage2);color:var(--ink);border:1px solid var(--sage);padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px}
 
 .sec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -18730,7 +18733,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       <div class="sc c-amber" onclick="nav('wednesday')"><div class="sc-num" id="d-wed">0</div><div class="sc-lbl" id="d-wed-lbl">Wednesday Queue</div><div class="sc-sub">Flagged for meeting</div><div class="sc-hint">Open Review</div></div>
       <div class="sc c-leaf"><div class="sc-num" id="d-rate">0%</div><div class="sc-lbl">Completion Rate</div><div class="sc-sub" id="d-rate-sub">Tasks completed</div></div>
     </div>
-    <div class="card" style="margin-bottom:14px">
+    <div class="card" style="margin-bottom:14px;display:none">
       <div class="card-hdr">
         <div><div class="card-ttl">Overall Completion</div><div class="card-sub">Across all active tasks</div></div>
         <span style="font-size:18px;font-weight:700;color:var(--body)" id="d-pct-l">0%</span>
@@ -18774,13 +18777,18 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <select class="sel-f" id="sf-status" onchange="renderMaster()"><option value="all">All Statuses</option><option>Pending</option><option>Done</option><option>Overdue</option></select>
         <select class="sel-f" id="sf-dept" onchange="renderMaster()"><option value="all">All Departments</option></select>
         <select class="sel-f" id="sf-priority" onchange="renderMaster()"><option value="all">All Priorities</option><option>High</option><option>Normal</option></select>
+        <button class="btn btn-ghost btn-sm" onclick="moveSelectedToWed()">Send Selected to Review</button>
+        <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="deleteSelectedTasks()">Delete Selected</button>
       </div>
       <div style="overflow-x:auto">
         <table>
           <thead>
             <tr>
               <th style="width:32px"></th>
+              <th style="width:32px"><input type="checkbox" class="chk" onchange="toggleAllSelected(this.checked)"></th>
               <th>Task</th>
+              <th style="width:140px">Assigned To</th>
+              <th style="width:130px">Department</th>
               <th style="width:110px">Status</th>
               <th style="width:80px">Priority</th>
               <th style="width:80px">Agenda</th>
@@ -18926,7 +18934,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 
       <!-- RIGHT: Email Reader — FIXED, does not scroll with list -->
       <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
-        <div id="ol-email-reader" style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
+        <div id="ol-email-reader" style="flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0">
           <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px">
             <svg width="48" height="48" fill="none" stroke="#d1d5db" viewBox="0 0 24 24" style="margin-bottom:14px"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <div style="font-size:14px;font-weight:600;color:var(--body);margin-bottom:4px">Select an email</div>
@@ -18950,7 +18958,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <div style="position:relative">
           <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
             <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">To</span>
-            <input type="text" id="compose-to" placeholder="Type a name or email..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showCcBcc();showComposeAC('compose-to','to-ac')" onkeydown="acKeyNav(event,'to-ac','compose-to')" onblur="hideComposeAC('to-ac')">
+            <input type="text" id="compose-to" placeholder="Type a name or email..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showCcBcc();showRecipientPreview();showComposeAC('compose-to','to-ac')" onkeydown="acKeyNav(event,'to-ac','compose-to')" onblur="hideComposeAC('to-ac')">
             <button onclick="toggleBcc()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;font-weight:600;padding:2px 6px;border-radius:4px;transition:all .12s" id="bcc-toggle-btn" title="Add BCC">BCC</button>
           </div>
           <div id="to-ac" class="compose-ac" style="display:none"></div>
@@ -18959,7 +18967,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <div style="position:relative" id="cc-row">
           <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
             <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">CC</span>
-            <input type="text" id="compose-cc" placeholder="Add CC recipients..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showComposeAC('compose-cc','cc-ac')" onkeydown="acKeyNav(event,'cc-ac','compose-cc')" onblur="hideComposeAC('cc-ac')">
+            <input type="text" id="compose-cc" placeholder="Add CC recipients..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showRecipientPreview();showComposeAC('compose-cc','cc-ac')" onkeydown="acKeyNav(event,'cc-ac','compose-cc')" onblur="hideComposeAC('cc-ac')">
           </div>
           <div id="cc-ac" class="compose-ac" style="display:none"></div>
         </div>
@@ -18967,7 +18975,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <div style="display:none;position:relative" id="bcc-row">
           <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
             <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">BCC</span>
-            <input type="text" id="compose-bcc" placeholder="Add BCC recipients..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showComposeAC('compose-bcc','bcc-ac')" onkeydown="acKeyNav(event,'bcc-ac','compose-bcc')" onblur="hideComposeAC('bcc-ac')">
+            <input type="text" id="compose-bcc" placeholder="Add BCC recipients..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showRecipientPreview();showComposeAC('compose-bcc','bcc-ac')" onkeydown="acKeyNav(event,'bcc-ac','compose-bcc')" onblur="hideComposeAC('bcc-ac')">
           </div>
           <div id="bcc-ac" class="compose-ac" style="display:none"></div>
         </div>
@@ -18975,6 +18983,14 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:8px">
           <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Re</span>
           <input type="text" id="compose-subject" placeholder="Subject" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:var(--body);background:transparent">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">!</span>
+          <select id="compose-priority" style="border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+            <option value="normal">Normal importance</option>
+            <option value="high">High importance</option>
+            <option value="low">Low importance</option>
+          </select>
         </div>
         <!-- BODY -->
         <textarea id="compose-body" placeholder="Write your message here..." style="width:100%;min-height:220px;border:none;outline:none;font-family:Inter,sans-serif;font-size:13.5px;color:var(--body);resize:vertical;line-height:1.6;background:transparent"></textarea>
@@ -19095,12 +19111,18 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   <div class="mo-box">
     <div class="mo-hdr"><div><div class="mo-title">Add Task</div><div class="mo-sub">Log a task from a call, message or meeting</div></div><button class="mo-x" onclick="closeMo('mo-add')">&#10005;</button></div>
     <div class="mo-body">
-      <div class="info-bar">In the live system, this task will be emailed to the recipient and added to their Microsoft To Do list automatically.</div>
       <div class="form-grp"><label class="form-lbl">Task Title</label><input type="text" class="form-in" id="nt-title" placeholder="e.g. Q2 Budget Approval"></div>
       <div class="form-grp"><label class="form-lbl">Summary</label><textarea class="form-ta" id="nt-summary" placeholder="What needs to be done? Key details, deadlines..."></textarea></div>
-      <div class="form-row">
-        <div class="form-grp"><label class="form-lbl">Email</label><input type="email" class="form-in" id="nt-email" list="email-dl" placeholder="Email address" oninput="autofillEmail(this.value)"><datalist id="email-dl"></datalist></div>
-        <div class="form-grp"><label class="form-lbl">Assigned To</label><input type="text" class="form-in" id="nt-person" list="ppl-dl" placeholder="Name" oninput="autofillPerson(this.value)"><datalist id="ppl-dl"></datalist></div>
+      <div class="form-grp" style="position:relative">
+        <label class="form-lbl">Assign To <span style="color:var(--muted);font-size:10px;font-weight:500">(type name or email)</span></label>
+        <div style="position:relative">
+          <input type="text" class="form-in" id="nt-person" placeholder="Type name or email..." autocomplete="off"
+            oninput="showAddTaskAC(this.value)" onkeydown="addTaskACNav(event)" onblur="hideAddTaskAC()">
+          <button type="button" id="nt-clear-btn" onclick="clearAddTaskPerson()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted);padding:0;line-height:1">&#10005;</button>
+        </div>
+        <div id="nt-email-display" style="display:none;font-size:11.5px;color:var(--muted);margin-top:3px;padding:0 2px"></div>
+        <div id="nt-ac" class="compose-ac" style="display:none;position:absolute;left:0;right:0;top:auto;z-index:9999"></div>
+        <input type="hidden" id="nt-email">
       </div>
       <div class="form-row">
         <div class="form-grp"><label class="form-lbl">Department</label><select class="form-sel" id="nt-dept"></select></div>
@@ -19108,7 +19130,18 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       </div>
       <div class="form-row">
         <div class="form-grp"><label class="form-lbl">Status</label><select class="form-sel" id="nt-status"><option>Pending</option><option>Done</option></select></div>
-        <div class="form-grp"><label class="form-lbl">Date</label><input type="date" class="form-in" id="nt-date"></div>
+        <div class="form-grp">
+          <label class="form-lbl">Deadline</label>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px">
+            <button type="button" class="deadline-btn active" onclick="setDeadlineBtn(this,0)">No deadline</button>
+            <button type="button" class="deadline-btn" onclick="setDeadlineBtn(this,1)">Tomorrow</button>
+            <button type="button" class="deadline-btn" onclick="setDeadlineBtn(this,'friday')">This Fri</button>
+            <button type="button" class="deadline-btn" onclick="setDeadlineBtn(this,'monday')">Next Mon</button>
+            <button type="button" class="deadline-btn" onclick="setDeadlineBtn(this,7)">1 Week</button>
+            <button type="button" class="deadline-btn" onclick="setDeadlineBtn(this,'custom')">Custom</button>
+          </div>
+          <input type="date" class="form-in" id="nt-date" style="display:none">
+        </div>
       </div>
     </div>
     <div class="mo-foot"><button class="btn btn-ghost btn-sm" onclick="closeMo('mo-add')">Cancel</button><button class="btn btn-primary btn-sm" onclick="addTask()">Save and Notify</button></div>
@@ -19167,6 +19200,7 @@ let tasks = [];
 let archives = [];
 let staffConfig = {};
 let customNotes = [];
+let selectedTaskIds = new Set();
 let curTaskId = null, curWeek = 0, curSearch = "", curPplSel = null, curDeptSel = null, curPplFilter = "", directoryMode = "people";
 let CH = {};
 
@@ -19474,6 +19508,14 @@ function findPersonByName(name) {
   const n=String(name||"").trim().toLowerCase();
   return staffConfig[n] || Object.values(staffConfig).find(x=>String(x.name||"").trim().toLowerCase()===n) || PEOPLE_DB.find(x=>x.name.toLowerCase()===n);
 }
+function isInternalEmail(email) {
+  const e=normEmail(email);
+  return e.endsWith("@dhananipeg.com") || e.endsWith("@dpeg.com");
+}
+function isKnownInternalPerson(person) {
+  if(!person)return false;
+  return isInternalEmail(person.email) || !!findPersonByName(person.name);
+}
 function configuredDept(email,name) {
   const key = staffKey(email,name);
   return (key && staffConfig[key]?.dept) || "";
@@ -19524,7 +19566,16 @@ function formatSummaryHTML(summary){
     }
     return `<div class="sum-row"><span class="val" style="grid-column:1/-1">${inner}</span></div>`;
   });
-  return `<div class="sum-rows">${rows.join('')}</div>`;
+  const rankSummaryLine=line=>{
+    const txt=String(line).toLowerCase();
+    if(txt.includes('topic:'))return 1;
+    if(txt.includes('about:')||txt.includes('context:')||txt.includes('manager takeaway:'))return 2;
+    if(txt.includes('latest:')||txt.includes('latest update:'))return 3;
+    if(txt.includes('action needed:')||txt.includes('needed:'))return 4;
+    if(txt.includes('dpeg involved:')||txt.includes('involved'))return 5;
+    return 6;
+  };
+  return `<div class="sum-rows">${rows.map((html,i)=>({html,i,rank:rankSummaryLine(lines[i])})).sort((a,b)=>a.rank-b.rank||a.i-b.i).map(x=>x.html).join('')}</div>`;
 }
 function renderSumBox(t){
   const badge=t.replyCount>1?`<span class="sum-thread-badge">${t.replyCount} messages</span>`:'';
@@ -19793,6 +19844,7 @@ async function attachFreeThreadSummary(email){
 }
 function upsertTaskFromEmail(email,person,address,dept,date){
   const conversationId=email.conversationId||"";
+  const emailPriority=String(email.importance||"normal").toLowerCase()==="high"?"High":"Normal";
   const existing=conversationId?tasks.find(t=>t.conversationId===conversationId):null;
   if(existing){
     existing.emailId=email.id||existing.emailId;
@@ -19804,11 +19856,12 @@ function upsertTaskFromEmail(email,person,address,dept,date){
     existing.person=person||existing.person;
     existing.email=address||existing.email||"";
     existing.dept=dept||existing.dept;
+    existing.priority=emailPriority==="High"?"High":(existing.priority||"Normal");
     existing.lastReplyAt=date||new Date().toISOString();
     existing.replyCount=(existing.replyCount||1)+1;
     return {task:existing,created:false};
   }
-  const task={id:Date.now()+Math.random(),emailId:email.id,emailSubject:email.subject||'(no subject)',conversationId,lastMessageId:email.id||'',title:email.subject||'(no subject)',summary:email.threadSummary||email.bodyPreview||'',threadSummary:email.threadSummary||'',person,email:address,dept,date:(date?new Date(date):new Date()).toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0,replyCount:1,lastReplyAt:date||new Date().toISOString()};
+  const task={id:Date.now()+Math.random(),emailId:email.id,emailSubject:email.subject||'(no subject)',conversationId,lastMessageId:email.id||'',title:email.subject||'(no subject)',summary:email.threadSummary||email.bodyPreview||'',threadSummary:email.threadSummary||'',person,email:address,dept,date:(date?new Date(date):new Date()).toISOString().split('T')[0],status:'Pending',priority:emailPriority,wednesday:false,followup:'',weekOffset:0,replyCount:1,lastReplyAt:date||new Date().toISOString()};
   tasks.unshift(task);
   return {task,created:true};
 }
@@ -19825,23 +19878,86 @@ function pBadge(p) {
   const pr=String(p||"Normal").toLowerCase()==="high"?"High":"Normal";
   return `<span class="${pr==="High"?"p-high":"p-low"}">${pr}</span>`;
 }
+function deptAbbr(dept){
+  const map={"Property Management":"PM","Investor Relations":"IR","Legal and Title":"LT","Outside DPEG":"EXT"};
+  return map[dept]||String(dept||"").split(/\s|-/).filter(Boolean).map(x=>x[0]).join("").toUpperCase().slice(0,3)||"--";
+}
 function peopleOptions(){
   const map=new Map();
   PEOPLE_DB.forEach(p=>map.set(p.name.toLowerCase(),p));
   Object.values(staffConfig).forEach(p=>{if(p?.name)map.set(p.name.toLowerCase(),p);});
-  tasks.forEach(t=>{if(t.person)map.set(t.person.toLowerCase(),{name:t.person,email:t.email||"",dept:t.dept||"Needs Department"});});
+  tasks.forEach(t=>{
+    if(t.person&&(isInternalEmail(t.email)||staffConfig[staffKey(t.email,t.person)])){
+      map.set(t.person.toLowerCase(),{name:t.person,email:t.email||"",dept:t.dept||"Needs Department"});
+    }
+  });
   return [...map.values()].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
 }
-function autofillPerson(val) {
-  const p=findPersonByName(val);
-  if(p){document.getElementById("nt-email").value=p.email;document.getElementById("nt-dept").value=p.dept;}
+function showAddTaskAC(val){
+  const ac=document.getElementById('nt-ac');if(!ac)return;
+  const token=(val||'').trim().toLowerCase();
+  const clearBtn=document.getElementById('nt-clear-btn');
+  if(clearBtn)clearBtn.style.display=token?'block':'none';
+  if(!token){ac.style.display='none';return;}
+  const seen=new Set();
+  const matches=[...PEOPLE_DB,...Object.values(staffConfig).filter(p=>p?.email&&p?.name)]
+    .filter(p=>{const k=normEmail(p.email||'');if(!k||seen.has(k))return false;seen.add(k);
+      return (p.name||'').toLowerCase().includes(token)||k.includes(token)||(p.role||'').toLowerCase().includes(token)||(p.dept||'').toLowerCase().includes(token);
+    }).slice(0,8);
+  if(!matches.length){ac.style.display='none';return;}
+  ac.innerHTML=matches.map(p=>`
+    <div class="compose-ac-item"
+      onmousedown="event.preventDefault();selectAddTaskAC('${(p.name||'').replace(/'/g,"\\'")}','${(p.email||'').replace(/'/g,"\\'")}','${(p.dept||'').replace(/'/g,"\\'")}')"
+      onmouseover="document.querySelectorAll('#nt-ac .compose-ac-item').forEach(x=>x.classList.remove('ac-focused'));this.classList.add('ac-focused')">
+      ${av(p.name||'?',28)}
+      <div style="flex:1;min-width:0">
+        <div class="compose-ac-name">${p.name||p.email}</div>
+        <div class="compose-ac-email">${p.email||''}</div>
+        ${p.dept||p.role?`<div class="compose-ac-role">${p.dept||p.role}</div>`:''}
+      </div>
+    </div>`).join('');
+  ac.style.display='block';
 }
-function autofillEmail(val) {
-  const p=findPersonByEmail(val);
-  if(p){
-    document.getElementById("nt-person").value=p.name||"";
-    document.getElementById("nt-dept").value=p.dept||"Needs Department";
-  }
+function selectAddTaskAC(name,email,dept){
+  document.getElementById('nt-person').value=name;
+  document.getElementById('nt-email').value=email;
+  if(dept)document.getElementById('nt-dept').value=dept;
+  const disp=document.getElementById('nt-email-display');
+  if(disp){disp.textContent=email;disp.style.display=email?'block':'none';}
+  const clearBtn=document.getElementById('nt-clear-btn');if(clearBtn)clearBtn.style.display='block';
+  document.getElementById('nt-ac').style.display='none';
+}
+function hideAddTaskAC(){setTimeout(()=>{const ac=document.getElementById('nt-ac');if(ac)ac.style.display='none';},180);}
+function addTaskACNav(e){
+  const ac=document.getElementById('nt-ac');
+  if(!ac||ac.style.display==='none')return;
+  const items=ac.querySelectorAll('.compose-ac-item');if(!items.length)return;
+  const focused=ac.querySelector('.ac-focused');
+  if(e.key==='ArrowDown'){e.preventDefault();const next=focused?focused.nextElementSibling||items[0]:items[0];items.forEach(i=>i.classList.remove('ac-focused'));if(next)next.classList.add('ac-focused');}
+  else if(e.key==='ArrowUp'){e.preventDefault();const prev=focused?focused.previousElementSibling||items[items.length-1]:items[items.length-1];items.forEach(i=>i.classList.remove('ac-focused'));if(prev)prev.classList.add('ac-focused');}
+  else if((e.key==='Enter'||e.key==='Tab')&&focused){e.preventDefault();focused.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));}
+  else if(e.key==='Escape'){ac.style.display='none';}
+}
+function clearAddTaskPerson(){
+  document.getElementById('nt-person').value='';
+  document.getElementById('nt-email').value='';
+  const disp=document.getElementById('nt-email-display');if(disp)disp.style.display='none';
+  const clearBtn=document.getElementById('nt-clear-btn');if(clearBtn)clearBtn.style.display='none';
+  document.getElementById('nt-ac').style.display='none';
+  document.getElementById('nt-person').focus();
+}
+function setDeadlineBtn(btn,days){
+  document.querySelectorAll('.deadline-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const di=document.getElementById('nt-date');
+  if(days==='custom'){di.style.display='block';di.focus();return;}
+  di.style.display='none';
+  if(!days){di.value='';return;}
+  const d=new Date();
+  if(days==='friday'){while(d.getDay()!==5)d.setDate(d.getDate()+1);}
+  else if(days==='monday'){d.setDate(d.getDate()+1);while(d.getDay()!==1)d.setDate(d.getDate()+1);}
+  else d.setDate(d.getDate()+Number(days));
+  di.value=d.toISOString().split('T')[0];
 }
 function initSelects() {
   ["sf-dept","sum-d"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="all">All Departments</option>';});
@@ -19849,8 +19965,6 @@ function initSelects() {
     ["sf-dept","sum-d"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML+=`<option>${d}</option>`;});
   });
   document.getElementById("nt-dept").innerHTML=DEPARTMENTS.map(d=>`<option>${d}</option>`).join("");
-  document.getElementById("ppl-dl").innerHTML=peopleOptions().map(p=>`<option value="${p.name}">`).join("");
-  document.getElementById("email-dl").innerHTML=peopleOptions().filter(p=>p.email).map(p=>`<option value="${p.email}">${p.name}</option>`).join("");
 }
 
 const WL=["This Week","Last Week","2 Weeks Ago","3 Weeks Ago","4 Weeks Ago"];
@@ -19865,12 +19979,18 @@ function chWeek(d){curWeek=Math.max(0,curWeek-d);document.getElementById("wn-l")
 // ============================================================
 // ACTION LOG
 // ============================================================
+function taskWeekOffset(t){
+  if(!t.date)return 0;
+  const d=new Date(t.date+'T12:00:00');
+  const toMon=x=>{const r=new Date(x);r.setDate(r.getDate()-(r.getDay()||7)+1);r.setHours(0,0,0,0);return r;};
+  return Math.max(0,Math.round((toMon(new Date())-toMon(d))/(7*24*60*60*1000)));
+}
 function getVis(){
   const sf=document.getElementById("sf-status")?.value||"all";
   const df=document.getElementById("sf-dept")?.value||"all";
   const pf=document.getElementById("sf-priority")?.value||"all";
   return tasks.filter(t=>{
-    const wm=t.weekOffset===curWeek||(nstt(t.status)!=="Done"&&t.weekOffset<=curWeek);
+    const wm=curSearch?true:(taskWeekOffset(t)===curWeek);
     const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
     return wm&&sm&&(sf==="all"||nstt(t.status)===sf)&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
   });
@@ -19878,7 +19998,7 @@ function getVis(){
 function renderMaster(){
   const list=getVis(),tb=document.getElementById("master-tbody");
   if(!list.length){
-    tb.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
+    tb.innerHTML=`<tr><td colspan="10"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
     return;
   }
   tb.innerHTML=list.map(t=>`
@@ -19886,16 +20006,17 @@ function renderMaster(){
       <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 16px">
         <input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)">
       </td>
-      <td style="padding:10px 14px">
-        <div style="font-size:13px;font-weight:600;color:var(--body);margin-bottom:3px;line-height:1.3">${emailSubject(t)}</div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          ${av(t.person,16)}
-          <span style="font-size:11.5px;color:var(--muted)">${t.person}</span>
-          <span style="color:var(--border)">·</span>
-          <span class="dept-pill" style="font-size:10.5px;padding:1px 6px"><span class="dept-dot" style="background:${dcolor(t.dept)}"></span>${t.dept}</span>
-          ${t.replyCount>1?`<span style="font-size:11px;color:var(--muted)">· ${t.replyCount} msgs</span>`:""}
-        </div>
+      <td onclick="event.stopPropagation()" style="padding:10px 8px">
+        <input type="checkbox" class="chk task-select" ${selectedTaskIds.has(t.id)?"checked":""} onchange="toggleTaskSelected(${t.id},this.checked)">
       </td>
+      <td style="padding:10px 14px">
+        <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}</div>
+        ${t.replyCount>1?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${t.replyCount} msgs</div>`:""}
+      </td>
+      <td style="padding:10px 10px">
+        <div style="display:flex;align-items:center;gap:6px">${av(t.person,22)}<span style="font-size:12px;color:var(--body);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.person}</span></div>
+      </td>
+      <td style="padding:10px 8px"><span class="dept-pill" style="font-size:10.5px;padding:2px 7px"><span class="dept-dot" style="background:${dcolor(t.dept)}"></span>${t.dept}</span></td>
       <td style="padding:10px 8px">${sbadge(t.status)}</td>
       <td style="padding:10px 8px">${pBadge(t.priority)}</td>
       <td onclick="event.stopPropagation()" style="padding:10px 8px">
@@ -19906,6 +20027,43 @@ function renderMaster(){
         <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:1px 6px;font-size:11px;min-width:0;opacity:.7" onclick="removeTask(${t.id})" title="Remove">&#10005;</button>
       </td>
     </tr>`).join("");
+}
+function selectedVisibleTasks(){
+  const visible=new Set(getVis().map(t=>t.id));
+  selectedTaskIds.forEach(id=>{if(!visible.has(id))selectedTaskIds.delete(id);});
+  return tasks.filter(t=>selectedTaskIds.has(t.id));
+}
+function toggleTaskSelected(id,checked){
+  if(checked)selectedTaskIds.add(id);
+  else selectedTaskIds.delete(id);
+}
+function toggleAllSelected(checked){
+  getVis().forEach(t=>{
+    if(checked)selectedTaskIds.add(t.id);
+    else selectedTaskIds.delete(t.id);
+  });
+  renderMaster();
+}
+async function moveSelectedToWed(){
+  const selected=selectedVisibleTasks();
+  if(!selected.length){toast("Select at least one task");return;}
+  selected.forEach(t=>t.wednesday=true);
+  selectedTaskIds.clear();
+  refreshAll();
+  toast(`${selected.length} task${selected.length!==1?"s":""} sent to review`);
+  await saveTasksToOneDrive();
+}
+async function deleteSelectedTasks(){
+  const selected=selectedVisibleTasks();
+  if(!selected.length){toast("Select at least one task");return;}
+  if(!confirm(`Remove ${selected.length} selected task${selected.length!==1?"s":""} from the Action Log?`))return;
+  const ids=new Set(selected.map(t=>t.id));
+  tasks=tasks.filter(t=>!ids.has(t.id));
+  selectedTaskIds.clear();
+  buildTrackedSet();
+  refreshAll();
+  toast(`${selected.length} task${selected.length!==1?"s":""} removed`);
+  await saveTasksToOneDrive();
 }
 async function toggleDone(id,checked){
   const t=tasks.find(x=>x.id===id);
@@ -19923,7 +20081,12 @@ async function togWed(id){
 // ============================================================
 function renderPplList(filter){
   const pp={};
-  tasks.forEach(t=>{if(!pp[t.person])pp[t.person]={name:t.person,email:t.email||"",dept:personDept(t.email,t.person),tasks:[]};pp[t.person].tasks.push(t);});
+  tasks.forEach(t=>{
+    const key=staffKey(t.email,t.person);
+    if(!isInternalEmail(t.email)&&!staffConfig[key])return;
+    if(!pp[t.person])pp[t.person]={name:t.person,email:t.email||"",dept:personDept(t.email,t.person),tasks:[]};
+    pp[t.person].tasks.push(t);
+  });
   PEOPLE_DB.forEach(p=>{if(!pp[p.name])pp[p.name]={name:p.name,dept:p.dept,tasks:[],principal:p.principal,role:p.role};else{pp[p.name].principal=p.principal;pp[p.name].role=p.role;}});
   const list=Object.values(pp).filter(p=>!filter||p.name.toLowerCase().includes(filter.toLowerCase())||p.dept.toLowerCase().includes(filter.toLowerCase()));
   const el=document.getElementById("ppl-list");
@@ -20279,18 +20442,26 @@ document.querySelectorAll(".mo,.drill-overlay").forEach(m=>m.addEventListener("c
 // ============================================================
 // ADD TASK
 // ============================================================
-function openAdd(){document.getElementById("nt-date").value=new Date().toISOString().split("T")[0];document.getElementById("mo-add").classList.add("open");}
+function openAdd(){
+  document.getElementById("nt-date").value='';
+  document.getElementById("nt-date").style.display='none';
+  document.querySelectorAll('.deadline-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  document.getElementById("mo-add").classList.add("open");
+}
 async function addTask(){
   const title=document.getElementById("nt-title").value.trim();
   if(!title){toast("Please enter a task title");return;}
-  const person=document.getElementById("nt-person").value||"Unassigned";
-  const email=document.getElementById("nt-email").value;
+  const personInput=document.getElementById("nt-person").value.trim();
+  const emailHidden=document.getElementById("nt-email").value.trim();
+  const email=emailHidden||(personInput.includes('@')?personInput:'');
+  const person=personInput.includes('@')&&!emailHidden?(findPersonByEmail(personInput)?.name||personInput.split('@')[0]):personInput||"Unassigned";
   const dept=document.getElementById("nt-dept").value;
   const task={id:Date.now(),title,summary:document.getElementById("nt-summary").value||"",person,email,dept,date:document.getElementById("nt-date").value,status:document.getElementById("nt-status").value,priority:document.getElementById("nt-priority").value,wednesday:false,followup:"",weekOffset:0};
   tasks.unshift(task);
   saveStaffDeptForTask(task,dept);
   closeMo("mo-add");
-  ["nt-title","nt-summary","nt-person","nt-email"].forEach(i=>document.getElementById(i).value="");
+  ["nt-title","nt-summary"].forEach(i=>document.getElementById(i).value="");
+  clearAddTaskPerson();
   refreshAll();
   sendTaskNotification(task).catch(()=>{});
   toast(`Task saved${email?`. Notification sent to ${email}`:""}`);
@@ -20315,7 +20486,15 @@ function drillStat(type){
     </tr>`).join("");
   document.getElementById("mo-drill").classList.add("open");
 }
-function doSearch(v){curSearch=v.toLowerCase();if(document.getElementById("page-master").classList.contains("active"))renderMaster();}
+function doSearch(v){
+  curSearch=String(v||"").toLowerCase();
+  if(curSearch&& !document.getElementById("page-master").classList.contains("active")){
+    nav("master");
+    curSearch=String(v||"").toLowerCase();
+    document.getElementById("srch").value=v;
+  }
+  if(document.getElementById("page-master").classList.contains("active"))renderMaster();
+}
 
 // ============================================================
 // CHARTS
@@ -20324,15 +20503,15 @@ function mkChart(id,type,labels,datasets,opts={}){
   if(CH[id])CH[id].destroy();
   const ctx=document.getElementById(id);if(!ctx)return;
   CH[id]=new Chart(ctx,{type,data:{labels,datasets},options:{
-    responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+    responsive:true,maintainAspectRatio:false,interaction:{mode:"nearest",intersect:true},
     plugins:{
       legend:{display:!!opts.legend,position:"bottom",labels:{font:{family:"Inter",size:11,weight:"600"},padding:12,boxWidth:9,color:"#374151"}},
-      tooltip:{backgroundColor:"#111827",titleColor:"#f9fafb",bodyColor:"#d1d5db",titleFont:{family:"Inter",size:12,weight:"700"},bodyFont:{family:"Inter",size:12},cornerRadius:6,padding:10,displayColors:!!opts.legend}
+      tooltip:{backgroundColor:"#111827",titleColor:"#f9fafb",bodyColor:"#d1d5db",titleFont:{family:"Inter",size:12,weight:"700"},bodyFont:{family:"Inter",size:12},cornerRadius:6,padding:10,displayColors:!!opts.legend,filter:(item)=>!item.dataset.hidden,...((type==="doughnut"||type==="pie")?{callbacks:{title:items=>items.length?[items[0].label]:[],label:item=>`  ${item.parsed} tasks`}}:{})}
     },
     scales:type!=="pie"&&type!=="doughnut"?{
       x:{grid:{display:false},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280"},border:{display:false}},
       y:{grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280"},beginAtZero:true,border:{display:false}}
-    }:{},animation:{duration:500,easing:"easeInOutQuart"},onClick:opts.onClick||null,...opts.extra
+    }:{},animation:{duration:200,easing:"easeOutQuart"},events:["mousemove","mouseout","click","touchstart","touchmove"],onHover:(evt,elements)=>{ctx.style.cursor=elements.length?"pointer":"default";},onClick:opts.onClick||null,...opts.extra
   }});
 }
 function renderCharts(){
@@ -20345,7 +20524,7 @@ function renderCharts(){
     {label:"Pending",data:dk.map(d=>dp[d].tot-dp[d].dn),backgroundColor:"#CBD5E1",borderRadius:4,borderSkipped:false,maxBarThickness:22},
     {label:"Completed",data:dk.map(d=>dp[d].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:22},
   ],{legend:true,onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
-  if(pk.length){mkChart("ch-person","bar",pk,[{label:"Open",data:pk.map(p=>pp[p].open),backgroundColor:"#F2B879",borderRadius:4,borderSkipped:false,maxBarThickness:18},{label:"Done",data:pk.map(p=>pp[p].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:18}],{legend:true,extra:{indexAxis:"y",scales:{x:{grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#374151"},border:{display:false}}}}});}
+  if(pk.length){mkChart("ch-person","bar",pk,[{label:"Open",data:pk.map(p=>pp[p].open),backgroundColor:"#F2B879",borderRadius:4,borderSkipped:false,maxBarThickness:18},{label:"Done",data:pk.map(p=>pp[p].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:18}],{legend:true,onClick:(evt,elements)=>{if(elements.length){const person=pk[elements[0].index];nav('people');setTimeout(()=>{curPplFilter=person.toLowerCase();filterPpl(person);selectPpl(person);},150);}},extra:{indexAxis:"y",scales:{x:{grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#374151"},border:{display:false}}}}});}
   const sc={"Pending":0,"Done":0,"Overdue":0};tasks.forEach(t=>sc[nstt(t.status)]=(sc[nstt(t.status)]||0)+1);
   mkChart("ch-status","doughnut",Object.keys(sc),[{data:Object.values(sc),backgroundColor:["#F2B879","#86C59B","#F08B8B"],hoverBackgroundColor:["#E9A35F","#6FB783","#E87575"],borderWidth:3,borderColor:"#fff",hoverOffset:8}],{legend:true,extra:{cutout:"58%"},onClick:(evt,elements)=>{if(elements.length){const s=Object.keys(sc)[elements[0].index];document.getElementById("sf-status").value=s;nav("master");}}});
 }
@@ -20436,7 +20615,8 @@ function buildTrackedSet(){
 }
 
 function getDpegRecipients(toStr,ccStr){
-  const all=[...(toStr||'').split(','),...(ccStr||'').split(',')]
+  const bccStr=document.getElementById('compose-bcc')?.value||'';
+  const all=[...(toStr||'').split(','),...(ccStr||'').split(','),...(bccStr||'').split(',')]
     .map(e=>e.trim()).filter(e=>e.toLowerCase().includes('@dhananipeg.com'));
   return [...new Set(all)];
 }
@@ -20451,7 +20631,7 @@ function showRecipientPreview(){
   if(dpeg.length){
     preview.style.display='block';
     list.innerHTML=dpeg.map(e=>{
-      const p=PEOPLE_DB.find(x=>x.email.toLowerCase()===e.toLowerCase());
+      const p=findPersonByEmail(e);
       return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:6px;margin-bottom:3px;background:#fff;border:1px solid var(--sage);border-radius:4px;padding:2px 8px;font-size:11.5px;font-weight:600;color:var(--forest)"><span style="width:6px;height:6px;border-radius:50%;background:var(--fern);display:inline-block;flex-shrink:0"></span>${p?.name||e}</span>`;
     }).join('');
   } else {
@@ -20469,7 +20649,7 @@ function showComposeAC(inputId, acId){
   const val=input.value;
   const lastSep=Math.max(val.lastIndexOf(','),val.lastIndexOf(';'));
   const token=(lastSep>=0?val.slice(lastSep+1):val).trim().toLowerCase();
-  if(token.length<1){ac.style.display='none';return;}
+  if(!token.length){ac.style.display='none';return;}
   const seen=new Set();
   const matches=[...PEOPLE_DB,...Object.values(staffConfig).filter(p=>p?.email&&p?.name)]
     .filter(p=>{
@@ -20555,11 +20735,13 @@ function renderEmailRows(folder,emails){
     const isToday=dt.toDateString()===now.toDateString();
     const dateStr=isToday?dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
     const isUnread=!e.isRead&&folder==='inbox';
+    const isHigh=String(e.importance||'normal').toLowerCase()==='high';
     return `<div class="ol-email-item${isUnread?' unread':''}" data-email-id="${e.id}" onclick="readEmail('${e.id}','${folder}')">
       <div class="ol-email-top">
         <div class="ol-email-sender">${sender}</div>
         <div style="display:flex;align-items:center;gap:4px">
           ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd)">✓ Tracked</span>`:''}
+          ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca">High</span>`:''}
           <div class="ol-email-date">${dateStr}</div>
         </div>
       </div>
@@ -20589,7 +20771,7 @@ async function loadFolder(folder){
   if(folder==='untracked'){await loadUntracked();return;}
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
@@ -20654,14 +20836,14 @@ async function loadUntracked(){
   const listEl=document.getElementById('ol-email-list');
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId,importance&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
     // Filter to DPEG emails not yet tracked
     const untracked=emails.filter(e=>{
       const isDpeg=e.toRecipients?.some(r=>r.emailAddress?.address?.toLowerCase().includes('@dhananipeg.com'));
-      const isTracked=trackedEmailIds.has(e.id);
+      const isTracked=trackedEmailIds.has(e.id)||trackedEmailIds.has(e.conversationId);
       return isDpeg&&!isTracked;
     });
     const untrackedCount=untracked.length;
@@ -20673,13 +20855,14 @@ async function loadUntracked(){
       const to=e.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
       const dt=new Date(e.sentDateTime);
       const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
-      return `<div class="ol-email-item" style="display:flex;align-items:flex-start;gap:8px">
-        <div style="flex:1;min-width:0" onclick="readEmail('${e.id}','sent')">
+      const isHigh=String(e.importance||'normal').toLowerCase()==='high';
+      return `<div class="ol-email-item" data-email-id="${e.id}" onclick="readEmail('${e.id}','sent')" style="display:flex;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0">
           <div class="ol-email-top"><div class="ol-email-sender">To: ${to}</div><div class="ol-email-date">${dateStr}</div></div>
-          <div class="ol-email-subject">${e.subject||'(no subject)'}</div>
+          <div class="ol-email-subject">${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;margin-right:5px;vertical-align:middle">High</span>`:''}${e.subject||'(no subject)'}</div>
           <div class="ol-email-preview">${e.bodyPreview||''}</div>
         </div>
-        <button onclick="quickAddTask('${e.id}')" style="flex-shrink:0;margin-top:8px;padding:4px 8px;background:var(--ink);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add</button>
+        <button onclick="event.stopPropagation();quickAddTask('${e.id}')" style="flex-shrink:0;margin-top:8px;padding:4px 8px;background:var(--ink);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add</button>
       </div>`;
     }).join('');
   }catch(err){
@@ -20690,7 +20873,7 @@ async function loadUntracked(){
 async function quickAddTask(emailId){
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId,importance`,{headers:{Authorization:`Bearer ${token}`}});
     const email=await res.json();
     const recipient=email.toRecipients?.[0]?.emailAddress;
     const p=findPersonByEmail(recipient?.address);
@@ -20837,7 +21020,7 @@ async function readEmail(emailId,folder){
   readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading...</div></div>';
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const email=await res.json();
     emailCache[emailId]=email;
@@ -20887,9 +21070,39 @@ async function readEmail(emailId,folder){
         updateUnreadBadges(-1);
       }
     }
+    if(email.hasAttachments){
+      try{
+        const attRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/attachments?$select=id,name,contentType,size,isInline`,{headers:{Authorization:`Bearer ${token}`}});
+        if(attRes.ok){
+          const attData=await attRes.json();
+          const atts=(attData.value||[]).filter(a=>!a.isInline);
+          if(atts.length){
+            const attDiv=document.createElement('div');
+            attDiv.style.cssText='padding:10px 20px 14px;border-top:1px solid var(--border);flex-shrink:0;background:#fafafa';
+            const sz=b=>b>1048576?(b/1048576).toFixed(1)+'MB':b>1024?(b/1024).toFixed(0)+'KB':b+'B';
+            attDiv.innerHTML=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:7px">Attachments (${atts.length})</div><div style="display:flex;gap:7px;flex-wrap:wrap">${atts.map(a=>`<button class="btn btn-ghost btn-sm" style="font-size:11.5px;display:flex;align-items:center;gap:5px" onclick="downloadAttachment('${emailId}','${a.id}','${(a.name||'file').replace(/'/g,"\\'")}')"><svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>${a.name} <span style="color:var(--muted);font-weight:400">(${sz(a.size)})</span></button>`).join('')}</div>`;
+            readerEl.appendChild(attDiv);
+          }
+        }
+      }catch{}
+    }
   }catch(err){
     readerEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load email</div></div>';
   }
+}
+
+async function downloadAttachment(emailId,attId,filename){
+  toast('Downloading...');
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/attachments/${attId}/$value`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Download failed');
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=filename;a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    toast(`Downloaded: ${filename}`);
+  }catch(err){toast('Download failed');}
 }
 
 function openCompose(to,subject,body,type){
@@ -20899,6 +21112,7 @@ function openCompose(to,subject,body,type){
   document.getElementById('compose-subject').value=subject||'';
   document.getElementById('compose-body').value=body||'';
   document.getElementById('compose-title').textContent=type||'New Email';
+  const pr=document.getElementById('compose-priority');if(pr)pr.value='normal';
   // Hide BCC by default
   const bccRow=document.getElementById('bcc-row');
   if(bccRow)bccRow.style.display='none';
@@ -20991,16 +21205,17 @@ async function sendEmail(){
   const bcc=document.getElementById('compose-bcc')?.value.trim()||'';
   const subject=document.getElementById('compose-subject').value.trim();
   const body=document.getElementById('compose-body').value.trim();
+  const importance=document.getElementById('compose-priority')?.value||'normal';
   if(!to){toast('Please add at least one recipient');return;}
   if(!subject){toast('Please add a subject');return;}
 
   // Check for open threads with any recipient before sending
-  const allRecipients=[...to.split(','),...(cc?cc.split(','):[])]
+  const allRecipients=[...to.split(','),...(cc?cc.split(','):[]),...(bcc?bcc.split(','):[])]
     .map(e=>e.trim().toLowerCase()).filter(Boolean);
-  await showUnreadCheckIfNeeded(allRecipients.join(','), ()=>doSendEmail(to,cc,bcc,subject,body));
+  await showUnreadCheckIfNeeded(allRecipients.join(','), ()=>doSendEmail(to,cc,bcc,subject,body,importance));
 }
 
-async function doSendEmail(to,cc,bcc,subject,body){
+async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
   const btn=document.getElementById('compose-send-btn');
   if(btn){btn.disabled=true;btn.innerHTML='Sending...';}
   try{
@@ -21008,7 +21223,7 @@ async function doSendEmail(to,cc,bcc,subject,body){
     const toRecipients=to.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address);
     const ccRecipients=cc?cc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
     const bccRecipients=bcc?bcc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
-    const message={subject,body:{contentType:'Text',content:body},toRecipients};
+    const message={subject,importance,body:{contentType:'Text',content:body},toRecipients};
     if(ccRecipients.length)message.ccRecipients=ccRecipients;
     if(bccRecipients.length)message.bccRecipients=bccRecipients;
     const sendRes = await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
@@ -21028,7 +21243,7 @@ async function doSendEmail(to,cc,bcc,subject,body){
       for(const email of dpegRecipients){
         const p=findPersonByEmail(email);
         const person=p?.name||email.split('@')[0];
-        const newTask={id:Date.now()+Math.random(),title:subject,summary:body.slice(0,255),person,email,dept:personDept(email,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:'Normal',wednesday:false,followup:'',weekOffset:0};
+        const newTask={id:Date.now()+Math.random(),title:subject,summary:body.slice(0,255),person,email,dept:personDept(email,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:importance==='high'?'High':'Normal',wednesday:false,followup:'',weekOffset:0};
         tasks.unshift(newTask);
         sendTaskNotification(newTask).catch(()=>{});
       }
@@ -21188,6 +21403,8 @@ async function sendTaskNotification(task){
 async function removeTask(id){
   if(!confirm('Remove this task from the Action Log?'))return;
   tasks=tasks.filter(t=>t.id!==id);
+  selectedTaskIds.delete(id);
+  buildTrackedSet();
   closeMo('mo-detail');
   syncBadges();refreshAll();
   toast('Task removed from Action Log');
