@@ -18619,6 +18619,8 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .ol-email-sender{font-size:12.5px;font-weight:600;color:var(--body);margin-bottom:2px}
 .ol-email-subject{font-size:12px;color:var(--sub);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ol-email-preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ol-email-attachments{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10.5px;color:var(--muted);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ol-email-attachments svg{flex-shrink:0}
 .ol-email-date{font-size:10.5px;color:var(--muted);margin-left:auto;white-space:nowrap;flex-shrink:0}
 .ol-email-top{display:flex;align-items:center;gap:6px;margin-bottom:2px}
 
@@ -18977,7 +18979,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 
       <!-- RIGHT: Email Reader — FIXED, does not scroll with list -->
       <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
-        <div id="ol-email-reader" style="flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0">
+        <div id="ol-email-reader" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0">
           <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px">
             <svg width="48" height="48" fill="none" stroke="#d1d5db" viewBox="0 0 24 24" style="margin-bottom:14px"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <div style="font-size:14px;font-weight:600;color:var(--body);margin-bottom:4px">Select an email</div>
@@ -21221,18 +21223,21 @@ function renderEmailRows(folder,emails){
     const dateStr=isToday?dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
     const isUnread=!e.isRead&&folder==='inbox';
     const isHigh=String(e.importance||'normal').toLowerCase()==='high';
+    const hasAtt=!!e.hasAttachments;
     return `<div class="ol-email-item${isUnread?' unread':''}" data-email-id="${e.id}" onclick="readEmail('${e.id}','${folder}')">
       <div class="ol-email-top">
         <div class="ol-email-sender">${sender}</div>
         <div style="display:flex;align-items:center;gap:4px">
           ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd)">✓ Tracked</span>`:''}
           ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca">High</span>`:''}
+          ${hasAtt?`<svg width="12" height="12" fill="none" stroke="var(--muted)" viewBox="0 0 24 24" title="Has attachments"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
           <div class="ol-email-date">${dateStr}</div>
           <button title="AI summary" onclick="event.stopPropagation();toggleListAISummary('${e.id}',this,'${folder}')" style="background:none;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;padding:1px 5px;font-size:9px;color:#7c3aed;font-weight:700;line-height:1.6;flex-shrink:0">✦</button>
         </div>
       </div>
       <div class="ol-email-subject">${e.subject||'(no subject)'}</div>
       <div class="ol-email-preview">${e.bodyPreview||''}</div>
+      ${hasAtt?`<div class="ol-email-attachments"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attachment</span></div>`:''}
       <div id="list-ai-sum-${e.id}" style="display:none;margin-top:6px;padding:7px 9px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;font-size:11.5px;line-height:1.5;color:var(--body)"></div>
     </div>`;
   }).join('');
@@ -21258,7 +21263,7 @@ async function loadFolder(folder){
   if(folder==='untracked'){await loadUntracked();return;}
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
@@ -21323,7 +21328,7 @@ async function loadUntracked(){
   const listEl=document.getElementById('ol-email-list');
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId,importance&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId,importance,hasAttachments&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
@@ -21343,11 +21348,13 @@ async function loadUntracked(){
       const dt=new Date(e.sentDateTime);
       const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
       const isHigh=String(e.importance||'normal').toLowerCase()==='high';
+      const hasAtt=!!e.hasAttachments;
       return `<div class="ol-email-item" data-email-id="${e.id}" onclick="readEmail('${e.id}','sent')" style="display:flex;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
           <div class="ol-email-top"><div class="ol-email-sender">To: ${to}</div><div class="ol-email-date">${dateStr}</div></div>
           <div class="ol-email-subject">${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;margin-right:5px;vertical-align:middle">High</span>`:''}${e.subject||'(no subject)'}</div>
           <div class="ol-email-preview">${e.bodyPreview||''}</div>
+          ${hasAtt?`<div class="ol-email-attachments"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attachment</span></div>`:''}
         </div>
         <button onclick="event.stopPropagation();quickAddTask('${e.id}')" style="flex-shrink:0;margin-top:8px;padding:4px 8px;background:var(--ink);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add</button>
       </div>`;
@@ -21409,7 +21416,7 @@ async function openTaskThread(taskId){
   try{
     const token=await getAccessToken();
     const filter=encodeURIComponent(`conversationId eq '${t.conversationId.replace(/'/g,"''")}'`);
-    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink';
+    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink,hasAttachments';
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
@@ -21420,7 +21427,7 @@ async function openTaskThread(taskId){
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:6px">${emailSubject(t)}</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${messages.length} message${messages.length!==1?'s':''} in this thread</div>
       </div>
-      <div class="thread-scroll" style="padding:12px 20px;overflow-y:auto;flex:1;min-height:0">
+      <div class="thread-scroll" style="padding:12px 20px;overflow:visible;flex:0 0 auto;min-height:0">
         ${messages.map(m=>{
           const from=m.from?.emailAddress;
           const to=m.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
@@ -21433,12 +21440,14 @@ async function openTaskThread(taskId){
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${from?.name||from?.address||''}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${to}</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+            ${m.hasAttachments?`<div id="thread-att-${m.id}" style="margin-bottom:10px"></div>`:''}
             <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?`<iframe data-bidx="${bIdx}" style="width:100%;border:none;display:block;min-height:200px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${body}</pre>`}</div>
           </div>`;
         }).join('')}
       </div>`;
-    const scrollToNewest=()=>{const sc=readerEl.querySelector('.thread-scroll');if(sc)sc.scrollTop=sc.scrollHeight;};
+    const scrollToNewest=()=>{readerEl.scrollTop=readerEl.scrollHeight;};
     readerEl.querySelectorAll('iframe[data-bidx]').forEach(fr=>{const c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',()=>{try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}scrollToNewest();});fr.srcdoc=c;}});
+    loadThreadAttachmentChips(messages);
     setTimeout(scrollToNewest,120);
   }catch(err){
     toast('Could not open email thread');
@@ -21450,6 +21459,37 @@ function openEmailInOutlook(emailId){
   if(email?.webLink)window.open(email.webLink,'_blank','noopener');
 }
 
+function attachmentChipHTML(emailId,a){
+  const safeName=String(a.name||'file').replace(/'/g,"\\'");
+  return `<button class="btn btn-ghost btn-sm" style="font-size:11.5px;display:flex;align-items:center;gap:5px;max-width:240px" onclick="downloadAttachment('${emailId}','${a.id}','${safeName}')" title="Download ${escapeHtml(a.name||'file')}">
+    <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.name||'file')}</span>
+    <span style="color:var(--muted);font-weight:400;flex-shrink:0">(${formatFileSize(a.size)})</span>
+  </button>`;
+}
+
+async function fetchVisibleAttachments(emailId){
+  const token=await getAccessToken();
+  const attRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/attachments?$select=id,name,contentType,size,isInline`,{headers:{Authorization:`Bearer ${token}`}});
+  if(!attRes.ok)return [];
+  const attData=await attRes.json();
+  return (attData.value||[]).filter(a=>!a.isInline);
+}
+
+async function loadThreadAttachmentChips(messages){
+  for(const m of messages){
+    if(!m.hasAttachments)continue;
+    const host=document.getElementById(`thread-att-${m.id}`);
+    if(!host)continue;
+    try{
+      const atts=await fetchVisibleAttachments(m.id);
+      if(atts.length){
+        host.innerHTML=`<div style="display:flex;gap:7px;flex-wrap:wrap">${atts.map(a=>attachmentChipHTML(m.id,a)).join('')}</div>`;
+      }
+    }catch{}
+  }
+}
+
 async function viewFullThread(emailId){
   const email=emailCache[emailId];
   if(!email?.conversationId){toast('Full thread is not available for this email');return;}
@@ -21459,7 +21499,7 @@ async function viewFullThread(emailId){
   try{
     const token=await getAccessToken();
     const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
-    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink';
+    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink,hasAttachments';
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
@@ -21474,7 +21514,7 @@ async function viewFullThread(emailId){
           ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
         </div>
       </div>
-      <div class="thread-scroll" style="padding:12px 20px;overflow-y:auto;flex:1;min-height:0">
+      <div class="thread-scroll" style="padding:12px 20px;overflow:visible;flex:0 0 auto;min-height:0">
         ${messages.map(m=>{
           const from=m.from?.emailAddress;
           const to=m.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
@@ -21487,12 +21527,14 @@ async function viewFullThread(emailId){
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${from?.name||from?.address||''}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${to}</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+            ${m.hasAttachments?`<div id="thread-att-${m.id}" style="margin-bottom:10px"></div>`:''}
             <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?`<iframe data-bidx="${bIdx}" style="width:100%;border:none;display:block;min-height:200px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${body}</pre>`}</div>
           </div>`;
         }).join('')}
       </div>`;
-    const scrollToNewest=()=>{const sc=readerEl.querySelector('.thread-scroll');if(sc)sc.scrollTop=sc.scrollHeight;};
+    const scrollToNewest=()=>{readerEl.scrollTop=readerEl.scrollHeight;};
     readerEl.querySelectorAll('iframe[data-bidx]').forEach(fr=>{const c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',()=>{try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}scrollToNewest();});fr.srcdoc=c;}});
+    loadThreadAttachmentChips(messages);
     setTimeout(scrollToNewest,120);
   }catch(err){
     console.error('Thread load error:',err);
@@ -21526,6 +21568,7 @@ async function readEmail(emailId,folder){
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:10px;line-height:1.3">${email.subject||'(no subject)'}</div>
+        <div id="email-attachments-top" style="display:none;margin-bottom:12px"></div>
         <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">From:</span> ${sender?.name||''} &lt;${sender?.address||''}&gt;</div>
         <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">To:</span> ${toList}</div>
         ${ccList?`<div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">CC:</span> ${ccList}</div>`:''}
@@ -21552,7 +21595,7 @@ async function readEmail(emailId,folder){
         <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:6px;letter-spacing:.04em">✦ AI SUMMARY</div>
         <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:var(--body)"></div>
       </div>
-      <div style="overflow-y:auto;flex:1;min-height:0">
+      <div style="overflow:visible;flex:0 0 auto;min-height:0">
         ${isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:var(--body)"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${bodyContent}</pre></div>`}
       </div>`;
     if(isHtml){const _f=readerEl.querySelector('#email-body-frame');if(_f){_f.addEventListener('load',()=>{try{const h=Math.max(_f.contentDocument.body.scrollHeight,400);_f.style.height=h+'px';}catch(e){}});_f.srcdoc=bodyContent;}}
@@ -21568,16 +21611,12 @@ async function readEmail(emailId,folder){
     }
     if(email.hasAttachments){
       try{
-        const attRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/attachments?$select=id,name,contentType,size,isInline`,{headers:{Authorization:`Bearer ${token}`}});
-        if(attRes.ok){
-          const attData=await attRes.json();
-          const atts=(attData.value||[]).filter(a=>!a.isInline);
-          if(atts.length){
-            const attDiv=document.createElement('div');
-            attDiv.style.cssText='padding:10px 20px 14px;border-top:1px solid var(--border);flex-shrink:0;background:#fafafa';
-            const sz=b=>b>1048576?(b/1048576).toFixed(1)+'MB':b>1024?(b/1024).toFixed(0)+'KB':b+'B';
-            attDiv.innerHTML=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:7px">Attachments (${atts.length})</div><div style="display:flex;gap:7px;flex-wrap:wrap">${atts.map(a=>`<button class="btn btn-ghost btn-sm" style="font-size:11.5px;display:flex;align-items:center;gap:5px" onclick="downloadAttachment('${emailId}','${a.id}','${(a.name||'file').replace(/'/g,"\\'")}')"><svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>${a.name} <span style="color:var(--muted);font-weight:400">(${sz(a.size)})</span></button>`).join('')}</div>`;
-            readerEl.appendChild(attDiv);
+        const atts=await fetchVisibleAttachments(emailId);
+        if(atts.length){
+          const attDiv=document.getElementById('email-attachments-top');
+          if(attDiv){
+            attDiv.style.display='block';
+            attDiv.innerHTML=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:7px">Attachments (${atts.length})</div><div style="display:flex;gap:7px;flex-wrap:wrap">${atts.map(a=>attachmentChipHTML(emailId,a)).join('')}</div>`;
           }
         }
       }catch{}
