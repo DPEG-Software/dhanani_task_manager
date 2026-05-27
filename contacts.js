@@ -32,14 +32,16 @@
     const name = (raw.displayName || raw.name || raw.emailAddress?.name || contactNameValue(raw, email)).trim();
     const dept = raw.department || defaultDept || (isInternalEmail(email) ? "Needs Department" : "Outside DPEG");
     const role = raw.jobTitle || raw.role || "";
-    const key = staffKey(email, name);
-    const before = JSON.stringify(staffConfig[key] || null);
+    const existingKey = Object.keys(staffConfig).find((k) => normEmail(staffConfig[k]?.email || "") === email);
+    const key = existingKey || staffKey(email, name);
+    const existing = staffConfig[key] || {};
+    const before = JSON.stringify(existing);
     staffConfig[key] = {
-      ...(staffConfig[key] || {}),
+      ...existing,
       name,
       email,
-      dept: staffConfig[key]?.dept || dept,
-      role: staffConfig[key]?.role || role,
+      dept: existing.dept || dept,
+      role: existing.role || role,
     };
     return JSON.stringify(staffConfig[key]) !== before;
   }
@@ -154,7 +156,7 @@
         if (!key || map.has(key)) return;
         const configured = Object.values(staffConfig).find((p) => normEmail(p.email) === key);
         map.set(key, {
-          name: configured?.name || key.split("@")[0].replace(/[._-]+/g, " "),
+          name: configured?.name || (key === "propertymanagement2@dhananipeg.com" ? "Nikhil Kumar" : key.split("@")[0].replace(/[._-]+/g, " ")),
           email: key,
           dept: configured?.dept || "Needs Department",
           role: configured?.role || "Admin",
@@ -186,6 +188,32 @@
       map.set(key, { ...(map.get(key) || {}), ...p, email: key });
     });
     return [...map.values()];
+  }
+
+  function mergeDuplicateStaffContacts() {
+    const byEmail = new Map();
+    Object.entries(staffConfig).forEach(([key, person]) => {
+      const email = normEmail(person?.email || "");
+      if (!email) return;
+      const current = byEmail.get(email);
+      if (!current) {
+        byEmail.set(email, { key, person });
+        return;
+      }
+      const preferredName = email === "propertymanagement2@dhananipeg.com"
+        ? "Nikhil Kumar"
+        : (person.name && !person.name.includes("@") ? person.name : current.person.name);
+      staffConfig[current.key] = {
+        ...current.person,
+        ...person,
+        name: preferredName || current.person.name || person.name,
+        email,
+        dept: current.person.dept || person.dept,
+        role: current.person.role || person.role,
+      };
+      delete staffConfig[key];
+      byEmail.set(email, { key: current.key, person: staffConfig[current.key] });
+    });
   }
 
   function contactMatches(token) {
@@ -247,6 +275,7 @@
       try { changed += await syncOutlookContactsFull(token); } catch (err) { console.warn("Outlook contacts sync skipped:", err.message); }
       try { changed += await syncPeopleSuggestions(token); } catch (err) { console.warn("People suggestions sync skipped:", err.message); }
       try { changed += await syncMailboxNames(token); } catch (err) { console.warn("Mailbox contact sync skipped:", err.message); }
+      mergeDuplicateStaffContacts();
       await saveTasksToOneDrive();
       renderAdminPeopleList();
       renderAdminDeptEditor();
@@ -275,6 +304,7 @@
       try { await syncOrgDirectory(token); } catch {}
       try { await syncOutlookContactsFull(token); } catch {}
       try { await syncPeopleSuggestions(token); } catch {}
+      mergeDuplicateStaffContacts();
       if (JSON.stringify(staffConfig) !== before) await saveTasksToOneDrive();
     } catch {}
   };

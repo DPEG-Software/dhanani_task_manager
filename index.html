@@ -18727,6 +18727,10 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         AI Settings
         <span id="ai-status-dot" style="width:7px;height:7px;border-radius:50%;background:#d1d5db;margin-left:auto;flex-shrink:0"></span>
       </button>
+      <button class="acct-option" onclick="openSignatureSettings();closeAccountMenu()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 012 2v14l-4-2-4 2-4-2-4 2V6a2 2 0 012-2h2M8 2h8v6H8z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Email Signature
+      </button>
       <button class="acct-option" id="admin-settings-btn" style="display:none" onclick="openAdminSettings();closeAccountMenu()">
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Admin Settings
@@ -19043,6 +19047,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         </div>
         <!-- BODY -->
         <textarea id="compose-body" placeholder="Write your message here..." style="width:100%;min-height:180px;border:none;outline:none;font-family:Inter,sans-serif;font-size:13.5px;color:var(--body);resize:vertical;line-height:1.6;background:transparent"></textarea>
+        <div id="compose-signature-preview" style="display:none;margin-top:10px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--body);line-height:1.45"></div>
         <!-- DPEG recipients preview -->
         <div id="compose-recipients-preview" style="display:none;margin-top:8px;padding:8px 10px;background:var(--sage3);border-radius:var(--r);border:1px solid var(--sage)">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--forest);margin-bottom:4px">Tasks will be auto-created for:</div>
@@ -19061,6 +19066,30 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 
   </div>
 </main>
+
+<!-- EMAIL SIGNATURE SETTINGS MODAL -->
+<div class="mo" id="mo-signature">
+  <div class="mo-box" style="width:680px;max-height:92vh">
+    <div class="mo-hdr" style="background:var(--ink)">
+      <div>
+        <div class="mo-title" style="color:#fff">Email Signature</div>
+        <div class="mo-sub" style="color:rgba(255,255,255,.65)">Paste the signature you use in Outlook. It will appear in new emails, replies, and forwards.</div>
+      </div>
+      <button class="mo-x" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" onclick="closeMo('mo-signature')">&#10005;</button>
+    </div>
+    <div class="mo-body">
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px">
+        Copy your full Outlook signature, including the logo, then paste it below. If the logo does not paste, use an image with a public HTTPS URL or paste an embedded image from Outlook Web.
+      </div>
+      <div id="signature-editor" contenteditable="true" style="min-height:170px;border:1px solid var(--border);border-radius:var(--r);padding:12px;background:#fff;font-size:13px;line-height:1.5;overflow:auto"></div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="clearSignatureSettings()">Clear Signature</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-signature')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveSignatureSettings()">Save Signature</button>
+    </div>
+  </div>
+</div>
 
 <!-- AI SETTINGS MODAL -->
 <div class="mo" id="mo-ai-settings">
@@ -19106,11 +19135,14 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
       </div>
       <button class="mo-x" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" onclick="closeMo('mo-admin')">&#10005;</button>
     </div>
-    <div class="mo-body" style="padding:0">
+    <div class="mo-body" style="padding:0;overflow-y:auto">
       <!-- Tabs -->
       <div style="display:flex;border-bottom:1px solid var(--border);padding:0 18px">
         <button class="admin-tab active" id="atab-contacts" onclick="switchAdminTab('contacts')">Contacts &amp; People</button>
         <button class="admin-tab" id="atab-depts" onclick="switchAdminTab('depts')">Department Assignments</button>
+      </div>
+      <div style="padding:12px 18px 0">
+        <input class="form-in" id="admin-search" placeholder="Search contacts by name, email, department, or role..." oninput="renderAdminPeopleList();renderAdminDeptEditor()" style="padding:8px 11px;font-size:12.5px">
       </div>
       <!-- Contacts tab -->
       <div id="admin-contacts-pane" style="padding:18px">
@@ -19125,12 +19157,12 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:8px 10px;background:var(--sage3);border-radius:var(--r);border:1px solid var(--sage)">
           Syncing pulls your Outlook contacts and colleagues into the autocomplete and directory. Contacts are stored in your OneDrive task file — not sent anywhere externally.
         </div>
-        <div id="admin-people-list" style="max-height:380px;overflow-y:auto"></div>
+        <div id="admin-people-list"></div>
       </div>
       <!-- Dept assignments tab -->
       <div id="admin-depts-pane" style="padding:18px;display:none">
         <div style="font-size:13px;color:var(--body);margin-bottom:12px">Drag or select a department for each person. Changes save immediately to your task data.</div>
-        <div id="admin-dept-editor" style="max-height:420px;overflow-y:auto"></div>
+        <div id="admin-dept-editor"></div>
       </div>
     </div>
     <div class="mo-foot">
@@ -19844,6 +19876,50 @@ function updateAIStatusDot(active){
 }
 
 // ============================================================
+// EMAIL SIGNATURE
+// ============================================================
+function signatureStorageKey(){
+  return `dpeg_email_signature_${normEmail(currentUser?.email||'default')}`;
+}
+function getSignatureHTML(){
+  return localStorage.getItem(signatureStorageKey())||'';
+}
+function openSignatureSettings(){
+  const editor=document.getElementById('signature-editor');
+  if(editor)editor.innerHTML=getSignatureHTML();
+  document.getElementById('mo-signature').classList.add('open');
+}
+function saveSignatureSettings(){
+  const html=(document.getElementById('signature-editor')?.innerHTML||'').trim();
+  localStorage.setItem(signatureStorageKey(),html);
+  closeMo('mo-signature');
+  applyComposeSignature();
+  toast('Signature saved');
+}
+function clearSignatureSettings(){
+  localStorage.removeItem(signatureStorageKey());
+  const editor=document.getElementById('signature-editor');
+  if(editor)editor.innerHTML='';
+  applyComposeSignature();
+  toast('Signature cleared');
+}
+function applyComposeSignature(){
+  const preview=document.getElementById('compose-signature-preview');
+  if(!preview)return;
+  const html=getSignatureHTML();
+  preview.innerHTML=html;
+  preview.style.display=html?'block':'none';
+}
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function composeBodyHTML(text){
+  const typed=escapeHtml(text).replace(/\r?\n/g,'<br>');
+  const sig=getSignatureHTML();
+  return `${typed}${sig?`<br><br>${sig}`:''}`;
+}
+
+// ============================================================
 // ADMIN SETTINGS
 // ============================================================
 function openAdminSettings(){
@@ -19863,11 +19939,19 @@ function allKnownPeople(){
   Object.values(staffConfig).forEach(p=>{if(!p?.email)return;const k=normEmail(p.email);map[k]={...map[k],...p,src:'custom'};});
   return Object.values(map).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
 }
+function adminSearchTerm(){
+  return String(document.getElementById('admin-search')?.value||'').trim().toLowerCase();
+}
+function filterAdminPeople(people){
+  const q=adminSearchTerm();
+  if(!q)return people;
+  return people.filter(p=>[p.name,p.email,p.dept,p.role].some(v=>String(v||'').toLowerCase().includes(q)));
+}
 function renderAdminPeopleList(){
-  const people=allKnownPeople();
+  const people=filterAdminPeople(allKnownPeople());
   const el=document.getElementById('admin-people-list');
   if(!el)return;
-  if(!people.length){el.innerHTML='<div style="color:var(--muted);font-size:12px;padding:12px 0">No contacts yet. Click "Sync from Outlook" to import.</div>';return;}
+  if(!people.length){el.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:12px 0">${adminSearchTerm()?'No contacts match this search.':'No contacts yet. Click "Sync from Outlook" to import.'}</div>`;return;}
   el.innerHTML=`<div class="admin-person-row" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);border-bottom:2px solid var(--border)"><span>Name / Email</span><span>Department</span><span>Role</span><span></span></div>`+
     people.map((p,i)=>`
     <div class="admin-person-row" id="apr-${i}">
@@ -19881,7 +19965,7 @@ function renderAdminPeopleList(){
     </div>`).join('');
 }
 function renderAdminDeptEditor(){
-  const people=allKnownPeople();
+  const people=filterAdminPeople(allKnownPeople());
   const el=document.getElementById('admin-dept-editor');if(!el)return;
   const byDept={};
   people.forEach(p=>{const d=p.dept||'Needs Department';if(!byDept[d])byDept[d]=[];byDept[d].push(p);});
@@ -20448,7 +20532,6 @@ function selectPpl(name){
       </div>
       <div style="text-align:right"><div style="font-size:22px;font-weight:700;color:var(--body)">${pct}%</div><div class="prog-track" style="width:72px;margin-top:4px"><div class="prog-fill" style="width:${pct}%"></div></div></div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap"><div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.6px">Email</div><input class="form-in" id="ppl-email-input" style="max-width:280px;padding:7px 10px" value="${email}" placeholder="name@dhananipeg.com"><button class="btn btn-ghost btn-sm" onclick="updatePersonEmail('${name}')">Save Email</button></div>
     ${pt.length?`<table style="width:100%;border-collapse:collapse"><thead><tr>${["Task","Status","Priority","Date","Notes"].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:#f9fafb;border-bottom:1px solid var(--border)">${h}</th>`).join("")}</tr></thead><tbody>${pt.map(t=>`<tr style="border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openDetail(${t.id})"><td style="padding:10px"><div style="font-size:13px;font-weight:600;color:var(--body)">${t.title}</div>${threadLinkButton(t)}</td><td style="padding:10px">${sbadge(t.status)}</td><td style="padding:10px">${pBadge(t.priority)}</td><td style="padding:10px;font-size:12px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td><td style="padding:10px;font-size:12px;color:var(--muted);font-style:${t.followup?"normal":"italic"}">${t.followup||"None"}</td></tr>`).join("")}</tbody></table>`:
     `<div class="empty-state"><div class="es-text">No tasks assigned yet</div></div>`}`;
 }
@@ -20458,15 +20541,6 @@ async function updatePersonDept(name,dept){
   saveStaffDeptForTask(t,dept);
   refreshAll();
   toast("Department saved");
-  await saveTasksToOneDrive();
-}
-async function updatePersonEmail(name){
-  const email=document.getElementById("ppl-email-input")?.value.trim()||"";
-  saveStaffEmail(name,email);
-  initSelects();
-  renderPplList(curPplFilter);
-  selectPpl(name);
-  toast("Email saved");
   await saveTasksToOneDrive();
 }
 function renderDeptList(){
@@ -21525,6 +21599,7 @@ function openCompose(to,subject,body,type,emailId){
   const relPanel=document.getElementById('compose-related-tasks');
   if(aiPanel)aiPanel.style.display='none';
   if(relPanel)relPanel.style.display='none';
+  applyComposeSignature();
   document.getElementById('mo-compose').classList.add('open');
   showRecipientPreview();
   // Load AI brief async when forwarding
@@ -21634,7 +21709,7 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
     const toRecipients=to.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address);
     const ccRecipients=cc?cc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
     const bccRecipients=bcc?bcc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
-    const message={subject,importance,body:{contentType:'Text',content:body},toRecipients};
+    const message={subject,importance,body:{contentType:'HTML',content:composeBodyHTML(body)},toRecipients};
     if(ccRecipients.length)message.ccRecipients=ccRecipients;
     if(bccRecipients.length)message.bccRecipients=bccRecipients;
     const sendRes = await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
@@ -21651,10 +21726,29 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
     // Auto create tasks for all DPEG recipients in To and CC
     const dpegRecipients=getDpegRecipients(to,cc);
     if(dpegRecipients.length){
+      let forwardedEmail=null;
+      if(currentComposeType==='Forward'&&currentComposeEmailId){
+        forwardedEmail=emailCache[currentComposeEmailId]||null;
+        if(forwardedEmail){
+          await attachFreeThreadSummary(forwardedEmail).catch(()=>{});
+        }
+      }
       for(const email of dpegRecipients){
         const p=findPersonByEmail(email);
         const person=p?.name||email.split('@')[0];
-        const newTask={id:Date.now()+Math.random(),title:subject,summary:body.slice(0,255),person,email,dept:personDept(email,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:importance==='high'?'High':'Normal',wednesday:false,followup:'',weekOffset:0};
+        const newTask={
+          id:Date.now()+Math.random(),
+          title:forwardedEmail?.subject||subject,
+          emailSubject:forwardedEmail?.subject||subject,
+          emailId:forwardedEmail?.id||'',
+          conversationId:forwardedEmail?.conversationId||'',
+          lastMessageId:forwardedEmail?.id||'',
+          summary:forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body.slice(0,255),
+          threadSummary:forwardedEmail?.threadSummary||'',
+          aiGenerated:!!forwardedEmail?.aiGenerated,
+          person,email,dept:personDept(email,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:importance==='high'?'High':'Normal',wednesday:false,followup:'',weekOffset:0,
+          replyCount:forwardedEmail?.conversationId?undefined:1
+        };
         tasks.unshift(newTask);
         sendTaskNotification(newTask).catch(()=>{});
       }
