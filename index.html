@@ -19322,7 +19322,8 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.ReadWrite", "Mail.Send"];
+const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
+const SCOPES_DRAFTS   = ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"];
 const SCOPES_TODO     = ["User.Read", "Tasks.ReadWrite"];
 const SCOPES_CONTACTS = ["User.Read", "Contacts.Read", "People.Read", "User.ReadBasic.All"];
 const ADMIN_EMAILS    = ["propertymanagement2@dhananipeg.com", "systemmanager1@dhananipeg.com"];
@@ -21779,6 +21780,21 @@ async function getForwardAttachmentNames(emailId){
   }
 }
 
+async function getDraftAccessToken(){
+  try{
+    const result=await msalInstance.acquireTokenSilent({scopes:SCOPES_DRAFTS,account:currentAccount});
+    return result.accessToken;
+  }catch(err){
+    try{
+      const result=await msalInstance.acquireTokenPopup({scopes:SCOPES_DRAFTS});
+      return result.accessToken;
+    }catch(popupErr){
+      console.error('Draft permission error:',popupErr);
+      throw popupErr;
+    }
+  }
+}
+
 function fileToBase64(file){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
@@ -21923,11 +21939,12 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
   const btn=document.getElementById('compose-send-btn');
   if(btn){btn.disabled=true;btn.innerHTML='Sending...';}
   try{
-    const token=await getAccessToken();
     const toRecipients=to.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address);
     const ccRecipients=cc?cc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
     const bccRecipients=bcc?bcc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
     const isOutlookForward=currentComposeType==='Forward'&&currentComposeEmailId;
+    const needsDraftPermission=isOutlookForward||currentComposeFiles.length>0;
+    const token=needsDraftPermission?await getDraftAccessToken():await getAccessToken();
     const forwardAttachmentNames=isOutlookForward?await getForwardAttachmentNames(currentComposeEmailId):[];
     const manualAttachmentNames=currentComposeFiles.map(f=>f.name);
     if(isOutlookForward){
@@ -21991,7 +22008,12 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
     if(currentFolder==='sent')loadFolder('sent');
   }catch(err){
     console.error('Send error:',err);
-    toast('Email was not sent. No Action Log task was created.');
+    const msg=String(err?.errorMessage||err?.message||err||'');
+    if(msg.includes('AADSTS90094')||msg.toLowerCase().includes('admin')){
+      toast('Admin approval is needed only for Outlook-style forwards/attachments. Email was not sent.');
+    }else{
+      toast('Email was not sent. No Action Log task was created.');
+    }
     if(btn){btn.disabled=false;btn.innerHTML='<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Send';}
   }
 }
