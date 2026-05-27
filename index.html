@@ -19048,6 +19048,8 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <!-- BODY -->
         <textarea id="compose-body" placeholder="Write your message here..." style="width:100%;min-height:180px;border:none;outline:none;font-family:Inter,sans-serif;font-size:13.5px;color:var(--body);resize:vertical;line-height:1.6;background:transparent"></textarea>
         <div id="compose-signature-preview" style="display:none;margin-top:10px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--body);line-height:1.45"></div>
+        <input type="file" id="compose-file-input" multiple style="display:none" onchange="selectComposeAttachments(this.files)">
+        <div id="compose-attachments" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:#fff"></div>
         <!-- DPEG recipients preview -->
         <div id="compose-recipients-preview" style="display:none;margin-top:8px;padding:8px 10px;background:var(--sage3);border-radius:var(--r);border:1px solid var(--sage)">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--forest);margin-bottom:4px">Tasks will be auto-created for:</div>
@@ -19055,6 +19057,10 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         </div>
       </div>
       <div class="mo-foot" style="border-top:1px solid var(--border)">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('compose-file-input').click()" title="Attach files">
+          <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Attach
+        </button>
         <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-compose')">Discard</button>
         <button class="btn btn-primary btn-sm" onclick="sendEmail()" id="compose-send-btn">
           <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -19316,7 +19322,7 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
+const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.ReadWrite", "Mail.Send"];
 const SCOPES_TODO     = ["User.Read", "Tasks.ReadWrite"];
 const SCOPES_CONTACTS = ["User.Read", "Contacts.Read", "People.Read", "User.ReadBasic.All"];
 const ADMIN_EMAILS    = ["propertymanagement2@dhananipeg.com", "systemmanager1@dhananipeg.com"];
@@ -21006,6 +21012,7 @@ function nav(name,mode){
 let olSidebarCollapsed=false;
 let currentComposeType='';
 let currentComposeEmailId=null;
+let currentComposeFiles=[];
 function toggleOlSidebar(){
   olSidebarCollapsed=!olSidebarCollapsed;
   const panel=document.getElementById('ol-left-panel');
@@ -21410,7 +21417,7 @@ async function openTaskThread(taskId){
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:6px">${emailSubject(t)}</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${messages.length} message${messages.length!==1?'s':''} in this thread</div>
       </div>
-      <div style="padding:12px 20px;overflow-y:auto;flex:1">
+      <div class="thread-scroll" style="padding:12px 20px;overflow-y:auto;flex:1;min-height:0">
         ${messages.map(m=>{
           const from=m.from?.emailAddress;
           const to=m.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
@@ -21427,7 +21434,9 @@ async function openTaskThread(taskId){
           </div>`;
         }).join('')}
       </div>`;
-    readerEl.querySelectorAll('iframe[data-bidx]').forEach(fr=>{const c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',()=>{try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}});fr.srcdoc=c;}});
+    const scrollToNewest=()=>{const sc=readerEl.querySelector('.thread-scroll');if(sc)sc.scrollTop=sc.scrollHeight;};
+    readerEl.querySelectorAll('iframe[data-bidx]').forEach(fr=>{const c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',()=>{try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}scrollToNewest();});fr.srcdoc=c;}});
+    setTimeout(scrollToNewest,120);
   }catch(err){
     toast('Could not open email thread');
   }
@@ -21462,7 +21471,7 @@ async function viewFullThread(emailId){
           ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
         </div>
       </div>
-      <div style="padding:12px 20px;overflow-y:auto;flex:1">
+      <div class="thread-scroll" style="padding:12px 20px;overflow-y:auto;flex:1;min-height:0">
         ${messages.map(m=>{
           const from=m.from?.emailAddress;
           const to=m.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
@@ -21479,7 +21488,9 @@ async function viewFullThread(emailId){
           </div>`;
         }).join('')}
       </div>`;
-    readerEl.querySelectorAll('iframe[data-bidx]').forEach(fr=>{const c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',()=>{try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}});fr.srcdoc=c;}});
+    const scrollToNewest=()=>{const sc=readerEl.querySelector('.thread-scroll');if(sc)sc.scrollTop=sc.scrollHeight;};
+    readerEl.querySelectorAll('iframe[data-bidx]').forEach(fr=>{const c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',()=>{try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}scrollToNewest();});fr.srcdoc=c;}});
+    setTimeout(scrollToNewest,120);
   }catch(err){
     console.error('Thread load error:',err);
     toast('Could not load the full thread');
@@ -21592,6 +21603,7 @@ function openCompose(to,subject,body,type,emailId){
   const pr=document.getElementById('compose-priority');if(pr)pr.value='normal';
   const bccRow=document.getElementById('bcc-row');
   if(bccRow)bccRow.style.display='none';
+  resetComposeAttachments();
   // Reset AI panels
   currentComposeType=type||'New Email';
   currentComposeEmailId=emailId||null;
@@ -21604,6 +21616,58 @@ function openCompose(to,subject,body,type,emailId){
   showRecipientPreview();
   // Load AI brief async when forwarding
   if(type==='Forward'&&emailId)loadForwardAIBrief(emailId);
+}
+
+function formatFileSize(bytes){
+  if(!bytes)return '0 B';
+  const units=['B','KB','MB','GB'];
+  let size=bytes,idx=0;
+  while(size>=1024&&idx<units.length-1){size/=1024;idx++;}
+  return `${size.toFixed(size>=10||idx===0?0:1)} ${units[idx]}`;
+}
+
+function resetComposeAttachments(){
+  currentComposeFiles=[];
+  const input=document.getElementById('compose-file-input');
+  if(input)input.value='';
+  renderComposeAttachments();
+}
+
+function selectComposeAttachments(fileList){
+  const incoming=Array.from(fileList||[]);
+  for(const file of incoming){
+    const key=`${file.name}|${file.size}|${file.lastModified}`;
+    if(!currentComposeFiles.some(f=>`${f.name}|${f.size}|${f.lastModified}`===key)){
+      currentComposeFiles.push(file);
+    }
+  }
+  renderComposeAttachments();
+}
+
+function removeComposeAttachment(index){
+  currentComposeFiles.splice(index,1);
+  renderComposeAttachments();
+}
+
+function renderComposeAttachments(){
+  const box=document.getElementById('compose-attachments');
+  if(!box)return;
+  if(!currentComposeFiles.length){box.style.display='none';box.innerHTML='';return;}
+  box.style.display='block';
+  box.innerHTML=`
+    <div style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;background:#f8fafc">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${currentComposeFiles.length} attachment${currentComposeFiles.length!==1?'s':''}</div>
+      <button class="btn btn-ghost btn-xs" onclick="resetComposeAttachments()">Clear</button>
+    </div>
+    ${currentComposeFiles.map((file,i)=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:${i===currentComposeFiles.length-1?'none':'1px solid var(--border)'}">
+        <svg width="15" height="15" fill="none" stroke="var(--muted)" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;font-weight:600;color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(file.name)}</div>
+          <div style="font-size:11px;color:var(--muted)">${formatFileSize(file.size)}</div>
+        </div>
+        <button class="btn btn-ghost btn-xs" onclick="removeComposeAttachment(${i})" title="Remove attachment">Remove</button>
+      </div>`).join('')}`;
 }
 
 function replyEmail(emailId){
@@ -21701,6 +21765,160 @@ async function sendEmail(){
   await showUnreadCheckIfNeeded(allRecipients.join(','), ()=>doSendEmail(to,cc,bcc,subject,body,importance));
 }
 
+async function getForwardAttachmentNames(emailId){
+  if(!emailId)return [];
+  try{
+    const token=await getAccessToken();
+    const listRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/attachments?$select=name,isInline`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!listRes.ok)return [];
+    const list=await listRes.json();
+    return (list.value||[]).filter(a=>!a.isInline).map(a=>a.name||'attachment');
+  }catch(err){
+    console.warn('Forward attachment lookup failed:',err.message);
+    return [];
+  }
+}
+
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');
+    reader.onerror=()=>reject(reader.error||new Error('Could not read attachment'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addSmallAttachmentToMessage(token,messageId,file){
+  const contentBytes=await fileToBase64(file);
+  const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${messageId}/attachments`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({
+      '@odata.type':'#microsoft.graph.fileAttachment',
+      name:file.name,
+      contentType:file.type||'application/octet-stream',
+      contentBytes
+    })
+  });
+  if(!res.ok){
+    const errText=await res.text().catch(()=>'');
+    throw new Error(`Attachment failed (${res.status}) ${errText}`);
+  }
+}
+
+async function uploadLargeAttachmentToMessage(token,messageId,file){
+  const sessionRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${messageId}/attachments/createUploadSession`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({AttachmentItem:{attachmentType:'file',name:file.name,size:file.size,contentType:file.type||'application/octet-stream'}})
+  });
+  if(!sessionRes.ok){
+    const errText=await sessionRes.text().catch(()=>'');
+    throw new Error(`Attachment upload session failed (${sessionRes.status}) ${errText}`);
+  }
+  const session=await sessionRes.json();
+  const chunkSize=3276800;
+  let start=0;
+  while(start<file.size){
+    const end=Math.min(start+chunkSize,file.size)-1;
+    const chunk=await file.slice(start,end+1).arrayBuffer();
+    const uploadRes=await fetch(session.uploadUrl,{
+      method:'PUT',
+      headers:{
+        'Content-Length':String(chunk.byteLength),
+        'Content-Range':`bytes ${start}-${end}/${file.size}`
+      },
+      body:chunk
+    });
+    if(!uploadRes.ok&&uploadRes.status!==201&&uploadRes.status!==202){
+      const errText=await uploadRes.text().catch(()=>'');
+      throw new Error(`Attachment upload failed (${uploadRes.status}) ${errText}`);
+    }
+    start=end+1;
+  }
+}
+
+async function addComposeAttachmentsToDraft(token,messageId,files){
+  for(const file of files||[]){
+    if(file.size>150*1024*1024)throw new Error(`${file.name} is larger than Outlook's 150 MB attachment limit`);
+    if(file.size<3*1024*1024)await addSmallAttachmentToMessage(token,messageId,file);
+    else await uploadLargeAttachmentToMessage(token,messageId,file);
+  }
+}
+
+async function sendDraftMessage(token,message,toAttach=[]){
+  const draftRes=await fetch('https://graph.microsoft.com/v1.0/me/messages',{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify(message)
+  });
+  if(!draftRes.ok){
+    const errText=await draftRes.text().catch(()=>'');
+    throw new Error(`Microsoft Graph draft failed (${draftRes.status}) ${errText}`);
+  }
+  const draft=await draftRes.json();
+  await addComposeAttachmentsToDraft(token,draft.id,toAttach);
+  const sendRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}/send`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`}
+  });
+  if(!sendRes.ok){
+    const errText=await sendRes.text().catch(()=>'');
+    throw new Error(`Microsoft Graph draft send failed (${sendRes.status}) ${errText}`);
+  }
+}
+
+async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,toAttach=[]){
+  const createRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/createForward`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({message:{toRecipients}})
+  });
+  if(!createRes.ok){
+    const errText=await createRes.text().catch(()=>'');
+    throw new Error(`Microsoft Graph createForward failed (${createRes.status}) ${errText}`);
+  }
+  const draft=await createRes.json();
+  const patch={subject,importance};
+  const intro=composeBodyHTML(body);
+  let forwardedBody=draft.body?.content||'';
+  let forwardedBodyType=(draft.body?.contentType||'html').toLowerCase();
+  if(!forwardedBody){
+    const bodyRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}?$select=body`,{headers:{Authorization:`Bearer ${token}`}});
+    if(bodyRes.ok){
+      const bodyData=await bodyRes.json();
+      forwardedBody=bodyData.body?.content||'';
+      forwardedBodyType=(bodyData.body?.contentType||forwardedBodyType).toLowerCase();
+    }
+  }
+  if(forwardedBody&&forwardedBodyType==='text'){
+    forwardedBody=escapeHtml(forwardedBody).replace(/\r?\n/g,'<br>');
+  }
+  if(intro||forwardedBody){
+    patch.body={contentType:'HTML',content:[intro,forwardedBody].filter(Boolean).join('<br><br>')};
+  }
+  if(ccRecipients.length)patch.ccRecipients=ccRecipients;
+  if(bccRecipients.length)patch.bccRecipients=bccRecipients;
+  const patchRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}`,{
+    method:'PATCH',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify(patch)
+  });
+  if(!patchRes.ok){
+    const errText=await patchRes.text().catch(()=>'');
+    throw new Error(`Microsoft Graph forward draft update failed (${patchRes.status}) ${errText}`);
+  }
+  await addComposeAttachmentsToDraft(token,draft.id,toAttach);
+  const sendRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}/send`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`}
+  });
+  if(!sendRes.ok){
+    const errText=await sendRes.text().catch(()=>'');
+    throw new Error(`Microsoft Graph forward send failed (${sendRes.status}) ${errText}`);
+  }
+}
+
 async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
   const btn=document.getElementById('compose-send-btn');
   if(btn){btn.disabled=true;btn.innerHTML='Sending...';}
@@ -21709,17 +21927,28 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
     const toRecipients=to.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address);
     const ccRecipients=cc?cc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
     const bccRecipients=bcc?bcc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
-    const message={subject,importance,body:{contentType:'HTML',content:composeBodyHTML(body)},toRecipients};
-    if(ccRecipients.length)message.ccRecipients=ccRecipients;
-    if(bccRecipients.length)message.bccRecipients=bccRecipients;
-    const sendRes = await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
-      method:'POST',
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({message,saveToSentItems:true})
-    });
-    if(!sendRes.ok){
-      const errText=await sendRes.text().catch(()=>"");
-      throw new Error(`Microsoft Graph sendMail failed (${sendRes.status}) ${errText}`);
+    const isOutlookForward=currentComposeType==='Forward'&&currentComposeEmailId;
+    const forwardAttachmentNames=isOutlookForward?await getForwardAttachmentNames(currentComposeEmailId):[];
+    const manualAttachmentNames=currentComposeFiles.map(f=>f.name);
+    if(isOutlookForward){
+      await sendForwardedOutlookMessage(token,currentComposeEmailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,currentComposeFiles);
+    }else{
+      const message={subject,importance,body:{contentType:'HTML',content:composeBodyHTML(body)},toRecipients};
+      if(ccRecipients.length)message.ccRecipients=ccRecipients;
+      if(bccRecipients.length)message.bccRecipients=bccRecipients;
+      if(currentComposeFiles.length){
+        await sendDraftMessage(token,message,currentComposeFiles);
+      }else{
+        const sendRes = await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+          method:'POST',
+          headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+          body:JSON.stringify({message,saveToSentItems:true})
+        });
+        if(!sendRes.ok){
+          const errText=await sendRes.text().catch(()=>"");
+          throw new Error(`Microsoft Graph sendMail failed (${sendRes.status}) ${errText}`);
+        }
+      }
     }
     closeMo('mo-compose');
     if(btn){btn.disabled=false;btn.innerHTML='<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Send';}
@@ -21743,8 +21972,9 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
           emailId:forwardedEmail?.id||'',
           conversationId:forwardedEmail?.conversationId||'',
           lastMessageId:forwardedEmail?.id||'',
-          summary:forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body.slice(0,255),
+          summary:[forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body.slice(0,255),[...forwardAttachmentNames,...manualAttachmentNames].length?`Attachments: ${[...forwardAttachmentNames,...manualAttachmentNames].join(', ')}`:''].filter(Boolean).join('\n'),
           threadSummary:forwardedEmail?.threadSummary||'',
+          attachmentNames:[...forwardAttachmentNames,...manualAttachmentNames],
           aiGenerated:!!forwardedEmail?.aiGenerated,
           person,email,dept:personDept(email,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:importance==='high'?'High':'Normal',wednesday:false,followup:'',weekOffset:0,
           replyCount:forwardedEmail?.conversationId?undefined:1
@@ -21885,15 +22115,19 @@ function showForwardRelatedTasks(recipientEmail){
 // ============================================================
 async function createToDoTask(task){
   const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+  const attachmentNote=Array.isArray(task.attachmentNames)&&task.attachmentNames.length
+    ? `\n\nAttachments from email:\n${task.attachmentNames.map(n=>`- ${n}`).join('\n')}`
+    : '';
 
   // ── 1. Current user's To Do via silent delegated token (Tasks.ReadWrite) ──
   try{
     const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_TODO,account:currentAccount});
     const token=r.accessToken;
     const due=task.date?new Date(task.date):null;
+    const cleanSummary=(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,500);
     const taskBody={
       title:`[${task.person}] ${task.title||'Task'}`,
-      body:{content:`Assigned to: ${task.person}\nEmail: ${task.email||''}\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}\n\n${(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,500)}`,contentType:'text'},
+      body:{content:`Assigned to: ${task.person}\nEmail: ${task.email||''}\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}\n\n${cleanSummary}${attachmentNote}`,contentType:'text'},
       importance:task.priority==='High'?'high':'normal',
       status:'notStarted',
     };
@@ -21922,7 +22156,7 @@ async function createToDoTask(task){
       body:JSON.stringify({
         recipientEmail:task.email,
         title:task.title||'Task',
-        summary:(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,600),
+        summary:[(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,600),attachmentNote.trim()].filter(Boolean).join('\n\n'),
         priority:task.priority||'Normal',
         date:task.date||'',
       }),
@@ -21953,6 +22187,9 @@ async function sendTaskNotification(task){
       `Department: ${task.dept||''}`,
     ];
     if(task.summary)lines.push('','Details:',task.summary.replace(/[•\*]/g,'').slice(0,400));
+    if(Array.isArray(task.attachmentNames)&&task.attachmentNames.length){
+      lines.push('','Attachments from email:',...task.attachmentNames.map(n=>`- ${n}`));
+    }
     lines.push('','Please open the DPEG Task Manager to view and update this task.','','Best regards,','DPEG Task Manager');
     const message={subject,body:{contentType:'Text',content:lines.join('\n')},toRecipients:[{emailAddress:{address:addr}}]};
     await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:false})});
