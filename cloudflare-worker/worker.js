@@ -92,10 +92,22 @@ async function handleTodo(request, env) {
     return json({ error: 'Cannot access recipient To Do', detail: err }, listsRes.status);
   }
   const listsData = await listsRes.json();
-  const defaultList =
+  let defaultList =
     (listsData.value || []).find(l => l.isDefaultList) ||
     (listsData.value || [])[0];
-  if (!defaultList) return json({ error: 'No task list found for recipient' }, 404);
+
+  // If no list exists, create one (recipient may not have opened To Do yet)
+  if (!defaultList) {
+    const createRes = await fetch(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists`,
+      { method: 'POST', headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: 'Tasks' }) }
+    );
+    if (!createRes.ok) {
+      const err = await createRes.text().catch(() => '');
+      return json({ error: 'Could not find or create task list for recipient', detail: err }, 502);
+    }
+    defaultList = await createRes.json();
+  }
 
   // Build the To Do task
   const task = {
