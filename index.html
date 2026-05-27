@@ -19520,7 +19520,7 @@ async function loadTasksFromOneDrive() {
     refreshAll();
     renderCharts();
     renderActivity();
-    if(isAdmin())autoSyncContacts();
+    autoSyncContacts();
   } catch (err) {
     setSyncStatus("error", "Sync failed");
     console.error("OneDrive load error:", err);
@@ -19528,7 +19528,7 @@ async function loadTasksFromOneDrive() {
     refreshAll();
     renderCharts();
     renderActivity();
-    if(isAdmin())autoSyncContacts();
+    autoSyncContacts();
   }
 }
 
@@ -19999,6 +19999,17 @@ async function syncContacts(){
         if(upsertSyncedContact(p))synced++;
       });
     }
+    // Fetch ALL org users from Azure AD directory (requires User.ReadBasic.All)
+    let usersUrl='https://graph.microsoft.com/v1.0/users?$select=displayName,mail,jobTitle,department&$filter=accountEnabled eq true&$top=999';
+    while(usersUrl){
+      const uRes=await fetch(usersUrl,{headers:{Authorization:`Bearer ${token}`}});
+      if(!uRes.ok)break;
+      const ud=await uRes.json();
+      (ud.value||[]).forEach(u=>{
+        if(u.mail&&isInternalEmail(u.mail)){if(upsertSyncedContact(u))synced++;}
+      });
+      usersUrl=ud['@odata.nextLink']||null;
+    }
     synced+=await syncContactsFromMailbox();
     await saveTasksToOneDrive();
     renderAdminPeopleList();renderAdminDeptEditor();
@@ -20027,16 +20038,21 @@ async function autoSyncContacts(){
     const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=150&$select=displayName,emailAddresses,scoredEmailAddresses,department,jobTitle,userPrincipalName',{headers:{Authorization:`Bearer ${token}`}});
     if(pRes.ok){
       const pd=await pRes.json();
-      (pd.value||[]).forEach(p=>{
-        if(upsertSyncedContact(p))changed=true;
-      });
+      (pd.value||[]).forEach(p=>{if(upsertSyncedContact(p))changed=true;});
     }
     const cRes=await fetch('https://graph.microsoft.com/v1.0/me/contacts?$top=150&$select=displayName,emailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
     if(cRes.ok){
       const cd=await cRes.json();
-      (cd.value||[]).forEach(c=>{
-        if(upsertSyncedContact(c))changed=true;
-      });
+      (cd.value||[]).forEach(c=>{if(upsertSyncedContact(c))changed=true;});
+    }
+    // Fetch ALL org users from Azure AD directory (requires User.ReadBasic.All)
+    let usersUrl='https://graph.microsoft.com/v1.0/users?$select=displayName,mail,jobTitle,department&$filter=accountEnabled eq true&$top=999';
+    while(usersUrl){
+      const uRes=await fetch(usersUrl,{headers:{Authorization:`Bearer ${token}`}});
+      if(!uRes.ok)break;
+      const ud=await uRes.json();
+      (ud.value||[]).forEach(u=>{if(u.mail&&isInternalEmail(u.mail)){if(upsertSyncedContact(u))changed=true;}});
+      usersUrl=ud['@odata.nextLink']||null;
     }
     if(changed)await saveTasksToOneDrive();
   }catch{}
