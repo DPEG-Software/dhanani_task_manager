@@ -19299,39 +19299,6 @@ let CH = {};
 // ============================================================
 // PEOPLE & DEPARTMENTS DATA
 // ============================================================
-const PEOPLE_DB = [
-  {name:"Faiz Hirani",       email:"faiz@dhananipeg.com",      dept:"Investor Relations",  role:"Principal, Investor Relations",      principal:true},
-  {name:"Nurali Wadhwani",   email:"nurali@dhananipeg.com",    dept:"Accounting",          role:"CFO",                                principal:true},
-  {name:"Junior Dhanani",    email:"junior@dhananipeg.com",    dept:"Acquisitions",        role:"Director of Acquisitions",           principal:true},
-  {name:"Lucy Singh",        email:"lucy@dhananipeg.com",      dept:"Development",         role:"COO and Development",                principal:true},
-  {name:"Niyi Akindoju",     email:"niyi@dhananipeg.com",      dept:"Construction",        role:"Construction Partner",               principal:true},
-  {name:"Rahul Wadhwani",    email:"rahul@dhananipeg.com",     dept:"Marketing",           role:"Principal, Marketing",               principal:true},
-  {name:"Danish Rehman",     email:"danish.r@dhananipeg.com",  dept:"Acquisitions",        role:"VP of Transactions",                 principal:false},
-  {name:"Stephen Kradjian",  email:"stephen@dhananipeg.com",   dept:"Property Management", role:"VP of Asset Management",             principal:false},
-  {name:"Ayesha Zuberi",     email:"ayesha@dhananipeg.com",    dept:"IT",                  role:"Head of IT",                         principal:false},
-  {name:"Rahila Sultanli",   email:"rahila@dhananipeg.com",    dept:"Legal and Title",     role:"Escrow Officer, Associate Attorney", principal:false},
-  {name:"Fernando Urdaneta", email:"fernando@dhananipeg.com",  dept:"Maintenance",         role:"Facilities Manager",                 principal:false},
-  {name:"Isha Charania",     email:"isha@dhananipeg.com",      dept:"Operations",          role:"Assistant to President",             principal:false},
-  {name:"Danyale Edwards",   email:"danyale@dhananipeg.com",   dept:"Property Management", role:"Property Manager",                   principal:false},
-  {name:"Elle Anderson",     email:"elle@dhananipeg.com",      dept:"Property Management", role:"Property Manager",                   principal:false},
-  {name:"Mahi Begum",        email:"mahi@dhananipeg.com",      dept:"Property Management", role:"Accounts Payable",                   principal:false},
-  {name:"Sharukh Jawed",     email:"sharukh@dhananipeg.com",   dept:"Lending",             role:"Managing Partner",                   principal:false},
-  {name:"Ahmed Al-Zadjali",  email:"ahmed.z@dhananipeg.com",   dept:"Insurance",           role:"Managing Partner",                   principal:false},
-  {name:"Innara Velani",     email:"innara@dhananipeg.com",    dept:"Leasing",             role:"Senior Leasing Associate",           principal:false},
-  {name:"Jake Fry",          email:"jake@dhananipeg.com",      dept:"Multifamily",         role:"President, DPEG Multifamily",        principal:false},
-  {name:"Konrad Molski",     email:"konrad@dhananipeg.com",    dept:"EB-5",                role:"Director of Dhanani EB-5",           principal:false},
-  {name:"Andrej Monevski",   email:"andrej@dhananipeg.com",    dept:"Accounting",          role:"Accounting Manager",                 principal:false},
-  {name:"Hamza Shafqat",     email:"hamza@dhananipeg.com",     dept:"Accounting",          role:"Accounting Manager",                 principal:false},
-  {name:"Baltazar Rincon",   email:"baltazar@dhananipeg.com",  dept:"Maintenance",         role:"Facilities Manager, San Antonio",    principal:false},
-  {name:"Tasha Scott",       email:"tasha@dhananipeg.com",     dept:"Construction",        role:"Project Manager",                    principal:false},
-  {name:"Lyle Henkel",       email:"lyle@dhananipeg.com",      dept:"Development",         role:"Senior Development Coordinator",     principal:false},
-  {name:"Natalie Meza",      email:"natalie@dhananipeg.com",   dept:"Marketing",           role:"Director of Business Development",   principal:false},
-  {name:"Caterina Rodriguez",email:"caterina@dhananipeg.com",  dept:"Property Management", role:"Sr. Portfolio Operations Associate", principal:false},
-  {name:"Cindy Winters",     email:"cindy.w@dhananipeg.com",   dept:"Property Management", role:"Property Manager, San Antonio",      principal:false},
-  {name:"Ali Raza Meghji",   email:"ali.r@dhananipeg.com",     dept:"Acquisitions",        role:"Transaction Support Associate",      principal:false},
-  {name:"Alexsandra Velez",  email:"alexsandra@dhananipeg.com",dept:"IT",                  role:"Systems Specialist",                 principal:false},
-];
-
 const DEPARTMENTS = [
   "Investor Relations","Accounting","Acquisitions","Development",
   "Construction","Property Management","Maintenance","Marketing",
@@ -19553,7 +19520,7 @@ async function loadTasksFromOneDrive() {
     refreshAll();
     renderCharts();
     renderActivity();
-    autoSyncContacts();
+    if(isAdmin())autoSyncContacts();
   } catch (err) {
     setSyncStatus("error", "Sync failed");
     console.error("OneDrive load error:", err);
@@ -19561,7 +19528,7 @@ async function loadTasksFromOneDrive() {
     refreshAll();
     renderCharts();
     renderActivity();
-    autoSyncContacts();
+    if(isAdmin())autoSyncContacts();
   }
 }
 
@@ -19588,7 +19555,7 @@ async function saveTasksToOneDrive() {
 // ============================================================
 // HELPERS
 // ============================================================
-function avc(name) { return DEPT_COLORS[PEOPLE_DB.find(p=>p.name===name)?.dept] || "#374151"; }
+function avc(name) { return DEPT_COLORS[findPersonByName(name)?.dept] || "#374151"; }
 function dcolor(dept) { return DEPT_COLORS[dept] || "#374151"; }
 function ini(n) { return n.split(" ").map(x=>x[0]).join("").toUpperCase().slice(0,2); }
 function fmtD(d) { return new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
@@ -19598,19 +19565,15 @@ function staffKey(email,name) { return normEmail(email) || String(name||"").trim
 function findPersonByEmail(email) {
   const e=normEmail(email);
   const configured=Object.values(staffConfig).find(x=>normEmail(x.email)===e);
-  return configured || PEOPLE_DB.find(x=>normEmail(x.email)===e);
+  return configured || null;
 }
 function findPersonByName(name) {
   const n=String(name||"").trim().toLowerCase();
-  return staffConfig[n] || Object.values(staffConfig).find(x=>String(x.name||"").trim().toLowerCase()===n) || PEOPLE_DB.find(x=>x.name.toLowerCase()===n);
+  return staffConfig[n] || Object.values(staffConfig).find(x=>String(x.name||"").trim().toLowerCase()===n) || null;
 }
 function isInternalEmail(email) {
   const e=normEmail(email);
   return e.endsWith("@dhananipeg.com") || e.endsWith("@dpeg.com");
-}
-function isKnownInternalPerson(person) {
-  if(!person)return false;
-  return isInternalEmail(person.email) || !!findPersonByName(person.name);
 }
 function configuredDept(email,name) {
   const key = staffKey(email,name);
@@ -19878,7 +19841,6 @@ function switchAdminTab(tab){
 }
 function allKnownPeople(){
   const map={};
-  PEOPLE_DB.forEach(p=>{const k=normEmail(p.email||'');if(k)map[k]={...p,src:'default'};});
   Object.values(staffConfig).forEach(p=>{if(!p?.email)return;const k=normEmail(p.email);map[k]={...map[k],...p,src:'custom'};});
   return Object.values(map).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
 }
@@ -19938,6 +19900,73 @@ async function saveAdminSettings(){
   initSelects();
   toast('Admin settings saved');
 }
+function graphEmailValue(item){
+  if(!item)return "";
+  if(typeof item==="string")return item;
+  return item.address||item.emailAddress?.address||item.email||item.mail||item.userPrincipalName||"";
+}
+function graphNameValue(item,email){
+  if(item?.displayName)return item.displayName;
+  if(item?.name)return item.name;
+  if(item?.emailAddress?.name)return item.emailAddress.name;
+  if(item?.givenName&&item?.surname)return `${item.givenName} ${item.surname}`;
+  return email.split("@")[0];
+}
+function upsertSyncedContact(raw,defaultDept="Needs Department"){
+  const candidates=[
+    ...(raw.emailAddresses||[]),
+    ...(raw.scoredEmailAddresses||[]),
+    raw.mail,
+    raw.userPrincipalName,
+    raw.email,
+    raw.emailAddress
+  ];
+  let email="";
+  for(const c of candidates){
+    email=normEmail(graphEmailValue(c));
+    if(email&&email.includes("@"))break;
+  }
+  if(!email||!email.includes("@"))return false;
+  const name=(raw.displayName||raw.name||raw.emailAddress?.name||graphNameValue(raw,email)||email.split("@")[0]).trim();
+  const dept=raw.department||defaultDept;
+  const role=raw.jobTitle||raw.role||"";
+  const key=staffKey(email,name);
+  const before=JSON.stringify(staffConfig[key]||null);
+  staffConfig[key]={...(staffConfig[key]||{}),name,email,dept:staffConfig[key]?.dept||dept,role:staffConfig[key]?.role||role};
+  return JSON.stringify(staffConfig[key])!==before;
+}
+function contactsFromMessage(m){
+  return [
+    m.from?.emailAddress,
+    m.sender?.emailAddress,
+    ...(m.toRecipients||[]).map(r=>r.emailAddress),
+    ...(m.ccRecipients||[]).map(r=>r.emailAddress),
+    ...(m.bccRecipients||[]).map(r=>r.emailAddress),
+  ].filter(Boolean);
+}
+async function syncContactsFromMailbox(){
+  let added=0;
+  try{
+    const token=await getAccessToken();
+    const urls=[
+      "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=100&$select=from,sender,toRecipients,ccRecipients,receivedDateTime&$orderby=receivedDateTime desc",
+      "https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=from,sender,toRecipients,ccRecipients,bccRecipients,sentDateTime&$orderby=sentDateTime desc"
+    ];
+    for(const url of urls){
+      const res=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
+      if(!res.ok)continue;
+      const data=await res.json();
+      (data.value||[]).forEach(m=>{
+        contactsFromMessage(m).forEach(c=>{
+          if(upsertSyncedContact({name:c.name,displayName:c.name,emailAddress:c},isInternalEmail(c.address)?"Needs Department":"Outside DPEG"))added++;
+        });
+      });
+    }
+  }catch(err){
+    console.warn("Mailbox contact sync skipped:",err.message);
+  }
+  return added;
+}
 async function syncContacts(){
   if(!isAdmin()){toast('Admin access only');return;}
   const btn=document.getElementById('sync-contacts-btn');
@@ -19959,39 +19988,26 @@ async function syncContacts(){
     if(cRes.ok){
       const cd=await cRes.json();
       (cd.value||[]).forEach(c=>{
-        const email=(c.emailAddresses?.[0]?.address||'').toLowerCase();
-        if(!email||!email.includes('@'))return;
-        const name=c.displayName||email.split('@')[0];
-        const dept=c.department||'Needs Department';
-        const role=c.jobTitle||'';
-        const key=staffKey(email,name);
-        staffConfig[key]={...(staffConfig[key]||{}),name,email,dept:staffConfig[key]?.dept||dept,role:staffConfig[key]?.role||role};
-        synced++;
+        if(upsertSyncedContact(c))synced++;
       });
     }
     // Fetch People (colleagues)
-    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=100&$select=displayName,emailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
+    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=100&$select=displayName,emailAddresses,scoredEmailAddresses,department,jobTitle,userPrincipalName',{headers:{Authorization:`Bearer ${token}`}});
     if(pRes.ok){
       const pd=await pRes.json();
       (pd.value||[]).forEach(p=>{
-        const email=(p.emailAddresses?.[0]?.address||'').toLowerCase();
-        if(!email||!email.includes('@'))return;
-        const name=p.displayName||email.split('@')[0];
-        const dept=p.department||'Needs Department';
-        const role=p.jobTitle||'';
-        const key=staffKey(email,name);
-        if(!staffConfig[key]){
-          staffConfig[key]={name,email,dept,role};
-          synced++;
-        }
+        if(upsertSyncedContact(p))synced++;
       });
     }
+    synced+=await syncContactsFromMailbox();
     await saveTasksToOneDrive();
     renderAdminPeopleList();renderAdminDeptEditor();
     initSelects();
     status.textContent=`✓ Synced ${synced} contacts`;
+    const available=allKnownPeople().length;
+    status.textContent=`Synced ${synced} new/updated contact${synced!==1?'s':''}. ${available} available in autocomplete.`;
     status.style.color='var(--forest)';
-    toast(`${synced} contacts synced from Outlook`);
+    toast(`${available} contacts available for autocomplete`);
   }catch(err){
     status.textContent=`✗ Sync failed: ${err.message}`;
     status.style.color='#dc2626';
@@ -20008,32 +20024,18 @@ async function autoSyncContacts(){
       token=r.accessToken;
     }catch{return;}
     let changed=false;
-    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=150&$select=displayName,emailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
+    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=150&$select=displayName,emailAddresses,scoredEmailAddresses,department,jobTitle,userPrincipalName',{headers:{Authorization:`Bearer ${token}`}});
     if(pRes.ok){
       const pd=await pRes.json();
       (pd.value||[]).forEach(p=>{
-        const email=(p.emailAddresses?.[0]?.address||'').toLowerCase();
-        if(!email||!email.includes('@'))return;
-        const name=p.displayName||email.split('@')[0];
-        const dept=p.department||'Needs Department';
-        const role=p.jobTitle||'';
-        const key=staffKey(email,name);
-        if(!staffConfig[key]){staffConfig[key]={name,email,dept,role};changed=true;}
-        else if(!staffConfig[key].name){staffConfig[key].name=name;changed=true;}
+        if(upsertSyncedContact(p))changed=true;
       });
     }
     const cRes=await fetch('https://graph.microsoft.com/v1.0/me/contacts?$top=150&$select=displayName,emailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
     if(cRes.ok){
       const cd=await cRes.json();
       (cd.value||[]).forEach(c=>{
-        const email=(c.emailAddresses?.[0]?.address||'').toLowerCase();
-        if(!email||!email.includes('@'))return;
-        const name=c.displayName||email.split('@')[0];
-        const dept=c.department||'Needs Department';
-        const role=c.jobTitle||'';
-        const key=staffKey(email,name);
-        staffConfig[key]={...(staffConfig[key]||{}),name,email,dept:staffConfig[key]?.dept||dept,role:staffConfig[key]?.role||role};
-        changed=true;
+        if(upsertSyncedContact(c))changed=true;
       });
     }
     if(changed)await saveTasksToOneDrive();
@@ -20159,7 +20161,6 @@ function deptAbbr(dept){
 }
 function peopleOptions(){
   const map=new Map();
-  PEOPLE_DB.forEach(p=>map.set(p.name.toLowerCase(),p));
   Object.values(staffConfig).forEach(p=>{if(p?.name)map.set(p.name.toLowerCase(),p);});
   tasks.forEach(t=>{
     if(t.person&&(isInternalEmail(t.email)||staffConfig[staffKey(t.email,t.person)])){
@@ -20176,7 +20177,7 @@ function showAddTaskAC(val){
   if(clearBtn)clearBtn.style.display=token?'block':'none';
   if(!token){ac.style.display='none';return;}
   const seen=new Set();
-  const matches=[...PEOPLE_DB,...Object.values(staffConfig).filter(p=>p?.email&&p?.name)]
+  const matches=Object.values(staffConfig).filter(p=>p?.email&&p?.name)
     .filter(p=>{const k=normEmail(p.email||'');if(!k||seen.has(k))return false;seen.add(k);
       return (p.name||'').toLowerCase().includes(token)||k.includes(token)||(p.role||'').toLowerCase().includes(token)||(p.dept||'').toLowerCase().includes(token);
     }).slice(0,8);
@@ -20361,7 +20362,6 @@ function renderPplList(filter){
     if(!pp[t.person])pp[t.person]={name:t.person,email:t.email||"",dept:personDept(t.email,t.person),tasks:[]};
     pp[t.person].tasks.push(t);
   });
-  PEOPLE_DB.forEach(p=>{if(!pp[p.name])pp[p.name]={name:p.name,dept:p.dept,tasks:[],principal:p.principal,role:p.role};else{pp[p.name].principal=p.principal;pp[p.name].role=p.role;}});
   const list=Object.values(pp).filter(p=>!filter||p.name.toLowerCase().includes(filter.toLowerCase())||p.dept.toLowerCase().includes(filter.toLowerCase()));
   const el=document.getElementById("ppl-list");
   if(!list.length){el.innerHTML=`<div style="padding:14px;text-align:center;font-size:12px;color:var(--muted)">No results</div>`;return;}
@@ -20964,7 +20964,7 @@ function showComposeAC(inputId, acId){
   const token=(lastSep>=0?val.slice(lastSep+1):val).trim().toLowerCase();
   if(!token.length){ac.style.display='none';return;}
   const seen=new Set();
-  const matches=[...PEOPLE_DB,...Object.values(staffConfig).filter(p=>p?.email&&p?.name)]
+  const matches=Object.values(staffConfig).filter(p=>p?.email&&p?.name)
     .filter(p=>{
       const k=normEmail(p.email||'');
       if(!k||seen.has(k))return false;
@@ -21796,5 +21796,6 @@ if (typeof msal !== 'undefined' && typeof msal.PublicClientApplication === 'func
   console.error('MSAL check failed. msal:', typeof msal);
 }
 </script>
+<script src="contacts.js"></script>
 </body>
 </html>
