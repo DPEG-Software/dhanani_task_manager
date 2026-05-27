@@ -21421,6 +21421,10 @@ async function openTaskThread(taskId){
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+    const latest=messages[messages.length-1]||t;
+    messages.forEach(m=>{emailCache[m.id]=m;});
+    await renderOutlookReader(latest,messages,'inbox',trackedEmailIds.has(t.id)||trackedEmailIds.has(t.conversationId));
+    return;
     window._emailFrameBodies=[];
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
@@ -21490,6 +21494,134 @@ async function loadThreadAttachmentChips(messages){
   }
 }
 
+function emailMsgDate(m){
+  return new Date(m.receivedDateTime||m.sentDateTime||Date.now());
+}
+
+function frameSrcDoc(html){
+  return `<!doctype html><html><head><base target="_blank"><style>html,body{margin:0;padding:0;overflow:hidden;font-family:Inter,Arial,sans-serif;color:#1f2937;line-height:1.55}img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>${html||''}</body></html>`;
+}
+
+function renderMessageBody(m,frameId){
+  const body=m.body?.content||m.bodyPreview||'';
+  const isHtml=String(m.body?.contentType||'').toLowerCase()==='html';
+  if(isHtml){
+    return `<iframe id="${frameId}" data-html-body="${frameId}" scrolling="no" style="width:100%;border:none;display:block;min-height:260px;overflow:hidden" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`;
+  }
+  return `<div style="padding:0 20px 22px;font-size:13.5px;line-height:1.7;color:var(--body)"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6;margin:0">${escapeHtml(body)}</pre></div>`;
+}
+
+function fillMessageFrames(readerEl,messages){
+  messages.forEach((m,i)=>{
+    const fr=readerEl.querySelector(`#msg-frame-${i}`);
+    if(!fr)return;
+    fr.addEventListener('load',()=>{
+      try{
+        const doc=fr.contentDocument;
+        if(doc){
+          doc.documentElement.style.overflow='hidden';
+          doc.body.style.overflow='hidden';
+          fr.style.height=Math.max(doc.body.scrollHeight,260)+'px';
+        }
+      }catch(e){}
+    });
+    fr.srcdoc=frameSrcDoc(m.body?.content||m.bodyPreview||'');
+  });
+}
+
+function renderConversationContext(messages,currentIndex){
+  const prior=messages.slice(0,currentIndex);
+  if(!prior.length)return '';
+  return `<div style="padding:14px 20px 8px;background:#fff;border-bottom:1px solid var(--border)">
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Earlier conversation</div>
+    ${prior.map((m,i)=>{
+      const from=m.from?.emailAddress;
+      const dt=emailMsgDate(m);
+      return `<details ${i===prior.length-1?'open':''} style="border:1px solid var(--border);border-radius:7px;margin-bottom:8px;background:#f9fafb;overflow:hidden">
+        <summary style="cursor:pointer;list-style:none;padding:9px 11px;display:flex;align-items:center;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12.5px;font-weight:700;color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${from?.name||from?.address||'Unknown sender'}</div>
+            <div style="font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.bodyPreview||m.subject||''}</div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap">${dt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+        </summary>
+        <div style="padding:0 11px 11px;font-size:12.5px;line-height:1.55;color:var(--body);white-space:pre-wrap">${escapeHtml(m.bodyPreview||'')}</div>
+      </details>`;
+    }).join('')}
+  </div>`;
+}
+
+async function renderOutlookReader(email,messages,folder,isTracked){
+  const readerEl=document.getElementById('ol-email-reader');
+  if(!readerEl)return;
+  const sorted=(messages&&messages.length?messages:[email]).sort((a,b)=>emailMsgDate(a)-emailMsgDate(b));
+  let currentIndex=sorted.findIndex(m=>m.id===email.id);
+  if(currentIndex<0)currentIndex=sorted.length-1;
+  const current=sorted[currentIndex];
+  emailCache[current.id]=current;
+  const sender=current.from?.emailAddress;
+  const toList=current.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
+  const ccList=current.ccRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
+  const dt=emailMsgDate(current);
+  const dateStr=dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const frameId=`msg-frame-${currentIndex}`;
+  readerEl.innerHTML=`
+    <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border);background:#fff;flex-shrink:0">
+      <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:12px;line-height:1.3">${current.subject||'(no subject)'}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="replyEmail('${current.id}')"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Reply</button>
+        <button class="btn btn-ghost btn-sm" onclick="forwardEmail('${current.id}')"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Forward</button>
+        ${current.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${current.id}')">Open in Outlook</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="toggleEmailAISummary('${current.id}')" style="color:#7c3aed;border-color:#c4b5fd" title="AI summary of this thread">AI Summary</button>
+        ${isTracked
+          ?`<span class="btn btn-ghost btn-sm" style="color:var(--leaf);border-color:var(--leaf-bd);background:var(--leaf-bg);cursor:default">In Action Log</span><button class="btn btn-ghost btn-sm" onclick="updateTrackedThreadFromEmail('${current.id}')">Update Summary</button><button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="removeTaskByEmail('${current.id}')">Remove</button>`
+          :`<button class="btn btn-primary btn-sm" onclick="addTaskFromEmail('${current.id}')">+ Add to Tasks</button>`}
+      </div>
+    </div>
+    <div id="email-ai-summary-panel" style="display:none;padding:10px 20px;background:#f5f3ff;border-bottom:1px solid #ddd6fe;flex-shrink:0">
+      <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:6px;letter-spacing:.04em">AI SUMMARY</div>
+      <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:var(--body)"></div>
+    </div>
+    ${renderConversationContext(sorted,currentIndex)}
+    <div id="current-email-message" style="background:#fff">
+      <div style="padding:16px 20px 10px">
+        <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">From:</span> ${sender?.name||''} &lt;${sender?.address||''}&gt;</div>
+        <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">To:</span> ${toList}</div>
+        ${ccList?`<div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">CC:</span> ${ccList}</div>`:''}
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${dateStr}</div>
+        <div id="email-attachments-top" style="display:none;margin-bottom:12px"></div>
+      </div>
+      ${renderMessageBody(current,frameId)}
+    </div>`;
+  const fr=readerEl.querySelector(`#${frameId}`);
+  if(fr){
+    fr.addEventListener('load',()=>{
+      try{
+        const doc=fr.contentDocument;
+        if(doc){
+          doc.documentElement.style.overflow='hidden';
+          doc.body.style.overflow='hidden';
+          fr.style.height=Math.max(doc.body.scrollHeight,260)+'px';
+        }
+      }catch(e){}
+      setTimeout(()=>{document.getElementById('current-email-message')?.scrollIntoView({block:'start'});},40);
+    });
+    fr.srcdoc=frameSrcDoc(current.body?.content||current.bodyPreview||'');
+  }else{
+    setTimeout(()=>document.getElementById('current-email-message')?.scrollIntoView({block:'start'}),40);
+  }
+  if(current.hasAttachments){
+    try{
+      const atts=await fetchVisibleAttachments(current.id);
+      const attDiv=document.getElementById('email-attachments-top');
+      if(atts.length&&attDiv){
+        attDiv.style.display='block';
+        attDiv.innerHTML=`<div style="display:flex;gap:7px;flex-wrap:wrap">${atts.map(a=>attachmentChipHTML(current.id,a)).join('')}</div>`;
+      }
+    }catch{}
+  }
+}
+
 async function viewFullThread(emailId){
   const email=emailCache[emailId];
   if(!email?.conversationId){toast('Full thread is not available for this email');return;}
@@ -21504,6 +21636,10 @@ async function viewFullThread(emailId){
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+    const latest=messages[messages.length-1]||email;
+    messages.forEach(m=>{emailCache[m.id]=m;});
+    await renderOutlookReader(latest,messages,currentFolder,trackedEmailIds.has(emailId)||trackedEmailIds.has(email.conversationId));
+    return;
     window._emailFrameBodies=[];
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
@@ -21557,6 +21693,32 @@ async function readEmail(emailId,folder){
     if(!res.ok)throw new Error('Failed');
     const email=await res.json();
     emailCache[emailId]=email;
+    const trackedNow=trackedEmailIds.has(emailId)||trackedEmailIds.has(email.conversationId);
+    let threadMessages=[email];
+    if(email.conversationId){
+      try{
+        const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
+        const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments';
+        const threadRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+        if(threadRes.ok){
+          const threadData=await threadRes.json();
+          threadMessages=threadData.value?.length?threadData.value:threadMessages;
+          threadMessages.forEach(m=>{emailCache[m.id]=m;});
+        }
+      }catch(err){console.warn('Conversation load failed:',err.message);}
+    }
+    await renderOutlookReader(email,threadMessages,folder,trackedNow);
+    if(!email.isRead&&folder==='inbox'){
+      const readRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
+      if(readRes.ok){
+        email.isRead=true;
+        if(clickedEl)clickedEl.classList.remove('unread');
+        const cached=(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId);
+        if(cached)cached.isRead=true;
+        updateUnreadBadges(-1);
+      }
+    }
+    return;
     const sender=email.from?.emailAddress;
     const toList=email.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
     const ccList=email.ccRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
