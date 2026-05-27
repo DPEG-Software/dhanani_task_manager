@@ -19680,19 +19680,17 @@ function formatSummaryHTML(summary){
       const lbl=inner.slice(0,ci).trim();
       const val=inner.slice(ci+1).trim();
       const key=lbl.toLowerCase();
-      const cls=key.includes('involved')?'s-involved':key.includes('action')?'s-action':key.includes('key info')||key.includes('detail')?'s-facts':'';
+      const cls=key.includes('action')?'s-action':key.includes('latest')?'s-facts':'';
       return `<div class="sum-row${cls?' '+cls:''}"><span class="lbl">${lbl}</span><span class="val">${val}</span></div>`;
     }
     return `<div class="sum-row"><span class="val" style="grid-column:1/-1">${inner}</span></div>`;
   });
   const rankSummaryLine=line=>{
     const txt=String(line).toLowerCase();
-    if(txt.includes('topic:'))return 1;
-    if(txt.includes('about:')||txt.includes('context:')||txt.includes('manager takeaway:'))return 2;
-    if(txt.includes('latest:')||txt.includes('latest update:'))return 3;
-    if(txt.includes('action needed:')||txt.includes('needed:'))return 4;
-    if(txt.includes('dpeg involved:')||txt.includes('involved'))return 5;
-    return 6;
+    if(txt.includes('about:'))return 1;
+    if(txt.includes('latest:'))return 2;
+    if(txt.includes('action needed:')||txt.includes('action:'))return 3;
+    return 4;
   };
   return `<div class="sum-rows">${rows.map((html,i)=>({html,i,rank:rankSummaryLine(lines[i])})).sort((a,b)=>a.rank-b.rank||a.i-b.i).map(x=>x.html).join('')}</div>`;
 }
@@ -20219,11 +20217,24 @@ async function callAISummary(messages, subject){
       }
       return null;
     })();
-    const emailText=ordered.map(m=>cleanEmailText(m.body?.contentType==="html"?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||"")).join("\n\n---\n\n");
+    // Format each message with clear FROM/DATE attribution so the AI knows context
+    const emailText=ordered.map(m=>{
+      const from=m.from?.emailAddress?.name||m.from?.emailAddress?.address||'Unknown';
+      const dt=new Date(m.receivedDateTime||m.sentDateTime||0);
+      const dateStr=isNaN(dt)?'':dt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      const text=cleanEmailText(m.body?.contentType==='html'?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||'');
+      return `[${from}${dateStr?' — '+dateStr:''}]\n${text}`;
+    }).join('\n---\n');
+    // Latest message details sent separately so the worker can anchor Action needed to it
+    const latest=ordered[ordered.length-1];
+    const latestSender=latest?.from?.emailAddress?.name||latest?.from?.emailAddress?.address||'';
+    const latestDt=new Date(latest?.receivedDateTime||latest?.sentDateTime||0);
+    const latestDate=isNaN(latestDt)?'':latestDt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const latestMessageText=cleanEmailText(latest?.body?.contentType==='html'?stripEmailHtml(latest?.body?.content):latest?.body?.content||latest?.bodyPreview||'');
     const res=await fetch(fnUrl,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
-      body:JSON.stringify({subject:subject||'Email thread',emailText,senderName:sender||'',messageCount:ordered.length})
+      body:JSON.stringify({subject:subject||'Email thread',emailText,senderName:sender||'',messageCount:ordered.length,latestMessageText,latestSender,latestDate})
     });
     if(!res.ok)return null;
     const data=await res.json();
@@ -20599,7 +20610,7 @@ function renderActivity(){
 function compactSummaryLines(summary){
   if(!summary)return[];
   const lines=summary.split('\n').map(l=>l.replace(/^[•*▾▲◆]\s*/,'').trim()).filter(Boolean);
-  const order=['about:','action needed:','action:','latest:','key info:'];
+  const order=['about:','latest:','action needed:','action:'];
   const picked=[];
   for(const key of order){
     const m=lines.find(l=>l.toLowerCase().startsWith(key));
@@ -21568,7 +21579,6 @@ async function readEmail(emailId,folder){
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:10px;line-height:1.3">${email.subject||'(no subject)'}</div>
-        <div id="email-attachments-top" style="display:none;margin-bottom:12px"></div>
         <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">From:</span> ${sender?.name||''} &lt;${sender?.address||''}&gt;</div>
         <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">To:</span> ${toList}</div>
         ${ccList?`<div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">CC:</span> ${ccList}</div>`:''}
@@ -21591,6 +21601,7 @@ async function readEmail(emailId,folder){
           }
         </div>
       </div>
+      <div id="email-attachments-top" style="display:none;padding:8px 20px 10px;background:#f9fafb;border-bottom:1px solid var(--border);flex-shrink:0"></div>
       <div id="email-ai-summary-panel" style="display:none;padding:10px 20px;background:#f5f3ff;border-bottom:1px solid #ddd6fe;flex-shrink:0">
         <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:6px;letter-spacing:.04em">✦ AI SUMMARY</div>
         <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:var(--body)"></div>
@@ -21616,7 +21627,7 @@ async function readEmail(emailId,folder){
           const attDiv=document.getElementById('email-attachments-top');
           if(attDiv){
             attDiv.style.display='block';
-            attDiv.innerHTML=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:7px">Attachments (${atts.length})</div><div style="display:flex;gap:7px;flex-wrap:wrap">${atts.map(a=>attachmentChipHTML(emailId,a)).join('')}</div>`;
+            attDiv.innerHTML=`<div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:5px"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-weight:600;text-transform:uppercase;letter-spacing:.4px">${atts.length} attachment${atts.length>1?'s':''}</span></div><div style="display:flex;gap:7px;flex-wrap:wrap">${atts.map(a=>attachmentChipHTML(emailId,a)).join('')}</div>`;
           }
         }
       }catch{}

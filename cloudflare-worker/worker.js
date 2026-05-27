@@ -149,26 +149,32 @@ async function handleSummary(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
 
-  const { subject = '', emailText = '', senderName = '', messageCount = 1 } = body;
+  const { subject = '', emailText = '', senderName = '', messageCount = 1, latestMessageText = '', latestSender = '', latestDate = '' } = body;
   if (!emailText && !subject) {
     return json({ error: 'Provide emailText or subject' }, 400);
   }
 
   const prompt = `You are an executive assistant briefing a busy property investment executive at DPEG (Dhanani Private Equity Group).
 
-Email subject: "${subject}"${senderName ? `\nFrom: ${senderName}` : ''}${messageCount > 1 ? `\nThread: ${messageCount} messages` : ''}
+Subject: "${subject}"${senderName ? `\nExternal contact: ${senderName}` : ''}
+${messageCount > 1 ? `Thread: ${messageCount} messages (oldest → newest below)` : 'Single email'}
 
-Email content:
-${emailText.slice(0, 3500)}
+THREAD CONTENT:
+${emailText.slice(0, 2800)}
+${latestMessageText ? `\nLATEST MESSAGE${latestSender ? ` — from ${latestSender}` : ''}${latestDate ? ` (${latestDate})` : ''}:\n${latestMessageText.slice(0, 700)}` : ''}
 
 Write a concise executive briefing using ONLY these bullet labels. Skip any bullet that has no meaningful content:
 
-• About: [One sentence — what is this email actually about? Be specific.]
-• Action needed: [One sentence — what must DPEG do or decide? Use a direct verb.]
-• Key info: [One concrete fact — a dollar amount, date, deadline, property name, or percentage. Skip if none.]
-• Latest: [One sentence — the most recent development or what was last said.]
+• About: [One sentence — what is this specifically about? Name the property, deal, person, or issue directly.]
+• Latest: [What was just said or sent in the most recent message. Embed any dollar amounts, dates, deadlines, or key facts here — do not create a separate facts bullet.]
+• Action needed: [Based on the LATEST message only — what must DPEG act on or decide right now? Start with a verb. Skip entirely if nothing actionable.]
 
-Rules: Never say "the email discusses". State specifics directly. Max 200 words.`;
+Rules:
+- Never say "the email discusses", "this email is about", or "the sender"
+- State specifics directly — names, numbers, property addresses, deadlines
+- "Action needed" must come from the most recent message, not earlier history
+- If the latest message is just a reply acknowledgment with no new ask, skip Action needed
+- Max 160 words total`;
 
   const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -176,8 +182,8 @@ Rules: Never say "the email discusses". State specifics directly. Max 200 words.
     body: JSON.stringify({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 250,
-      temperature: 0.2,
+      max_tokens: 350,
+      temperature: 0.1,
     }),
   });
 
