@@ -111,11 +111,70 @@
     return changed;
   }
 
+  function normalizedSearchToken(token) {
+    return String(token || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^[<"'(\[\s]+|[>:"')\]\s]+$/g, "");
+  }
+
+  function profileContacts() {
+    const map = new Map();
+    if (typeof PRINCIPALS !== "undefined") {
+      Object.entries(PRINCIPALS).forEach(([email, profile]) => {
+        map.set(normEmail(email), {
+          name: profile.name || email.split("@")[0],
+          email: normEmail(email),
+          dept: "Needs Department",
+          role: profile.role || "",
+        });
+      });
+    }
+    if (typeof ADMIN_EMAILS !== "undefined" && Array.isArray(ADMIN_EMAILS)) {
+      ADMIN_EMAILS.forEach((email) => {
+        const key = normEmail(email);
+        if (!key || map.has(key)) return;
+        const configured = Object.values(staffConfig).find((p) => normEmail(p.email) === key);
+        map.set(key, {
+          name: configured?.name || key.split("@")[0].replace(/[._-]+/g, " "),
+          email: key,
+          dept: configured?.dept || "Needs Department",
+          role: configured?.role || "Admin",
+        });
+      });
+    }
+    if (currentUser?.email) {
+      const key = normEmail(currentUser.email);
+      const existing = map.get(key) || {};
+      map.set(key, {
+        ...existing,
+        name: currentUser.name || existing.name || key.split("@")[0],
+        email: key,
+        dept: existing.dept || "Needs Department",
+        role: existing.role || "Current user",
+      });
+    }
+    return [...map.values()];
+  }
+
+  function contactSearchPool() {
+    const map = new Map();
+    profileContacts().forEach((p) => {
+      if (p?.email) map.set(normEmail(p.email), p);
+    });
+    Object.values(staffConfig).forEach((p) => {
+      if (!p?.email || !p?.name) return;
+      const key = normEmail(p.email);
+      map.set(key, { ...(map.get(key) || {}), ...p, email: key });
+    });
+    return [...map.values()];
+  }
+
   function contactMatches(token) {
-    const q = String(token || "").trim().toLowerCase();
+    const q = normalizedSearchToken(token);
     if (q.length < 2) return [];
     const seen = new Set();
-    return Object.values(staffConfig)
+    return contactSearchPool()
       .filter((p) => p?.email && p?.name)
       .filter((p) => {
         const email = normEmail(p.email);
@@ -206,7 +265,7 @@
     if (!input || !ac) return;
     const val = input.value;
     const lastSep = Math.max(val.lastIndexOf(","), val.lastIndexOf(";"));
-    const token = (lastSep >= 0 ? val.slice(lastSep + 1) : val).trim();
+    const token = normalizedSearchToken(lastSep >= 0 ? val.slice(lastSep + 1) : val);
     const matches = contactMatches(token);
     if (!matches.length) { ac.style.display = "none"; return; }
     ac.innerHTML = renderContactItems(acId, matches, (p) => `selectComposeAC('${inputId}','${acId}','${String(p.email || "").replace(/'/g, "\\'")}')`);
@@ -225,7 +284,7 @@
     const clearBtn = document.getElementById("nt-clear-btn");
     if (clearBtn) clearBtn.style.display = val ? "block" : "none";
     if (!ac || !input) return;
-    const matches = contactMatches(val);
+    const matches = contactMatches(normalizedSearchToken(val));
     if (!matches.length) { ac.style.display = "none"; return; }
     ac.innerHTML = renderContactItems("nt-ac", matches, (p) =>
       `selectAddTaskAC('${String(p.name || "").replace(/'/g, "\\'")}','${String(p.email || "").replace(/'/g, "\\'")}','${String(p.dept || "").replace(/'/g, "\\'")}')`
