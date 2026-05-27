@@ -84,6 +84,24 @@
     return changed;
   }
 
+  async function syncOrgDirectory(token) {
+    let changed = 0;
+    const url = "https://graph.microsoft.com/v1.0/users?$top=999&$select=displayName,mail,userPrincipalName,department,jobTitle,accountEnabled";
+    const users = await graphGetAll(url, token, 50);
+    users
+      .filter((u) => u.accountEnabled !== false)
+      .forEach((u) => {
+        if (upsertContact({
+          displayName: u.displayName,
+          mail: u.mail || u.userPrincipalName,
+          userPrincipalName: u.userPrincipalName,
+          department: u.department,
+          jobTitle: u.jobTitle,
+        })) changed++;
+      });
+    return changed;
+  }
+
   function contactsFromMessage(m) {
     return [
       m.from?.emailAddress,
@@ -225,9 +243,10 @@
         token = (await msalInstance.acquireTokenPopup({ scopes: SCOPES_CONTACTS })).accessToken;
       }
       let changed = 0;
-      changed += await syncOutlookContactsFull(token);
-      changed += await syncPeopleSuggestions(token);
-      changed += await syncMailboxNames(token);
+      try { changed += await syncOrgDirectory(token); } catch (err) { console.warn("Directory sync skipped:", err.message); }
+      try { changed += await syncOutlookContactsFull(token); } catch (err) { console.warn("Outlook contacts sync skipped:", err.message); }
+      try { changed += await syncPeopleSuggestions(token); } catch (err) { console.warn("People suggestions sync skipped:", err.message); }
+      try { changed += await syncMailboxNames(token); } catch (err) { console.warn("Mailbox contact sync skipped:", err.message); }
       await saveTasksToOneDrive();
       renderAdminPeopleList();
       renderAdminDeptEditor();
@@ -253,8 +272,9 @@
     try {
       const token = (await msalInstance.acquireTokenSilent({ scopes: SCOPES_CONTACTS, account: currentAccount })).accessToken;
       const before = JSON.stringify(staffConfig);
-      await syncOutlookContactsFull(token);
-      await syncPeopleSuggestions(token);
+      try { await syncOrgDirectory(token); } catch {}
+      try { await syncOutlookContactsFull(token); } catch {}
+      try { await syncPeopleSuggestions(token); } catch {}
       if (JSON.stringify(staffConfig) !== before) await saveTasksToOneDrive();
     } catch {}
   };
