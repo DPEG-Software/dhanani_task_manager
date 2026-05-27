@@ -18606,6 +18606,12 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .ol-folder{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);cursor:pointer;font-size:12.5px;font-weight:500;color:var(--sub);transition:all .15s;margin-bottom:1px}
 .ol-folder:hover{background:var(--sage3);color:var(--ink)}
 .ol-folder.active{background:var(--sage2);color:var(--ink);font-weight:700}
+.ol-sb-collapsed .ol-sb-text{display:none}
+.ol-sb-collapsed .ol-sb-label{display:none}
+.ol-sb-collapsed .ol-sb-sep{margin:3px 0}
+.ol-sb-collapsed .ol-folder{justify-content:center;padding:8px 4px}
+.ol-sb-collapsed #ol-compose-btn{padding:9px;justify-content:center}
+.ol-sb-collapsed #ol-inbox-count,.ol-sb-collapsed #ol-untracked-count{margin-left:0;position:absolute;top:2px;right:2px;font-size:8px;padding:0 3px}
 .ol-email-item{padding:12px 14px;border-bottom:1px solid #f3f4f6;cursor:pointer;transition:background .12s}
 .ol-email-item:hover{background:#f9fafb}
 .ol-email-item.active{background:var(--sage3);border-left:3px solid var(--ink)}
@@ -18919,33 +18925,36 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     <div style="display:grid;grid-template-columns:180px 320px 1fr;height:100%;overflow:hidden;background:var(--white);border-top:1px solid var(--border)">
 
       <!-- LEFT: Folders -->
-      <div style="border-right:1px solid var(--border);background:#f9fafb;display:flex;flex-direction:column;height:100%;overflow:hidden">
-        <div style="padding:14px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
-          <button class="btn btn-primary" style="width:100%;font-size:12.5px;padding:9px 12px" onclick="openCompose()">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke-width="2.5" stroke-linecap="round"/></svg>
-            New Email
+      <div id="ol-left-panel" style="border-right:1px solid var(--border);background:#f9fafb;display:flex;flex-direction:column;height:100%;overflow:hidden;transition:width .2s ease">
+        <div style="padding:10px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:6px">
+          <button id="ol-compose-btn" class="btn btn-primary" style="flex:1;min-width:0;font-size:12.5px;padding:9px 10px;display:flex;align-items:center;justify-content:center;gap:6px;overflow:hidden" onclick="openCompose()" title="New Email">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M12 5v14M5 12h14" stroke-width="2.5" stroke-linecap="round"/></svg>
+            <span class="ol-sb-text">New Email</span>
+          </button>
+          <button id="ol-sb-toggle" onclick="toggleOlSidebar()" title="Collapse sidebar" style="border:1px solid var(--border);background:none;cursor:pointer;padding:5px 6px;border-radius:var(--r);color:var(--muted);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--sage3)'" onmouseout="this.style.background='none'">
+            <svg id="ol-sb-arrow" width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
-        <div style="padding:8px;flex:1;overflow-y:auto">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:8px 8px 4px">Folders</div>
-          <div id="ol-folder-inbox" class="ol-folder active" onclick="loadFolder('inbox')">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4" stroke-width="2" stroke-linecap="round"/></svg>
-            Inbox
+        <div style="padding:6px;flex:1;overflow-y:auto">
+          <div class="ol-sb-label" style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:8px 8px 4px">Folders</div>
+          <div id="ol-folder-inbox" class="ol-folder active" onclick="loadFolder('inbox')" title="Inbox" style="position:relative">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4" stroke-width="2" stroke-linecap="round"/></svg>
+            <span class="ol-sb-text">Inbox</span>
             <span id="ol-inbox-count" style="margin-left:auto;background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;display:none"></span>
           </div>
-          <div id="ol-folder-sent" class="ol-folder" onclick="loadFolder('sent')">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Sent Items
+          <div id="ol-folder-sent" class="ol-folder" onclick="loadFolder('sent')" title="Sent Items">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="ol-sb-text">Sent Items</span>
           </div>
-          <div id="ol-folder-drafts" class="ol-folder" onclick="loadFolder('drafts')">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="2" stroke-linecap="round"/></svg>
-            Drafts
+          <div id="ol-folder-drafts" class="ol-folder" onclick="loadFolder('drafts')" title="Drafts">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="2" stroke-linecap="round"/></svg>
+            <span class="ol-sb-text">Drafts</span>
           </div>
-          <div style="height:1px;background:var(--border);margin:8px 0"></div>
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:4px 8px 4px">Tracking</div>
-          <div id="ol-folder-untracked" class="ol-folder" onclick="loadFolder('untracked')">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke-width="2" stroke-linecap="round"/></svg>
-            Untracked
+          <div class="ol-sb-sep" style="height:1px;background:var(--border);margin:6px 0"></div>
+          <div class="ol-sb-label" style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:4px 8px 4px">Tracking</div>
+          <div id="ol-folder-untracked" class="ol-folder" onclick="loadFolder('untracked')" title="Untracked" style="position:relative">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><circle cx="12" cy="12" r="9" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke-width="2" stroke-linecap="round"/></svg>
+            <span class="ol-sb-text">Untracked</span>
             <span id="ol-untracked-count" style="margin-left:auto;background:var(--amber-bg);color:var(--amber);font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;display:none"></span>
           </div>
         </div>
@@ -18988,7 +18997,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <div style="position:relative">
           <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
             <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">To</span>
-            <input type="text" id="compose-to" placeholder="Type a name or email..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showCcBcc();showRecipientPreview();showComposeAC('compose-to','to-ac')" onkeydown="acKeyNav(event,'to-ac','compose-to')" onblur="hideComposeAC('to-ac')">
+            <input type="text" id="compose-to" placeholder="Type a name or email..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showRecipientPreview();showComposeAC('compose-to','to-ac')" onkeydown="acKeyNav(event,'to-ac','compose-to')" onblur="hideComposeAC('to-ac')">
             <button onclick="toggleBcc()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;font-weight:600;padding:2px 6px;border-radius:4px;transition:all .12s" id="bcc-toggle-btn" title="Add BCC">BCC</button>
           </div>
           <div id="to-ac" class="compose-ac" style="display:none"></div>
@@ -19852,7 +19861,7 @@ function renderAdminPeopleList(){
   el.innerHTML=`<div class="admin-person-row" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);border-bottom:2px solid var(--border)"><span>Name / Email</span><span>Department</span><span>Role</span><span></span></div>`+
     people.map((p,i)=>`
     <div class="admin-person-row" id="apr-${i}">
-      <div>${av(p.name||'?',26)} <div style="display:inline-block;vertical-align:middle;margin-left:6px"><div style="font-size:12.5px;font-weight:600;color:var(--body)">${p.name||'Unknown'}</div><div style="font-size:11px;color:var(--muted)">${p.email||''}</div></div></div>
+      <div>${av(p.name||'?',26)} <div style="display:inline-block;vertical-align:middle;margin-left:6px"><div style="display:flex;align-items:center;gap:4px"><span style="font-size:12.5px;font-weight:600;color:var(--body)">${p.name||'Unknown'}</span><button title="Edit name" onclick="renameAdminPerson('${(p.email||'').replace(/'/g,"\\'")}','${(p.name||'').replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer;padding:1px 3px;color:var(--muted);font-size:11px;line-height:1" onmouseover="this.style.color='var(--body)'" onmouseout="this.style.color='var(--muted)'">&#9998;</button></div><div style="font-size:11px;color:var(--muted)">${p.email||''}</div></div></div>
       <select class="form-sel" style="font-size:11.5px;padding:3px 6px" onchange="updatePersonDept('${(p.email||'').replace(/'/g,"\\'")}','${(p.name||'').replace(/'/g,"\\'")}',this.value)">
         ${DEPARTMENTS.map(d=>`<option${d===p.dept?' selected':''}>${d}</option>`).join('')}
         <option${p.dept==='Needs Department'?' selected':''}>Needs Department</option>
@@ -19884,6 +19893,12 @@ function removeAdminPerson(email){
   const key=Object.keys(staffConfig).find(k=>normEmail(staffConfig[k]?.email||'')=== normEmail(email));
   if(key)delete staffConfig[key];
   renderAdminPeopleList();renderAdminDeptEditor();
+}
+function renameAdminPerson(email,currentName){
+  const newName=(prompt('Display name:',currentName)||'').trim();
+  if(!newName||newName===currentName)return;
+  const key=Object.keys(staffConfig).find(k=>normEmail(staffConfig[k]?.email||'')===normEmail(email));
+  if(key){staffConfig[key].name=newName;renderAdminPeopleList();renderAdminDeptEditor();toast(`Renamed to ${newName}`);}
 }
 function addPersonManually(){
   const name=prompt('Full name:');if(!name)return;
@@ -19932,7 +19947,7 @@ function upsertSyncedContact(raw,defaultDept="Needs Department"){
   const role=raw.jobTitle||raw.role||"";
   const key=staffKey(email,name);
   const before=JSON.stringify(staffConfig[key]||null);
-  staffConfig[key]={...(staffConfig[key]||{}),name,email,dept:staffConfig[key]?.dept||dept,role:staffConfig[key]?.role||role};
+  staffConfig[key]={...(staffConfig[key]||{}),name:staffConfig[key]?.name||name,email,dept:staffConfig[key]?.dept||dept,role:staffConfig[key]?.role||role};
   return JSON.stringify(staffConfig[key])!==before;
 }
 function contactsFromMessage(m){
@@ -20883,6 +20898,29 @@ function nav(name,mode){
   if(name==="dashboard"){renderCharts();renderActivity();}
   if(name==="summary")renderSum();
   if(name==="outlook"){loadFolder("inbox");}
+  // Prevent outer body scrollbar while Outlook fills the full viewport
+  const mainEl=document.querySelector('.main');
+  if(mainEl)mainEl.style.overflowY=name==='outlook'?'hidden':'';
+}
+
+let olSidebarCollapsed=false;
+function toggleOlSidebar(){
+  olSidebarCollapsed=!olSidebarCollapsed;
+  const panel=document.getElementById('ol-left-panel');
+  const grid=panel?.parentElement;
+  const arrow=document.getElementById('ol-sb-arrow');
+  const toggle=document.getElementById('ol-sb-toggle');
+  if(olSidebarCollapsed){
+    panel.classList.add('ol-sb-collapsed');
+    if(grid)grid.style.gridTemplateColumns='48px 320px 1fr';
+    if(toggle)toggle.title='Expand sidebar';
+    if(arrow)arrow.innerHTML='<path d="M9 18l6-6-6-6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  }else{
+    panel.classList.remove('ol-sb-collapsed');
+    if(grid)grid.style.gridTemplateColumns='180px 320px 1fr';
+    if(toggle)toggle.title='Collapse sidebar';
+    if(arrow)arrow.innerHTML='<path d="M15 18l-6-6 6-6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  }
 }
 
 function syncBadges(){
