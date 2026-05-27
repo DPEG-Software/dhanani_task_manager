@@ -19031,8 +19031,18 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
             <option value="low">Low importance</option>
           </select>
         </div>
+        <!-- AI Forward Brief — shown only when forwarding -->
+        <div id="compose-ai-brief" style="display:none;margin-bottom:8px;padding:10px 13px;background:var(--leaf-bg,#f0fdf4);border:1px solid var(--leaf-bd,#86efac);border-radius:var(--r)">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--fern,#166534);margin-bottom:6px">✦ AI Brief — thread being forwarded</div>
+          <div id="compose-ai-brief-content" style="font-size:12px;color:var(--body);line-height:1.55"></div>
+        </div>
+        <!-- Related open tasks — shown when a recipient is selected in Forward -->
+        <div id="compose-related-tasks" style="display:none;margin-bottom:8px;padding:10px 13px;background:#fff7ed;border:1px solid #fed7aa;border-radius:var(--r)">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#c2410c;margin-bottom:6px">Related open tasks with this person</div>
+          <div id="compose-related-tasks-content"></div>
+        </div>
         <!-- BODY -->
-        <textarea id="compose-body" placeholder="Write your message here..." style="width:100%;min-height:220px;border:none;outline:none;font-family:Inter,sans-serif;font-size:13.5px;color:var(--body);resize:vertical;line-height:1.6;background:transparent"></textarea>
+        <textarea id="compose-body" placeholder="Write your message here..." style="width:100%;min-height:180px;border:none;outline:none;font-family:Inter,sans-serif;font-size:13.5px;color:var(--body);resize:vertical;line-height:1.6;background:transparent"></textarea>
         <!-- DPEG recipients preview -->
         <div id="compose-recipients-preview" style="display:none;margin-top:8px;padding:8px 10px;background:var(--sage3);border-radius:var(--r);border:1px solid var(--sage)">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--forest);margin-bottom:4px">Tasks will be auto-created for:</div>
@@ -20503,6 +20513,18 @@ function renderActivity(){
 // ============================================================
 // WEDNESDAY / DISCUSSION NOTES
 // ============================================================
+function compactSummaryLines(summary){
+  if(!summary)return[];
+  const lines=summary.split('\n').map(l=>l.replace(/^[•*▾▲◆]\s*/,'').trim()).filter(Boolean);
+  const order=['about:','action needed:','action:','latest:','key info:'];
+  const picked=[];
+  for(const key of order){
+    const m=lines.find(l=>l.toLowerCase().startsWith(key));
+    if(m&&picked.length<2)picked.push(m);
+  }
+  if(!picked.length)picked.push(...lines.slice(0,2));
+  return picked.slice(0,2);
+}
 function renderWed(){
   const wt=tasks.filter(t=>t.wednesday);
   const total=wt.length+customNotes.length;
@@ -20581,9 +20603,13 @@ function renderWed(){
               ${pBadge(t.priority||'Normal')}
               ${t.replyCount>1?`<span style="font-size:11px;color:var(--muted)">&bull; ${t.replyCount} msgs</span>`:''}
             </div>
-            ${t.summary?`<div class="wed-sum-clip" id="wsum-${t.id}"><div class="wed-card-summary" style="margin-bottom:0">${formatSummaryHTML(t.summary)}</div></div><button class="wed-expand-btn" id="wexp-${t.id}" onclick="toggleWedSum(${t.id})">Show more &#9662;</button>`:''}
+            ${(()=>{const lines=compactSummaryLines(t.summary);return lines.length?`<div style="margin-bottom:7px">${lines.map(l=>`<div style="font-size:12px;color:var(--sub);line-height:1.5;padding:1px 0">${l}</div>`).join('')}</div>`:''})()}
             ${t.followup?`<div style="font-size:11.5px;color:var(--forest);font-weight:500;margin-bottom:7px;padding:5px 9px;background:var(--sage3);border-radius:5px">Note: ${t.followup}</div>`:''}
-            ${threadLinkButton(t)?`<div style="margin-bottom:7px">${threadLinkButton(t)}</div>`:''}
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px">
+              ${taskEmailId(t)?`<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();openTaskThread(${t.id})" style="font-size:10.5px;padding:3px 9px;display:flex;align-items:center;gap:4px"><svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="2" stroke-linecap="round"/></svg>Open Thread</button>`:''}
+              ${t.summary?`<button class="btn btn-ghost btn-xs" id="wexp-${t.id}" onclick="toggleWedSum(${t.id})" style="font-size:10.5px;padding:3px 9px">Full summary &#9662;</button>`:''}
+            </div>
+            ${t.summary?`<div id="wsum-${t.id}" style="display:none;margin-bottom:7px"><div class="wed-card-summary">${formatSummaryHTML(t.summary)}</div></div>`:''}
             <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="1" style="min-height:32px">${t.meetingNote||''}</textarea>
             <div class="ag-foot" style="margin-top:6px">
               ${['Pending','Done','Overdue'].map(s=>`<button class="ag-status-btn ${s.toLowerCase()}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
@@ -20626,9 +20652,9 @@ function toggleWedSum(id){
   const clip=document.getElementById(`wsum-${id}`);
   const btn=document.getElementById(`wexp-${id}`);
   if(!clip||!btn)return;
-  const expanded=clip.classList.contains('expanded');
-  if(expanded){clip.classList.remove('expanded');btn.innerHTML='Show more &#9662;';}
-  else{clip.classList.add('expanded');btn.innerHTML='Show less &#9650;';}
+  const hidden=clip.style.display==='none'||clip.style.display==='';
+  clip.style.display=hidden?'block':'none';
+  btn.innerHTML=hidden?'Less &#9650;':'Full summary &#9662;';
 }
 
 function addCN(){const v=document.getElementById("cn-in").value.trim();if(!v)return;customNotes.unshift({text:v,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),meetingNote:""});document.getElementById("cn-in").value="";renderWed();syncBadges();toast("Note added");}
@@ -20904,6 +20930,8 @@ function nav(name,mode){
 }
 
 let olSidebarCollapsed=false;
+let currentComposeType='';
+let currentComposeEmailId=null;
 function toggleOlSidebar(){
   olSidebarCollapsed=!olSidebarCollapsed;
   const panel=document.getElementById('ol-left-panel');
@@ -21057,6 +21085,8 @@ function selectComposeAC(inputId,acId,email){
   if(ac)ac.style.display='none';
   input.focus();
   showRecipientPreview();
+  // When forwarding and a To: recipient is chosen, show related tasks
+  if(inputId==='compose-to'&&currentComposeType==='Forward')showForwardRelatedTasks(email);
 }
 
 function hideComposeAC(acId){
@@ -21478,7 +21508,7 @@ async function downloadAttachment(emailId,attId,filename){
   }catch(err){toast('Download failed');}
 }
 
-function openCompose(to,subject,body,type){
+function openCompose(to,subject,body,type,emailId){
   document.getElementById('compose-to').value=to||'';
   document.getElementById('compose-cc').value='';
   if(document.getElementById('compose-bcc'))document.getElementById('compose-bcc').value='';
@@ -21486,11 +21516,19 @@ function openCompose(to,subject,body,type){
   document.getElementById('compose-body').value=body||'';
   document.getElementById('compose-title').textContent=type||'New Email';
   const pr=document.getElementById('compose-priority');if(pr)pr.value='normal';
-  // Hide BCC by default
   const bccRow=document.getElementById('bcc-row');
   if(bccRow)bccRow.style.display='none';
+  // Reset AI panels
+  currentComposeType=type||'New Email';
+  currentComposeEmailId=emailId||null;
+  const aiPanel=document.getElementById('compose-ai-brief');
+  const relPanel=document.getElementById('compose-related-tasks');
+  if(aiPanel)aiPanel.style.display='none';
+  if(relPanel)relPanel.style.display='none';
   document.getElementById('mo-compose').classList.add('open');
   showRecipientPreview();
+  // Load AI brief async when forwarding
+  if(type==='Forward'&&emailId)loadForwardAIBrief(emailId);
 }
 
 function replyEmail(emailId){
@@ -21644,7 +21682,7 @@ async function forwardEmail(emailId){
   const email=emailCache[emailId];if(!email)return;
   const subject=email.subject?.startsWith('Fw:')?email.subject:`Fw: ${email.subject}`;
   const orig=`\n\n——— Forwarded Message ———\nFrom: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}\nSubject: ${email.subject}\n\n${email.bodyPreview}`;
-  const doForward=()=>openCompose('',subject,orig,'Forward');
+  const doForward=()=>openCompose('',subject,orig,'Forward',emailId);
   if(!email.conversationId){doForward();return;}
   try{
     const token=await getAccessToken();
@@ -21685,6 +21723,67 @@ async function forwardEmail(emailId){
     console.error('Forward gap check:',err);
     doForward();
   }
+}
+
+// ============================================================
+// FORWARD AI ASSIST
+// ============================================================
+async function loadForwardAIBrief(emailId){
+  const panel=document.getElementById('compose-ai-brief');
+  const content=document.getElementById('compose-ai-brief-content');
+  if(!panel||!content)return;
+  panel.style.display='block';
+  content.innerHTML='<span style="color:var(--muted);font-style:italic">Generating AI brief…</span>';
+  try{
+    const email=emailCache[emailId];
+    if(!email){panel.style.display='none';return;}
+    let messages=[email];
+    if(email.conversationId){
+      const token=await getAccessToken();
+      const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+      if(res.ok){const d=await res.json();if(d.value?.length)messages=d.value;}
+    }
+    const ai=await callAISummary(messages,email.subject||'');
+    const summary=ai||localThreadSummary(messages);
+    if(panel.isConnected)content.innerHTML=formatSummaryHTML(summary);
+  }catch(e){
+    if(panel?.isConnected)panel.style.display='none';
+  }
+}
+
+function emailSubjectMatch(task,subject){
+  if(!subject||(!(task.emailSubject||task.title)))return false;
+  const clean=s=>String(s||'').toLowerCase().replace(/^(re:|fw:|fwd:)\s*/gi,'').trim();
+  const ts=clean(task.emailSubject||task.title);
+  const es=clean(subject);
+  if(!ts||!es)return false;
+  const esSlice=es.slice(0,25);const tsSlice=ts.slice(0,25);
+  return ts.includes(esSlice)||es.includes(tsSlice);
+}
+
+function showForwardRelatedTasks(recipientEmail){
+  const panel=document.getElementById('compose-related-tasks');
+  const content=document.getElementById('compose-related-tasks-content');
+  if(!panel||!content)return;
+  const fwdSubject=document.getElementById('compose-subject')?.value||'';
+  const norm=normEmail(recipientEmail);
+  const related=tasks.filter(t=>
+    nstt(t.status)!=='Done'&&(
+      normEmail(t.email||'')===norm||
+      emailSubjectMatch(t,fwdSubject)
+    )
+  ).slice(0,5);
+  if(!related.length){panel.style.display='none';return;}
+  content.innerHTML=related.map(t=>`
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid #fed7aa;last-child:border:none">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emailSubject(t)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${t.person||''}${t.dept?' · '+t.dept:''} · ${sbadge(t.status)}</div>
+      </div>
+      ${taskEmailId(t)?`<button class="btn btn-ghost btn-xs" onclick="openTaskThread(${t.id})" style="flex-shrink:0;font-size:10.5px;padding:3px 7px">View</button>`:''}
+    </div>`).join('');
+  panel.style.display='block';
 }
 
 // ============================================================
