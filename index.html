@@ -21168,7 +21168,7 @@ function selectComposeAC(inputId,acId,email){
   input.focus();
   showRecipientPreview();
   // When forwarding and a To: recipient is chosen, show related tasks
-  if(inputId==='compose-to'&&currentComposeType==='Forward')showForwardRelatedTasks(email);
+  if(inputId==='compose-to'&&currentComposeType==='Forward'){showForwardRelatedTasks(email);checkRecipientReplied(email);}
 }
 
 function hideComposeAC(acId){
@@ -21228,10 +21228,12 @@ function renderEmailRows(folder,emails){
           ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd)">✓ Tracked</span>`:''}
           ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca">High</span>`:''}
           <div class="ol-email-date">${dateStr}</div>
+          <button title="AI summary" onclick="event.stopPropagation();toggleListAISummary('${e.id}',this,'${folder}')" style="background:none;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;padding:1px 5px;font-size:9px;color:#7c3aed;font-weight:700;line-height:1.6;flex-shrink:0">✦</button>
         </div>
       </div>
       <div class="ol-email-subject">${e.subject||'(no subject)'}</div>
       <div class="ol-email-preview">${e.bodyPreview||''}</div>
+      <div id="list-ai-sum-${e.id}" style="display:none;margin-top:6px;padding:7px 9px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;font-size:11.5px;line-height:1.5;color:var(--body)"></div>
     </div>`;
   }).join('');
   const footer=outlookNextLinks[folder]
@@ -21539,11 +21541,16 @@ async function readEmail(emailId,folder){
           </button>
           <button class="btn btn-ghost btn-sm" onclick="viewFullThread('${emailId}')">View Full Thread</button>
           ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
+          <button class="btn btn-ghost btn-sm" onclick="toggleEmailAISummary('${emailId}')" style="color:#7c3aed;border-color:#c4b5fd" title="AI summary of this thread">✦ AI Summary</button>
           ${isTracked
             ?`<span class="btn btn-ghost btn-sm" style="color:var(--leaf);border-color:var(--leaf-bd);background:var(--leaf-bg);cursor:default">✓ In Action Log</span><button class="btn btn-ghost btn-sm" onclick="updateTrackedThreadFromEmail('${emailId}')">Update Summary</button><button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="removeTaskByEmail('${emailId}')">Remove</button>`
             :`<button class="btn btn-primary btn-sm" onclick="addTaskFromEmail('${emailId}')">+ Add to Tasks</button>`
           }
         </div>
+      </div>
+      <div id="email-ai-summary-panel" style="display:none;padding:10px 20px;background:#f5f3ff;border-bottom:1px solid #ddd6fe;flex-shrink:0">
+        <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:6px;letter-spacing:.04em">✦ AI SUMMARY</div>
+        <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:var(--body)"></div>
       </div>
       <div style="overflow-y:auto;flex:1;min-height:0">
         ${isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:var(--body)"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${bodyContent}</pre></div>`}
@@ -22080,6 +22087,8 @@ async function loadForwardAIBrief(emailId){
   if(!panel||!content)return;
   panel.style.display='block';
   content.innerHTML='<span style="color:var(--muted);font-style:italic">Generating AI brief…</span>';
+  window._fwdThreadMessages=[];
+  window._fwdEmailId=emailId;
   try{
     const email=emailCache[emailId];
     if(!email){panel.style.display='none';return;}
@@ -22090,12 +22099,54 @@ async function loadForwardAIBrief(emailId){
       const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
       if(res.ok){const d=await res.json();if(d.value?.length)messages=d.value;}
     }
+    messages.sort((a,b)=>new Date(a.receivedDateTime)-new Date(b.receivedDateTime));
+    window._fwdThreadMessages=messages;
+    const fwdMsg=messages.find(m=>m.id===emailId);
+    const fwdTime=fwdMsg?new Date(fwdMsg.receivedDateTime):null;
+    const newerMsgs=fwdTime?messages.filter(m=>new Date(m.receivedDateTime)>fwdTime):[];
     const ai=await callAISummary(messages,email.subject||'');
     const summary=ai||localThreadSummary(messages);
-    if(panel.isConnected)content.innerHTML=formatSummaryHTML(summary);
+    if(!panel.isConnected)return;
+    let html=formatSummaryHTML(summary);
+    if(newerMsgs.length){
+      const latest=newerMsgs[newerMsgs.length-1];
+      const latestName=latest?.from?.emailAddress?.name||latest?.from?.emailAddress?.address||'someone';
+      const latestDate=new Date(latest?.receivedDateTime);
+      const latestStr=latestDate.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      html=`<div style="margin-bottom:8px;padding:7px 10px;background:#fffbeb;border:1px solid #fcd34d;border-radius:5px;display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" fill="none" stroke="#d97706" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span style="font-size:11.5px;color:#92400e;flex:1"><strong>${newerMsgs.length} newer message${newerMsgs.length>1?'s':''}</strong> in this thread after this email — last from <strong>${latestName}</strong> on ${latestStr}. View before forwarding?</span>
+        <button class="btn btn-ghost btn-xs" onclick="viewFullThread('${emailId}')" style="font-size:10.5px;white-space:nowrap;flex-shrink:0">View Thread</button>
+      </div>`+html;
+    }
+    content.innerHTML=html;
   }catch(e){
     if(panel?.isConnected)panel.style.display='none';
   }
+}
+
+function checkRecipientReplied(recipientEmail){
+  const msgs=window._fwdThreadMessages||[];
+  const fwdId=window._fwdEmailId||'';
+  if(!msgs.length||!recipientEmail||!fwdId)return;
+  const norm=normEmail(recipientEmail);
+  const fwdMsg=msgs.find(m=>m.id===fwdId);
+  const fwdTime=fwdMsg?new Date(fwdMsg.receivedDateTime):new Date(0);
+  const replied=msgs.find(m=>normEmail(m.from?.emailAddress?.address||'')===norm&&new Date(m.receivedDateTime)>fwdTime);
+  if(!replied)return;
+  const panel=document.getElementById('compose-ai-brief');
+  const content=document.getElementById('compose-ai-brief-content');
+  if(!panel||!content)return;
+  if(content.querySelector('.recipient-replied-warn'))return;
+  const name=replied.from?.emailAddress?.name||recipientEmail;
+  const dt=new Date(replied.receivedDateTime);
+  const dtStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  const warn=document.createElement('div');
+  warn.className='recipient-replied-warn';
+  warn.style.cssText='margin-bottom:8px;padding:7px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:5px;display:flex;align-items:center;gap:8px';
+  warn.innerHTML=`<svg width="14" height="14" fill="none" stroke="#b45309" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-size:11.5px;color:#78350f;flex:1"><strong>${name}</strong> already replied to this thread on <strong>${dtStr}</strong>. See their reply before forwarding?</span><button class="btn btn-ghost btn-xs" onclick="viewFullThread('${fwdId}')" style="font-size:10.5px;white-space:nowrap;flex-shrink:0">View Reply</button>`;
+  content.insertBefore(warn,content.firstChild);
+  panel.style.display='block';
 }
 
 function emailSubjectMatch(task,subject){
@@ -22114,22 +22165,87 @@ function showForwardRelatedTasks(recipientEmail){
   if(!panel||!content)return;
   const fwdSubject=document.getElementById('compose-subject')?.value||'';
   const norm=normEmail(recipientEmail);
-  const related=tasks.filter(t=>
-    nstt(t.status)!=='Done'&&(
-      normEmail(t.email||'')===norm||
-      emailSubjectMatch(t,fwdSubject)
-    )
-  ).slice(0,5);
+  // Primary: subject match only (most relevant)
+  let related=fwdSubject?tasks.filter(t=>nstt(t.status)!=='Done'&&emailSubjectMatch(t,fwdSubject)):[];
+  // Fallback: same person, recent tasks within 60 days, only if no subject match
+  if(!related.length&&norm){
+    const cutoff=Date.now()-60*24*60*60*1000;
+    related=tasks.filter(t=>
+      nstt(t.status)!=='Done'&&
+      normEmail(t.email||'')===norm&&
+      (!t.createdAt||new Date(t.createdAt).getTime()>cutoff)
+    );
+  }
+  related=related.slice(0,3);
   if(!related.length){panel.style.display='none';return;}
   content.innerHTML=related.map(t=>`
-    <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid #fed7aa;last-child:border:none">
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid #fed7aa">
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:600;color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emailSubject(t)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:1px">${t.person||''}${t.dept?' · '+t.dept:''} · ${sbadge(t.status)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${t.person||''} · ${sbadge(t.status)}</div>
       </div>
       ${taskEmailId(t)?`<button class="btn btn-ghost btn-xs" onclick="openTaskThread(${t.id})" style="flex-shrink:0;font-size:10.5px;padding:3px 7px">View</button>`:''}
     </div>`).join('');
   panel.style.display='block';
+}
+
+// Per-email AI summary in list view
+async function toggleListAISummary(emailId,btn,folder){
+  const panel=document.getElementById('list-ai-sum-'+emailId);
+  if(!panel)return;
+  if(panel.style.display!=='none'){
+    panel.style.display='none';
+    btn.style.background='none';
+    return;
+  }
+  panel.style.display='block';
+  btn.style.background='#ede9fe';
+  if(panel.dataset.loaded)return;
+  panel.innerHTML='<span style="color:var(--muted);font-style:italic;font-size:11px">Summarizing…</span>';
+  try{
+    let email=emailCache[emailId];
+    if(!email){
+      const token=await getAccessToken();
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,conversationId`,{headers:{Authorization:`Bearer ${token}`}});
+      if(!res.ok)throw new Error('fetch failed');
+      email=await res.json();
+      emailCache[emailId]=email;
+    }
+    const ai=await callAISummary([email],email.subject||'');
+    const summary=ai||localThreadSummary([email]);
+    panel.innerHTML=formatSummaryHTML(summary);
+    panel.dataset.loaded='1';
+  }catch(e){
+    panel.innerHTML='<span style="color:#b91c1c;font-size:11px">Could not summarize.</span>';
+  }
+}
+
+// Per-email AI summary in reading pane
+async function toggleEmailAISummary(emailId){
+  const panel=document.getElementById('email-ai-summary-panel');
+  const content=document.getElementById('email-ai-summary-content');
+  if(!panel||!content)return;
+  if(panel.style.display!=='none'){panel.style.display='none';return;}
+  panel.style.display='block';
+  if(panel.dataset.loaded)return;
+  content.innerHTML='<span style="color:var(--muted);font-style:italic;font-size:12px">Summarizing thread…</span>';
+  try{
+    const email=emailCache[emailId];
+    if(!email){content.innerHTML='<span style="color:#b91c1c">Email not loaded.</span>';return;}
+    let messages=[email];
+    if(email.conversationId){
+      const token=await getAccessToken();
+      const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=15&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+      if(res.ok){const d=await res.json();if(d.value?.length)messages=d.value;}
+    }
+    const ai=await callAISummary(messages,email.subject||'');
+    const summary=ai||localThreadSummary(messages);
+    content.innerHTML=formatSummaryHTML(summary);
+    panel.dataset.loaded='1';
+  }catch(e){
+    content.innerHTML='<span style="color:#b91c1c;font-size:12px">Could not summarize.</span>';
+  }
 }
 
 // ============================================================
