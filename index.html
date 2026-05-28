@@ -18647,6 +18647,9 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   .cn-row,.wed-actions,.rm-btn,.ag-foot,.compose-ac,.deadline-btn,
   #mo-ai-settings,#mo-admin,.sync-bar,.mo,.empty-state,
   .wed-expand-btn{display:none!important}
+  body.printing-summary #page-summary .sum-ctrl,
+  body.printing-summary #page-summary .tbl-wrap{display:none!important}
+  body.printing-summary #summary-print-report{display:block!important}
   #wed-list>div[style*="gap:8px"]:first-child{display:none!important}
 
   /* page base */
@@ -18738,6 +18741,11 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
   table{border-collapse:collapse;width:100%}
   th,td{border:1pt solid #d1d5db;padding:4.5pt 8pt;font-size:8.5pt}
   th{background:#f0f4f0!important;font-weight:700;color:#111;letter-spacing:.2pt;text-transform:uppercase;font-size:7.5pt}
+  .summary-print-meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8pt;margin:0 0 12pt}
+  .summary-print-box{border:1pt solid #d1d5db;border-radius:3pt;padding:6pt 8pt;background:#f9fafb}
+  .summary-print-label{font-size:6.8pt;text-transform:uppercase;letter-spacing:.5pt;color:#6b7280;font-weight:800}
+  .summary-print-value{font-size:10pt;color:#111827;font-weight:800;margin-top:2pt;word-break:break-word}
+  .summary-print-note{font-size:8pt;color:#374151;margin:0 0 10pt;line-height:1.5}
 }
 </style>
 </head>
@@ -19007,6 +19015,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
         <tbody id="sum-tbody"></tbody>
       </table></div>
     </div>
+    <div id="summary-print-report" style="display:none"></div>
   </div>
 
   <!-- OUTLOOK -->
@@ -20920,11 +20929,17 @@ function dpegPrint(){
   const dateStr=now.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const activePage=document.querySelector('.page.active');
   const pageTitle=activePage?.id==='page-wednesday'?(isWednesdayUser?'Wednesday Review':'Discussion Notes'):'Summary Report';
+  const isSummary=activePage?.id==='page-summary';
   if(dateLabel)dateLabel.textContent=dateStr;
   if(pageLabel)pageLabel.textContent=pageTitle;
-  if(userLabel&&currentUser)userLabel.textContent=`${currentUser.name} • ${currentUser.role} • Confidential Internal Report`;
+  if(userLabel&&currentUser)userLabel.textContent=`${currentUser.name} • ${currentUser.email} • Confidential Internal Report`;
+  if(isSummary){
+    buildSummaryPrintReport();
+    document.body.classList.add('printing-summary');
+  }
   window.print();
 }
+window.addEventListener('afterprint',()=>document.body.classList.remove('printing-summary'));
 async function updStatus(id,v){
   const t=tasks.find(x=>x.id===id);const note=document.getElementById("wn-"+id);
   if(t){if(note)t.meetingNote=note.value;t.status=v;}
@@ -20991,12 +21006,54 @@ function backArc(){document.getElementById("arc-lv").style.display="block";docum
 // ============================================================
 // SUMMARY
 // ============================================================
-function renderSum(){
+function summaryWeekLabel(v){
+  return v==="all"?"All Time":(v==="0"?"This Week":(v==="1"?"Last Week":`${v} Weeks Ago`));
+}
+function getSummaryFilters(){
   const w=document.getElementById("sum-w").value,dept=document.getElementById("sum-d").value,status=document.getElementById("sum-s").value;
-  let list=tasks.filter(t=>{
+  return {w,dept,status};
+}
+function getSummaryFilteredTasks(){
+  const {w,dept,status}=getSummaryFilters();
+  return tasks.filter(t=>{
     const wm=w==="all"||t.weekOffset===parseInt(w)||(nstt(t.status)!=="Done"&&t.weekOffset<=parseInt(w));
     return (w==="all"?true:wm)&&(dept==="all"||t.dept===dept)&&(status==="all"||nstt(t.status)===status);
   });
+}
+function buildSummaryPrintReport(){
+  const el=document.getElementById("summary-print-report");
+  if(!el)return;
+  const {w,dept,status}=getSummaryFilters();
+  const list=getSummaryFilteredTasks();
+  const done=list.filter(t=>nstt(t.status)==="Done").length;
+  const open=list.length-done;
+  const high=list.filter(t=>(t.priority||"").toLowerCase()==="high").length;
+  const printed=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+  el.innerHTML=`
+    <div class="summary-print-meta">
+      <div class="summary-print-box"><div class="summary-print-label">Prepared For</div><div class="summary-print-value">${escapeHtml(currentUser?.name||"DPEG User")}</div></div>
+      <div class="summary-print-box"><div class="summary-print-label">Email</div><div class="summary-print-value">${escapeHtml(currentUser?.email||"")}</div></div>
+      <div class="summary-print-box"><div class="summary-print-label">Printed</div><div class="summary-print-value">${escapeHtml(printed)}</div></div>
+      <div class="summary-print-box"><div class="summary-print-label">Tasks</div><div class="summary-print-value">${list.length}</div></div>
+    </div>
+    <p class="summary-print-note">Filters applied: ${escapeHtml(summaryWeekLabel(w))}; ${escapeHtml(dept==="all"?"All Departments":dept)}; ${escapeHtml(status==="all"?"All Statuses":status)}. Open: ${open}. Completed: ${done}. High priority: ${high}.</p>
+    <table>
+      <thead><tr><th>#</th><th>Task</th><th>Assigned To</th><th>Department</th><th>Status</th><th>Priority</th><th>Date</th><th>Notes</th></tr></thead>
+      <tbody>${list.length?list.map((t,i)=>`
+        <tr>
+          <td>${i+1}</td>
+          <td><strong>${escapeHtml(emailSubject(t))}</strong></td>
+          <td>${escapeHtml(t.person||"")}</td>
+          <td>${escapeHtml(t.dept||"")}</td>
+          <td>${escapeHtml(nstt(t.status))}</td>
+          <td>${escapeHtml(t.priority||"Normal")}</td>
+          <td>${escapeHtml(fmtD(t.date))}</td>
+          <td>${escapeHtml(t.followup||t.summary||"")}</td>
+        </tr>`).join(""):`<tr><td colspan="8" style="text-align:center;color:#6b7280;padding:18pt">No tasks match the selected filters.</td></tr>`}</tbody>
+    </table>`;
+}
+function renderSum(){
+  let list=getSummaryFilteredTasks();
   document.getElementById("sum-cnt").textContent=`${list.length} task${list.length!==1?"s":""}`;
   document.getElementById("sum-tbody").innerHTML=list.map((t,i)=>`
     <tr><td style="color:var(--muted)">${i+1}</td><td><div style="font-weight:600;color:var(--body)">${t.title}</div></td><td>${t.person}</td>
@@ -21006,8 +21063,7 @@ function renderSum(){
     <td style="color:var(--muted);font-size:12px;font-style:${t.followup?"normal":"italic"}">${t.followup||"None"}</td></tr>`).join("");
 }
 function dlCSV(){
-  const w=document.getElementById("sum-w").value,dept=document.getElementById("sum-d").value,status=document.getElementById("sum-s").value;
-  let list=tasks.filter(t=>{const wm=w==="all"||t.weekOffset===parseInt(w)||(nstt(t.status)!=="Done"&&t.weekOffset<=parseInt(w));return (w==="all"?true:wm)&&(dept==="all"||t.dept===dept)&&(status==="all"||nstt(t.status)===status);});
+  let list=getSummaryFilteredTasks();
   const rows=[["Number","Task","Assigned To","Email","Department","Status","Priority","Date","Notes"],...list.map((t,i)=>[i+1,t.title,t.person,t.email||"",t.dept,nstt(t.status),t.priority||"",fmtD(t.date),t.followup||""])];
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);
@@ -21716,11 +21772,27 @@ async function viewFullThread(emailId){
   }
 }
 
+function sanitizeEmailFrameHTML(html){
+  if(!html)return html;
+  const wrap=document.createElement('div');
+  wrap.innerHTML=html;
+  wrap.querySelectorAll('script,noscript,iframe,object,embed,form,input,button').forEach(el=>el.remove());
+  wrap.querySelectorAll('*').forEach(el=>{
+    Array.from(el.attributes).forEach(attr=>{
+      const name=attr.name.toLowerCase();
+      const value=attr.value||'';
+      if(name.startsWith('on'))el.removeAttribute(attr.name);
+      if((name==='href'||name==='src'||name==='xlink:href')&&/^\s*javascript:/i.test(value))el.removeAttribute(attr.name);
+    });
+  });
+  return wrap.innerHTML;
+}
+
 async function resolveInlineImages(token,emailId,html){
   if(!html)return html;
   // Upgrade HTTP image URLs to HTTPS to avoid mixed-content blocking on the HTTPS app
   html=html.replace(/(<img\b[^>]*?\bsrc=(["']))http:\/\//gi,'$1https://');
-  if(html.toLowerCase().indexOf('cid:')===-1)return html;
+  if(html.toLowerCase().indexOf('cid:')===-1)return sanitizeEmailFrameHTML(html);
   // Convert Outlook VML image elements to regular img tags so browsers render them
   html=html.replace(/<v:imagedata\b[^>]*\bsrc=(["'])(cid:[^"']+)\1[^>]*>/gi,function(m,q,src){
     return '<img src="'+src+'" style="max-width:100%;height:auto">';
@@ -21755,8 +21827,8 @@ async function resolveInlineImages(token,emailId,html){
         try{html=html.replace(new RegExp('cid:'+encodeURIComponent(v),'gi'),dataUrl);}catch(e){}
       });
     }
-    return html;
-  }catch(e){return html;}
+    return sanitizeEmailFrameHTML(html);
+  }catch(e){return sanitizeEmailFrameHTML(html);}
 }
 
 var _activeEmailEl=null;
