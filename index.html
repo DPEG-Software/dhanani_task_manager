@@ -21322,10 +21322,18 @@ function buildTrackedSet(){
   trackedEmailIds = new Set(tasks.flatMap(t=>[t.emailId,t.lastMessageId,t.conversationId]).filter(Boolean));
 }
 
+function extractEmailAddress(value){
+  const raw=String(value||'').trim();
+  const angle=raw.match(/<([^<>@\s]+@[^<>\s]+)>/);
+  if(angle)return angle[1].trim().toLowerCase();
+  const email=raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return email?email[0].trim().toLowerCase():raw.toLowerCase();
+}
+
 function getDpegRecipients(toStr,ccStr){
   const bccStr=document.getElementById('compose-bcc')?.value||'';
   const all=[...(toStr||'').split(','),...(ccStr||'').split(','),...(bccStr||'').split(',')]
-    .map(e=>e.trim()).filter(e=>e.toLowerCase().includes('@dhananipeg.com'));
+    .map(extractEmailAddress).filter(e=>e.includes('@dhananipeg.com'));
   return [...new Set(all)];
 }
 
@@ -21464,13 +21472,13 @@ function renderEmailRows(folder,emails){
           ${flagBadge(e,true)}
           ${hasAtt?`<svg width="11" height="11" fill="none" stroke="var(--muted)" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
           <div class="ol-email-date" style="margin-left:0">${dateStr}</div>
-          <button title="AI summary" onclick="event.stopPropagation();toggleListAISummary(this.closest('.ol-email-item').dataset.emailId,this,'${safeFolder}')" style="background:none;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;padding:1px 4px;font-size:9px;color:#7c3aed;font-weight:700;line-height:1.6;flex-shrink:0">✦</button>
+          <button title="AI summary" onclick="event.stopPropagation();toggleListAISummary(this.closest('.ol-email-item').dataset.emailId,this,'${safeFolder}')" style="display:inline-flex;align-items:center;gap:3px;background:none;border:1px solid #e9d5ff;border-radius:12px;cursor:pointer;padding:2px 7px 2px 5px;font-size:10.5px;color:#7c3aed;font-weight:500;line-height:1.5;flex-shrink:0;transition:all .15s" onmouseover="this.style.background='#f5f3ff';this.style.borderColor='#c4b5fd'" onmouseout="this.style.background='none';this.style.borderColor='#e9d5ff'"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarize</button>
         </div>
       </div>
       <div class="ol-email-subject">${escapeHtml(e.subject||'(no subject)')}</div>
       <div class="ol-email-preview">${escapeHtml(e.bodyPreview||'')}</div>
       ${hasAtt?`<div class="ol-email-attachments"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attachment</span></div>`:''}
-      <div id="list-ai-sum-${safeId}" style="display:none;margin-top:6px;padding:7px 9px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;font-size:11.5px;line-height:1.5;color:var(--body)"></div>
+      <div id="list-ai-sum-${safeId}" style="display:none;margin-top:5px;padding:7px 10px 7px 9px;background:#faf8ff;border-left:2.5px solid #7c3aed;border-radius:0 6px 6px 0;"></div>
     </div>`;
   }).join('');
   const footer=outlookNextLinks[folder]
@@ -21880,7 +21888,7 @@ async function readEmail(emailId,folder,el){
           ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
           <button class="btn btn-ghost btn-sm" onclick="toggleEmailAISummary('${emailId}')" style="color:#7c3aed;border-color:#c4b5fd" title="AI summary of this thread">✦ AI Summary</button>
           ${isTracked
-            ?`<span class="btn btn-ghost btn-sm" style="color:var(--leaf);border-color:var(--leaf-bd);background:var(--leaf-bg);cursor:default">✓ In Action Log</span><button class="btn btn-ghost btn-sm" onclick="updateTrackedThreadFromEmail('${emailId}')">Update Summary</button><button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="removeTaskByEmail('${emailId}')">Remove</button>`
+            ?`<span class="btn btn-ghost btn-sm" style="color:var(--leaf);border-color:var(--leaf-bd);background:var(--leaf-bg);cursor:default">✓ In Action Log</span><button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="removeTaskByEmail('${emailId}')">Remove</button>`
             :`<button class="btn btn-primary btn-sm" onclick="addTaskFromEmail('${emailId}')">+ Add to Tasks</button>`
           }
         </div>
@@ -22360,9 +22368,9 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
   const btn=document.getElementById('compose-send-btn');
   if(btn){btn.disabled=true;btn.innerHTML='Sending...';}
   try{
-    const toRecipients=to.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address);
-    const ccRecipients=cc?cc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
-    const bccRecipients=bcc?bcc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
+    const toRecipients=to.split(',').map(e=>({emailAddress:{address:extractEmailAddress(e)}})).filter(r=>r.emailAddress.address&&r.emailAddress.address.includes('@'));
+    const ccRecipients=cc?cc.split(',').map(e=>({emailAddress:{address:extractEmailAddress(e)}})).filter(r=>r.emailAddress.address&&r.emailAddress.address.includes('@')):[];
+    const bccRecipients=bcc?bcc.split(',').map(e=>({emailAddress:{address:extractEmailAddress(e)}})).filter(r=>r.emailAddress.address&&r.emailAddress.address.includes('@')):[];
     const isOutlookForward=currentComposeType==='Forward'&&currentComposeEmailId;
     const isOutlookReply=currentComposeType==='Reply'&&currentComposeEmailId;
     const needsDraftPermission=isOutlookForward||isOutlookReply||currentComposeFiles.length>0;
@@ -22423,7 +22431,7 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
           replyCount:forwardedEmail?.conversationId?undefined:1
         };
         tasks.unshift(newTask);
-        sendTaskNotification(newTask).catch(()=>{});
+        await sendTaskNotification(newTask).catch(err=>console.warn('Task notification failed:',err.message));
       }
       await saveTasksToOneDrive();
       refreshAll();
@@ -22609,36 +22617,46 @@ function showForwardRelatedTasks(recipientEmail){
 }
 
 // Per-email AI summary in list view
+function renderAIBullets(summary){
+  if(!summary)return'<span style="color:var(--muted);font-size:11px;font-style:italic">No summary available.</span>';
+  const lines=summary.split('\n')
+    .map(l=>l.replace(/^[•\-\*▾▲◆]\s*/,'').replace(/^(About|Latest|Action needed|Action):\s*/i,'').trim())
+    .filter(l=>l.length>8)
+    .slice(0,3);
+  if(!lines.length)return'<span style="color:var(--muted);font-size:11px;font-style:italic">No summary available.</span>';
+  return lines.map(l=>'<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:4px"><span style="color:#7c3aed;font-size:7px;margin-top:5px;flex-shrink:0">●</span><span style="font-size:12px;line-height:1.5;color:#1e1b4b">'+escapeHtml(l)+'</span></div>').join('');
+}
 async function toggleListAISummary(emailId,btn,folder){
   const panel=document.getElementById('list-ai-sum-'+emailId);
   if(!panel)return;
   if(panel.style.display!=='none'){
     panel.style.display='none';
     btn.style.background='none';
+    btn.style.borderColor='#e9d5ff';
     return;
   }
   panel.style.display='block';
-  btn.style.background='#ede9fe';
+  btn.style.background='#f5f3ff';
+  btn.style.borderColor='#c4b5fd';
   if(panel.dataset.loaded)return;
-  panel.innerHTML='<span style="color:var(--muted);font-style:italic;font-size:11px">Summarizing…</span>';
+  panel.innerHTML='<span style="color:var(--muted);font-style:italic;font-size:11px;display:flex;align-items:center;gap:5px"><svg width="10" height="10" viewBox="0 0 24 24" fill="#7c3aed"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarizing…</span>';
   try{
     let email=emailCache[emailId];
     if(!email){
       const token=await getAccessToken();
-      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,conversationId,flag,importance`,{headers:{Authorization:`Bearer ${token}`}});
+      const res=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+emailId+'?=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,conversationId,flag,importance',{headers:{Authorization:'Bearer '+token}});
       if(!res.ok)throw new Error('fetch failed');
       email=await res.json();
       emailCache[emailId]=email;
     }
     const ai=await callAISummary([email],email.subject||'');
     const summary=ai||localThreadSummary([email]);
-    panel.innerHTML=formatSummaryHTML(summary);
+    panel.innerHTML=renderAIBullets(summary);
     panel.dataset.loaded='1';
   }catch(e){
     panel.innerHTML='<span style="color:#b91c1c;font-size:11px">Could not summarize.</span>';
   }
 }
-
 // Per-email AI summary in reading pane
 async function toggleEmailAISummary(emailId){
   const panel=document.getElementById('email-ai-summary-panel');
@@ -22670,6 +22688,13 @@ async function toggleEmailAISummary(emailId){
 // ============================================================
 // TASK ASSIGNMENT NOTIFICATION
 // ============================================================
+function graphDueDate(date){
+  const raw=String(date||'').trim();
+  const m=raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m)return null;
+  return {dateTime:`${m[1]}-${m[2]}-${m[3]}T17:00:00.0000000`,timeZone:'Central Standard Time'};
+}
+
 async function createToDoTask(task){
   const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
   const attachmentNote=Array.isArray(task.attachmentNames)&&task.attachmentNames.length
@@ -22686,7 +22711,7 @@ async function createToDoTask(task){
       r=await msalInstance.acquireTokenPopup({scopes:SCOPES_TODO});
     }
     const token=r.accessToken;
-    const due=dueDate?new Date(dueDate):null;
+    const due=graphDueDate(dueDate);
     const cleanSummary=(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,4000);
     const deadlineLine=dueDate?`\nDeadline: ${dueDate}`:'';
     const taskBody={
@@ -22695,7 +22720,7 @@ async function createToDoTask(task){
       importance:task.priority==='High'?'high':'normal',
       status:'notStarted',
     };
-    if(due&&!isNaN(due))taskBody.dueDateTime={dateTime:due.toISOString(),timeZone:'UTC'};
+    if(due)taskBody.dueDateTime=due;
     const listsRes=await fetch('https://graph.microsoft.com/v1.0/me/todo/lists',{headers:{Authorization:`Bearer ${token}`}});
     if(listsRes.ok){
       const ld=await listsRes.json();
@@ -22714,7 +22739,7 @@ async function createToDoTask(task){
   if(!task.email||!task.email.includes('@dhananipeg.com')||!fnUrl)return;
   try{
     const userToken=await getAccessToken();
-    await fetch(`${fnUrl}/todo`,{
+    const todoRes=await fetch(`${fnUrl}/todo`,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':`Bearer ${userToken}`},
       body:JSON.stringify({
@@ -22723,8 +22748,13 @@ async function createToDoTask(task){
         summary:[(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,4000),attachmentNote.trim()].filter(Boolean).join('\n\n'),
         priority:task.priority||'Normal',
         date:dueDate||'',
+        deadline:dueDate||'',
       }),
     });
+    if(!todoRes.ok){
+      const err=await todoRes.text().catch(()=>'');
+      throw new Error(`Recipient To Do failed (${todoRes.status}) ${err}`);
+    }
   }catch(err){
     console.warn('Recipient To Do (Worker) failed:',err.message);
   }
@@ -22736,8 +22766,8 @@ async function sendTaskNotification(task){
   if(!addr||!addr.includes('@'))return;
   // Only notify internal DPEG addresses
   if(!addr.includes('@dhananipeg.com')&&!addr.includes('@dpeg'))return;
-  createToDoTask(task).catch(err=>console.warn('To Do creation failed:',err.message));
   try{
+    await createToDoTask(task);
     const token=await getAccessToken();
     const subject=`Task Assigned to You: ${task.title||'(no subject)'}`;
     const dueDate=task.deadline||((task.deadline===undefined)?task.date:'');

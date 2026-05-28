@@ -19,6 +19,28 @@ function json(data, status = 200) {
   });
 }
 
+function graphDueDate(date) {
+  const raw = String(date || '').trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  if (!y || m < 1 || m > 12 || d < 1 || d > 31) return null;
+  return {
+    dateTime: `${match[1]}-${match[2]}-${match[3]}T17:00:00.0000000`,
+    timeZone: 'Central Standard Time',
+  };
+}
+
+function extractEmailAddress(value) {
+  const raw = String(value || '').trim();
+  const angle = raw.match(/<([^<>@\s]+@[^<>\s]+)>/);
+  if (angle) return angle[1].trim().toLowerCase();
+  const email = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return email ? email[0].trim().toLowerCase() : raw.toLowerCase();
+}
+
 function decodeToken(token) {
   try {
     const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
@@ -69,11 +91,12 @@ async function handleTodo(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
 
-  const { recipientEmail, title, summary = '', priority = 'Normal', date } = body;
-  if (!recipientEmail || !title) {
+  const { recipientEmail, title, summary = '', priority = 'Normal', date, deadline } = body;
+  const recipient = extractEmailAddress(recipientEmail);
+  if (!recipient || !title) {
     return json({ error: 'recipientEmail and title are required' }, 400);
   }
-  if (!recipientEmail.toLowerCase().includes('@dhananipeg.com')) {
+  if (!recipient.includes('@dhananipeg.com')) {
     return json({ error: 'Only @dhananipeg.com addresses are supported' }, 403);
   }
 
@@ -84,7 +107,7 @@ async function handleTodo(request, env) {
 
   // Find recipient's default To Do list
   const listsRes = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists`,
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists`,
     { headers: { Authorization: `Bearer ${appToken}` } }
   );
   if (!listsRes.ok) {
@@ -99,7 +122,7 @@ async function handleTodo(request, env) {
   // If no list exists, create one (recipient may not have opened To Do yet)
   if (!defaultList) {
     const createRes = await fetch(
-      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists`,
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists`,
       { method: 'POST', headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: 'Tasks' }) }
     );
     if (!createRes.ok) {
@@ -119,13 +142,11 @@ async function handleTodo(request, env) {
     importance: String(priority).toLowerCase() === 'high' ? 'high' : 'normal',
     status: 'notStarted',
   };
-  if (date) {
-    const d = new Date(date);
-    if (!isNaN(d)) task.dueDateTime = { dateTime: d.toISOString(), timeZone: 'UTC' };
-  }
+  const due = graphDueDate(deadline || date);
+  if (due) task.dueDateTime = due;
 
   const taskRes = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists/${defaultList.id}/tasks`,
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists/${defaultList.id}/tasks`,
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' },
@@ -163,18 +184,16 @@ THREAD CONTENT:
 ${emailText.slice(0, 2800)}
 ${latestMessageText ? `\nLATEST MESSAGE${latestSender ? ` — from ${latestSender}` : ''}${latestDate ? ` (${latestDate})` : ''}:\n${latestMessageText.slice(0, 700)}` : ''}
 
-Write a concise executive briefing using ONLY these bullet labels. Skip any bullet that has no meaningful content:
-
-• About: [One sentence — what is this specifically about? Name the property, deal, person, or issue directly.]
-• Latest: [What was just said or sent in the most recent message. Embed any dollar amounts, dates, deadlines, or key facts here — do not create a separate facts bullet.]
-• Action needed: [Based on the LATEST message only — what must DPEG act on or decide right now? Start with a verb. Skip entirely if nothing actionable.]
+Write exactly 2-3 bullet sentences. No labels, no headers — just plain bullets starting with •.
+Each bullet must be a single direct, complete sentence. Make every word count.
 
 Rules:
-- Never say "the email discusses", "this email is about", or "the sender"
-- State specifics directly — names, numbers, property addresses, deadlines
-- "Action needed" must come from the most recent message, not earlier history
-- If the latest message is just a reply acknowledgment with no new ask, skip Action needed
-- Max 160 words total`;
+- Bullet 1: What this is specifically about — name the property, deal, person, amount, or issue directly.
+- Bullet 2: The latest development — what was just said or sent, with any key figures, dates, or decisions embedded.
+- Bullet 3 (only if something is clearly actionable): What DPEG must do right now, starting with a strong verb. Omit entirely if the latest message is just an acknowledgment.
+- Never write "the email", "this email", "the sender", or vague generalities.
+- State names, dollar amounts, property addresses, and deadlines explicitly.
+- Max 120 words total.`;
 
   const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
