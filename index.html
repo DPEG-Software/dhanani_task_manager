@@ -19088,7 +19088,12 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
     </div>
     <div class="mo-body">
       <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px">
-        Copy your full Outlook signature, including the logo, then paste it below. If the logo does not paste, use an image with a public HTTPS URL or paste an embedded image from Outlook Web.
+        Copy your full Outlook signature below. If the logo does not paste from Outlook, upload the logo and it will be stored with the signature.
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <input type="file" id="signature-logo-input" accept="image/*" style="display:none" onchange="insertSignatureLogo(this.files?.[0])">
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('signature-logo-input').click()">Upload Logo</button>
+        <span style="font-size:11.5px;color:var(--muted)">Places the logo at the cursor, or below the title if no cursor is selected.</span>
       </div>
       <div id="signature-editor" contenteditable="true" style="min-height:170px;border:1px solid var(--border);border-radius:var(--r);padding:12px;background:#fff;font-size:13px;line-height:1.5;overflow:auto"></div>
     </div>
@@ -19897,6 +19902,25 @@ function openSignatureSettings(){
   if(editor)editor.innerHTML=getSignatureHTML();
   document.getElementById('mo-signature').classList.add('open');
 }
+function insertSignatureLogo(file){
+  if(!file)return;
+  if(!file.type?.startsWith('image/')){toast('Please choose an image file');return;}
+  const reader=new FileReader();
+  reader.onload=()=>{
+    const editor=document.getElementById('signature-editor');
+    if(!editor)return;
+    editor.focus();
+    const img=`<div><img src="${reader.result}" alt="DPEG logo" style="max-width:190px;height:auto;display:block;margin:4px 0 8px"></div>`;
+    try{
+      document.execCommand('insertHTML',false,img);
+    }catch(e){
+      editor.insertAdjacentHTML('beforeend',img);
+    }
+    const input=document.getElementById('signature-logo-input');
+    if(input)input.value='';
+  };
+  reader.readAsDataURL(file);
+}
 function saveSignatureSettings(){
   const html=(document.getElementById('signature-editor')?.innerHTML||'').trim();
   localStorage.setItem(signatureStorageKey(),html);
@@ -19925,6 +19949,15 @@ function composeBodyHTML(text){
   const typed=escapeHtml(text).replace(/\r?\n/g,'<br>');
   const sig=getSignatureHTML();
   return `${typed}${sig?`<br><br>${sig}`:''}`;
+}
+function outlookFlagStatus(email){
+  return String(email?.flag?.flagStatus||'notFlagged');
+}
+function flagBadge(email){
+  const status=outlookFlagStatus(email);
+  if(status==='flagged')return '<span title="Flagged in Outlook" style="color:#dc2626;font-size:13px;font-weight:900;line-height:1">⚑</span>';
+  if(status==='complete')return '<span title="Completed flag in Outlook" style="color:#15803d;font-size:12px;font-weight:900;line-height:1">✓</span>';
+  return '';
 }
 
 // ============================================================
@@ -20267,7 +20300,7 @@ async function attachFreeThreadSummary(email){
 }
 function upsertTaskFromEmail(email,person,address,dept,date){
   const conversationId=email.conversationId||"";
-  const emailPriority=String(email.importance||"normal").toLowerCase()==="high"?"High":"Normal";
+  const emailPriority=String(email.importance||"normal").toLowerCase()==="high"||outlookFlagStatus(email)==='flagged'?"High":"Normal";
   const existing=conversationId?tasks.find(t=>t.conversationId===conversationId):null;
   if(existing){
     existing.emailId=email.id||existing.emailId;
@@ -21244,6 +21277,7 @@ function renderEmailRows(folder,emails){
         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
           ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd);white-space:nowrap">✓</span>`:''}
           ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;white-space:nowrap">!</span>`:''}
+          ${flagBadge(e)}
           ${hasAtt?`<svg width="11" height="11" fill="none" stroke="var(--muted)" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
           <div class="ol-email-date" style="margin-left:0">${dateStr}</div>
           <button title="AI summary" onclick="event.stopPropagation();toggleListAISummary(this.closest('.ol-email-item').dataset.emailId,this,'${safeFolder}')" style="background:none;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;padding:1px 4px;font-size:9px;color:#7c3aed;font-weight:700;line-height:1.6;flex-shrink:0">✦</button>
@@ -21278,7 +21312,7 @@ async function loadFolder(folder){
   if(folder==='untracked'){await loadUntracked();return;}
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
@@ -21343,7 +21377,7 @@ async function loadUntracked(){
   const listEl=document.getElementById('ol-email-list');
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId,importance,hasAttachments&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId,importance,hasAttachments,flag&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
@@ -21368,7 +21402,7 @@ async function loadUntracked(){
       return `<div class="ol-email-item" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readEmail(this.dataset.emailId,'sent',this)" style="display:flex;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
           <div class="ol-email-top"><div class="ol-email-sender">To: ${escapeHtml(to)}</div><div class="ol-email-date">${dateStr}</div></div>
-          <div class="ol-email-subject">${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;margin-right:5px;vertical-align:middle">High</span>`:''}${escapeHtml(e.subject||'(no subject)')}</div>
+          <div class="ol-email-subject">${flagBadge(e)} ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;margin-right:5px;vertical-align:middle">High</span>`:''}${escapeHtml(e.subject||'(no subject)')}</div>
           <div class="ol-email-preview">${escapeHtml(e.bodyPreview||'')}</div>
           ${hasAtt?`<div class="ol-email-attachments"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attachment</span></div>`:''}
         </div>
@@ -21383,7 +21417,7 @@ async function loadUntracked(){
 async function quickAddTask(emailId){
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId,importance`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId,importance,flag`,{headers:{Authorization:`Bearer ${token}`}});
     const email=await res.json();
     const recipient=email.toRecipients?.[0]?.emailAddress;
     const p=findPersonByEmail(recipient?.address);
@@ -21432,7 +21466,7 @@ async function openTaskThread(taskId){
   try{
     const token=await getAccessToken();
     const filter=encodeURIComponent(`conversationId eq '${t.conversationId.replace(/'/g,"''")}'`);
-    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink,hasAttachments';
+    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink,hasAttachments,flag';
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
@@ -21515,7 +21549,7 @@ async function viewFullThread(emailId){
   try{
     const token=await getAccessToken();
     const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
-    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink,hasAttachments';
+    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink,hasAttachments,flag';
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
@@ -21560,20 +21594,28 @@ async function viewFullThread(emailId){
 }
 
 async function resolveInlineImages(token,emailId,html){
-  if(!html||html.indexOf('cid:')===-1)return html;
+  if(!html)return html;
+  const lower=html.toLowerCase();
+  if(!lower.includes('cid:')&&!lower.includes('src="http')&&!lower.includes("src='http"))return html;
   try{
-    var res=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+emailId+'/attachments?$select=id,contentType,isInline,contentId,contentBytes',{headers:{Authorization:'Bearer '+token}});
+    var res=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+emailId+'/attachments?$select=id,name,contentType,isInline,contentId,contentBytes',{headers:{Authorization:'Bearer '+token}});
     if(!res.ok)return html;
     var data=await res.json();
     var atts=data.value||[];
     for(var i=0;i<atts.length;i++){
       var att=atts[i];
       if(!att.contentId||!att.contentBytes)continue;
-      var cid=att.contentId.replace('<','').replace('>','');
-      if(html.indexOf('cid:'+cid)===-1)continue;
+      var cid=String(att.contentId||'').replace(/[<>]/g,'');
+      var cidNoDomain=cid.split('@')[0];
       var dataUrl='data:'+(att.contentType||'image/png')+';base64,'+att.contentBytes;
-      html=html.split('cid:'+cid).join(dataUrl);
+      [cid,cidNoDomain,encodeURIComponent(cid),encodeURIComponent(cidNoDomain)].filter(Boolean).forEach(function(v){
+        html=html.split('cid:'+v).join(dataUrl);
+        html=html.split('cid:'+v.toLowerCase()).join(dataUrl);
+      });
     }
+    html=html.replace(/<img\b([^>]*?)\bsrc=(["'])https?:\/\/[^"']+\2([^>]*)>/gi,function(match,before,q,after){
+      return /alt=|title=|width=|height=|class=/i.test(match)?match:'';
+    });
     return html;
   }catch(e){return html;}
 }
@@ -21589,7 +21631,7 @@ async function readEmail(emailId,folder,el){
   readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading...</div></div>';
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments,flag`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const email=await res.json();
     emailCache[emailId]=email;
@@ -21603,7 +21645,7 @@ async function readEmail(emailId,folder,el){
     const isTracked=trackedEmailIds.has(emailId)||trackedEmailIds.has(email.conversationId);
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
-        <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:10px;line-height:1.3">${escapeHtml(email.subject||'(no subject)')}</div>
+        <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:10px;line-height:1.3;display:flex;align-items:center;gap:7px">${flagBadge(email)}<span>${escapeHtml(email.subject||'(no subject)')}</span></div>
         <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">From:</span> ${escapeHtml(sender?.name||'')} &lt;${escapeHtml(sender?.address||'')}&gt;</div>
         <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">To:</span> ${escapeHtml(toList)}</div>
         ${ccList?`<div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">CC:</span> ${escapeHtml(ccList)}</div>`:''}
@@ -22218,7 +22260,7 @@ async function loadForwardAIBrief(emailId){
     if(email.conversationId){
       const token=await getAccessToken();
       const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
-      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,flag&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
       if(res.ok){const d=await res.json();if(d.value?.length)messages=d.value;}
     }
     messages.sort((a,b)=>new Date(a.receivedDateTime)-new Date(b.receivedDateTime));
@@ -22328,7 +22370,7 @@ async function toggleListAISummary(emailId,btn,folder){
     let email=emailCache[emailId];
     if(!email){
       const token=await getAccessToken();
-      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,conversationId`,{headers:{Authorization:`Bearer ${token}`}});
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,conversationId,flag,importance`,{headers:{Authorization:`Bearer ${token}`}});
       if(!res.ok)throw new Error('fetch failed');
       email=await res.json();
       emailCache[emailId]=email;
@@ -22358,7 +22400,7 @@ async function toggleEmailAISummary(emailId){
     if(email.conversationId){
       const token=await getAccessToken();
       const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
-      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=15&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=15&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,flag&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
       if(res.ok){const d=await res.json();if(d.value?.length)messages=d.value;}
     }
     const ai=await callAISummary(messages,email.subject||'');
