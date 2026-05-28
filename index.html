@@ -19895,7 +19895,17 @@ function signatureStorageKey(){
   return `dpeg_email_signature_${normEmail(currentUser?.email||'default')}`;
 }
 function getSignatureHTML(){
-  return localStorage.getItem(signatureStorageKey())||'';
+  return compactSignatureHTML(localStorage.getItem(signatureStorageKey())||'');
+}
+function compactSignatureHTML(html){
+  const wrap=document.createElement('div');
+  wrap.innerHTML=html||'';
+  wrap.querySelectorAll('p,div').forEach(el=>{
+    if(!el.textContent.trim()&&!el.querySelector('img'))el.remove();
+    else el.style.margin='0';
+  });
+  wrap.querySelectorAll('br+br').forEach(br=>br.remove());
+  return wrap.innerHTML.trim();
 }
 function openSignatureSettings(){
   const editor=document.getElementById('signature-editor');
@@ -19922,7 +19932,7 @@ function insertSignatureLogo(file){
   reader.readAsDataURL(file);
 }
 function saveSignatureSettings(){
-  const html=(document.getElementById('signature-editor')?.innerHTML||'').trim();
+  const html=compactSignatureHTML(document.getElementById('signature-editor')?.innerHTML||'');
   localStorage.setItem(signatureStorageKey(),html);
   closeMo('mo-signature');
   applyComposeSignature();
@@ -19948,16 +19958,38 @@ function escapeHtml(s){
 function composeBodyHTML(text){
   const typed=escapeHtml(text).replace(/\r?\n/g,'<br>');
   const sig=getSignatureHTML();
-  return `${typed}${sig?`<br><br>${sig}`:''}`;
+  return `${typed}${sig?`<br><br><div style="line-height:1.25">${sig}</div>`:''}`;
+}
+function prepareComposedEmail(text){
+  let html=composeBodyHTML(text);
+  const inlineAttachments=[];
+  let idx=0;
+  html=html.replace(/<img\b([^>]*?)\bsrc=(["'])data:(image\/[^;,]+);base64,([^"']+)\2([^>]*)>/gi,(match,before,q,mime,b64,after)=>{
+    const ext=(mime.split('/')[1]||'png').replace(/[^a-z0-9]/gi,'')||'png';
+    const cid=`dpeg-signature-logo-${Date.now()}-${idx}@dpeg`;
+    inlineAttachments.push({
+      '@odata.type':'#microsoft.graph.fileAttachment',
+      name:`signature-logo-${++idx}.${ext}`,
+      contentType:mime,
+      contentBytes:b64,
+      isInline:true,
+      contentId:cid
+    });
+    return `<img${before}src="cid:${cid}"${after}>`;
+  });
+  return {html,inlineAttachments};
 }
 function outlookFlagStatus(email){
   return String(email?.flag?.flagStatus||'notFlagged');
 }
-function flagBadge(email){
+function flagBadge(email,interactive=false){
   const status=outlookFlagStatus(email);
-  if(status==='flagged')return '<span title="Flagged in Outlook" style="color:#dc2626;font-size:13px;font-weight:900;line-height:1">⚑</span>';
-  if(status==='complete')return '<span title="Completed flag in Outlook" style="color:#15803d;font-size:12px;font-weight:900;line-height:1">✓</span>';
-  return '';
+  const color=status==='complete'?'#15803d':status==='flagged'?'#dc2626':'#9ca3af';
+  const glyph=status==='complete'?'✓':'⚑';
+  if(!interactive&&status==='notFlagged')return '';
+  const title=status==='flagged'?'Remove Outlook flag':status==='complete'?'Completed in Outlook':'Flag in Outlook';
+  const attrs=interactive?`role="button" onclick="toggleOutlookFlag('${email?.id||''}',event)"`:'';
+  return `<span ${attrs} title="${title}" style="color:${color};font-size:13px;font-weight:900;line-height:1;cursor:${interactive?'pointer':'default'}">${glyph}</span>`;
 }
 
 // ============================================================
@@ -21277,7 +21309,7 @@ function renderEmailRows(folder,emails){
         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
           ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd);white-space:nowrap">✓</span>`:''}
           ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;white-space:nowrap">!</span>`:''}
-          ${flagBadge(e)}
+          ${flagBadge(e,true)}
           ${hasAtt?`<svg width="11" height="11" fill="none" stroke="var(--muted)" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
           <div class="ol-email-date" style="margin-left:0">${dateStr}</div>
           <button title="AI summary" onclick="event.stopPropagation();toggleListAISummary(this.closest('.ol-email-item').dataset.emailId,this,'${safeFolder}')" style="background:none;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;padding:1px 4px;font-size:9px;color:#7c3aed;font-weight:700;line-height:1.6;flex-shrink:0">✦</button>
@@ -21402,7 +21434,7 @@ async function loadUntracked(){
       return `<div class="ol-email-item" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readEmail(this.dataset.emailId,'sent',this)" style="display:flex;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
           <div class="ol-email-top"><div class="ol-email-sender">To: ${escapeHtml(to)}</div><div class="ol-email-date">${dateStr}</div></div>
-          <div class="ol-email-subject">${flagBadge(e)} ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;margin-right:5px;vertical-align:middle">High</span>`:''}${escapeHtml(e.subject||'(no subject)')}</div>
+          <div class="ol-email-subject">${flagBadge(e,true)} ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;margin-right:5px;vertical-align:middle">High</span>`:''}${escapeHtml(e.subject||'(no subject)')}</div>
           <div class="ol-email-preview">${escapeHtml(e.bodyPreview||'')}</div>
           ${hasAtt?`<div class="ol-email-attachments"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attachment</span></div>`:''}
         </div>
@@ -21604,7 +21636,14 @@ async function resolveInlineImages(token,emailId,html){
     var atts=data.value||[];
     for(var i=0;i<atts.length;i++){
       var att=atts[i];
-      if(!att.contentId||!att.contentBytes)continue;
+      if(!att.contentId)continue;
+      if(!att.contentBytes&&att.id){
+        try{
+          const one=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+emailId+'/attachments/'+att.id,{headers:{Authorization:'Bearer '+token}});
+          if(one.ok){att={...att,...await one.json()};}
+        }catch(e){}
+      }
+      if(!att.contentBytes)continue;
       var cid=String(att.contentId||'').replace(/[<>]/g,'');
       var cidNoDomain=cid.split('@')[0];
       var dataUrl='data:'+(att.contentType||'image/png')+';base64,'+att.contentBytes;
@@ -21613,9 +21652,6 @@ async function resolveInlineImages(token,emailId,html){
         html=html.split('cid:'+v.toLowerCase()).join(dataUrl);
       });
     }
-    html=html.replace(/<img\b([^>]*?)\bsrc=(["'])https?:\/\/[^"']+\2([^>]*)>/gi,function(match,before,q,after){
-      return /alt=|title=|width=|height=|class=/i.test(match)?match:'';
-    });
     return html;
   }catch(e){return html;}
 }
@@ -21645,7 +21681,7 @@ async function readEmail(emailId,folder,el){
     const isTracked=trackedEmailIds.has(emailId)||trackedEmailIds.has(email.conversationId);
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
-        <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:10px;line-height:1.3;display:flex;align-items:center;gap:7px">${flagBadge(email)}<span>${escapeHtml(email.subject||'(no subject)')}</span></div>
+        <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:10px;line-height:1.3;display:flex;align-items:center;gap:7px">${flagBadge(email,true)}<span>${escapeHtml(email.subject||'(no subject)')}</span></div>
         <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">From:</span> ${escapeHtml(sender?.name||'')} &lt;${escapeHtml(sender?.address||'')}&gt;</div>
         <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">To:</span> ${escapeHtml(toList)}</div>
         ${ccList?`<div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">CC:</span> ${escapeHtml(ccList)}</div>`:''}
@@ -21716,6 +21752,31 @@ async function downloadAttachment(emailId,attId,filename){
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     toast(`Downloaded: ${filename}`);
   }catch(err){toast('Download failed');}
+}
+
+async function toggleOutlookFlag(emailId,ev){
+  ev?.stopPropagation();
+  if(!emailId)return;
+  const email=emailCache[emailId]||(outlookFolderEmails[currentFolder]||[]).find(e=>e.id===emailId)||{};
+  const next=outlookFlagStatus(email)==='flagged'?'notFlagged':'flagged';
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{
+      method:'PATCH',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({flag:{flagStatus:next}})
+    });
+    if(!res.ok)throw new Error('Flag update failed');
+    email.flag={...(email.flag||{}),flagStatus:next};
+    if(emailCache[emailId])emailCache[emailId].flag=email.flag;
+    const cached=(outlookFolderEmails[currentFolder]||[]).find(e=>e.id===emailId);
+    if(cached)cached.flag=email.flag;
+    renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
+    if(currentEmailId===emailId)readEmail(emailId,currentFolder);
+    toast(next==='flagged'?'Flagged in Outlook':'Flag removed');
+  }catch(err){
+    toast('Could not update Outlook flag');
+  }
 }
 
 function openCompose(to,subject,body,type,emailId){
@@ -21946,6 +22007,18 @@ async function addSmallAttachmentToMessage(token,messageId,file){
   }
 }
 
+async function addInlineAttachmentToMessage(token,messageId,att){
+  const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${messageId}/attachments`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify(att)
+  });
+  if(!res.ok){
+    const errText=await res.text().catch(()=>'');
+    throw new Error(`Inline attachment failed (${res.status}) ${errText}`);
+  }
+}
+
 async function uploadLargeAttachmentToMessage(token,messageId,file){
   const sessionRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${messageId}/attachments/createUploadSession`,{
     method:'POST',
@@ -21986,7 +22059,13 @@ async function addComposeAttachmentsToDraft(token,messageId,files){
   }
 }
 
-async function sendDraftMessage(token,message,toAttach=[]){
+async function addInlineAttachmentsToDraft(token,messageId,inlineAttachments=[]){
+  for(const att of inlineAttachments||[]){
+    await addInlineAttachmentToMessage(token,messageId,att);
+  }
+}
+
+async function sendDraftMessage(token,message,toAttach=[],inlineAttachments=[]){
   const draftRes=await fetch('https://graph.microsoft.com/v1.0/me/messages',{
     method:'POST',
     headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
@@ -21997,6 +22076,7 @@ async function sendDraftMessage(token,message,toAttach=[]){
     throw new Error(`Microsoft Graph draft failed (${draftRes.status}) ${errText}`);
   }
   const draft=await draftRes.json();
+  await addInlineAttachmentsToDraft(token,draft.id,inlineAttachments);
   await addComposeAttachmentsToDraft(token,draft.id,toAttach);
   const sendRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}/send`,{
     method:'POST',
@@ -22008,7 +22088,7 @@ async function sendDraftMessage(token,message,toAttach=[]){
   }
 }
 
-async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,toAttach=[]){
+async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,toAttach=[],composed=null){
   const createRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/createForward`,{
     method:'POST',
     headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
@@ -22020,7 +22100,7 @@ async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipien
   }
   const draft=await createRes.json();
   const patch={subject,importance};
-  const intro=composeBodyHTML(body);
+  const intro=body?`<div>${escapeHtml(body).replace(/\r?\n/g,'<br>')}</div>`:'';
   let forwardedBody=draft.body?.content||'';
   let forwardedBodyType=(draft.body?.contentType||'html').toLowerCase();
   if(!forwardedBody){
@@ -22034,8 +22114,12 @@ async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipien
   if(forwardedBody&&forwardedBodyType==='text'){
     forwardedBody=escapeHtml(forwardedBody).replace(/\r?\n/g,'<br>');
   }
-  if(intro||forwardedBody){
-    patch.body={contentType:'HTML',content:[intro,forwardedBody].filter(Boolean).join('<br><br>')};
+  if(intro&&forwardedBody){
+    const bIdx=forwardedBody.indexOf('<body');
+    if(bIdx>=0){const bEnd=forwardedBody.indexOf('>',bIdx)+1;patch.body={contentType:'HTML',content:forwardedBody.slice(0,bEnd)+intro+'<br><br>'+forwardedBody.slice(bEnd)};}
+    else{patch.body={contentType:'HTML',content:intro+'<br><br>'+forwardedBody};}
+  }else if(intro||forwardedBody){
+    patch.body={contentType:'HTML',content:intro||forwardedBody};
   }
   if(ccRecipients.length)patch.ccRecipients=ccRecipients;
   if(bccRecipients.length)patch.bccRecipients=bccRecipients;
@@ -22048,6 +22132,7 @@ async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipien
     const errText=await patchRes.text().catch(()=>'');
     throw new Error(`Microsoft Graph forward draft update failed (${patchRes.status}) ${errText}`);
   }
+  await addInlineAttachmentsToDraft(token,draft.id,prepared.inlineAttachments);
   await addComposeAttachmentsToDraft(token,draft.id,toAttach);
   const sendRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}/send`,{
     method:'POST',
@@ -22059,7 +22144,7 @@ async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipien
   }
 }
 
-async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,body,importance,toAttach=[]){
+async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,body,importance,toAttach=[],composed=null){
   const createRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/createReply`,{
     method:'POST',
     headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
@@ -22071,7 +22156,7 @@ async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,b
   }
   const draft=await createRes.json();
   const patch={importance};
-  const replyIntro=composeBodyHTML(body);
+  const replyIntro=body?`<div>${escapeHtml(body).replace(/\r?\n/g,'<br>')}</div>`:'';
   let originalBody=draft.body?.content||'';
   let originalBodyType=(draft.body?.contentType||'html').toLowerCase();
   if(!originalBody){
@@ -22079,7 +22164,11 @@ async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,b
     if(bodyRes.ok){const bodyData=await bodyRes.json();originalBody=bodyData.body?.content||'';originalBodyType=(bodyData.body?.contentType||originalBodyType).toLowerCase();}
   }
   if(originalBody&&originalBodyType==='text'){originalBody=escapeHtml(originalBody).replace(/\r?\n/g,'<br>');}
-  if(replyIntro||originalBody){patch.body={contentType:'HTML',content:[replyIntro,originalBody].filter(Boolean).join('<br><br>')};}
+  if(replyIntro&&originalBody){
+    const bIdx=originalBody.indexOf('<body');
+    if(bIdx>=0){const bEnd=originalBody.indexOf('>',bIdx)+1;patch.body={contentType:'HTML',content:originalBody.slice(0,bEnd)+replyIntro+'<br><br>'+originalBody.slice(bEnd)};}
+    else{patch.body={contentType:'HTML',content:replyIntro+'<br><br>'+originalBody};}
+  }else if(replyIntro||originalBody){patch.body={contentType:'HTML',content:replyIntro||originalBody};}
   if(toRecipients.length)patch.toRecipients=toRecipients;
   if(ccRecipients.length)patch.ccRecipients=ccRecipients;
   if(bccRecipients.length)patch.bccRecipients=bccRecipients;
@@ -22092,6 +22181,7 @@ async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,b
     const errText=await patchRes.text().catch(()=>'');
     throw new Error(`Microsoft Graph reply draft update failed (${patchRes.status}) ${errText}`);
   }
+  await addInlineAttachmentsToDraft(token,draft.id,prepared.inlineAttachments);
   await addComposeAttachmentsToDraft(token,draft.id,toAttach);
   const sendRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}/send`,{
     method:'POST',
@@ -22116,17 +22206,19 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
     const token=needsDraftPermission?await getDraftAccessToken():await getAccessToken();
     const forwardAttachmentNames=isOutlookForward?await getForwardAttachmentNames(currentComposeEmailId):[];
     const manualAttachmentNames=currentComposeFiles.map(f=>f.name);
+    const composed=prepareComposedEmail(body);
     if(isOutlookForward){
-      await sendForwardedOutlookMessage(token,currentComposeEmailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,currentComposeFiles);
+      await sendForwardedOutlookMessage(token,currentComposeEmailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,currentComposeFiles,composed);
     }else if(isOutlookReply){
-      await sendReplyOutlookMessage(token,currentComposeEmailId,toRecipients,ccRecipients,bccRecipients,body,importance,currentComposeFiles);
+      await sendReplyOutlookMessage(token,currentComposeEmailId,toRecipients,ccRecipients,bccRecipients,body,importance,currentComposeFiles,composed);
     }else{
-      const message={subject,importance,body:{contentType:'HTML',content:composeBodyHTML(body)},toRecipients};
+      const message={subject,importance,body:{contentType:'HTML',content:composed.html},toRecipients};
       if(ccRecipients.length)message.ccRecipients=ccRecipients;
       if(bccRecipients.length)message.bccRecipients=bccRecipients;
       if(currentComposeFiles.length){
-        await sendDraftMessage(token,message,currentComposeFiles);
+        await sendDraftMessage(token,message,currentComposeFiles,composed.inlineAttachments);
       }else{
+        if(composed.inlineAttachments.length)message.attachments=composed.inlineAttachments;
         const sendRes = await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
           method:'POST',
           headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
