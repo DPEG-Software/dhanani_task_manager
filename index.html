@@ -18634,104 +18634,110 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 @media print{
-  @page{margin:1.8cm 2.2cm;size:A4 portrait}
+  @page{
+    margin:1.8cm 2cm 2.4cm;
+    size:A4 portrait;
+    @bottom-left{content:"CONFIDENTIAL \2014  INTERNAL USE ONLY";font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:6.5pt;color:#9ca3af;letter-spacing:.4pt}
+    @bottom-right{content:"Page " counter(page) " of " counter(pages);font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:6.5pt;color:#9ca3af}
+  }
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
 
-  /* ── Hide all interactive UI ── */
+  /* hide interactive UI + dept nav strip */
   .sb,.topbar,.btn,.wed-btn,button,.acct-menu,.week-bar,.tbl-hdr,
   .cn-row,.wed-actions,.rm-btn,.ag-foot,.compose-ac,.deadline-btn,
   #mo-ai-settings,#mo-admin,.sync-bar,.mo,.empty-state,
   .wed-expand-btn{display:none!important}
+  #wed-list>div[style*="gap:8px"]:first-child{display:none!important}
 
-  /* ── Page base ── */
-  html,body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#111;background:#fff;font-size:9.5pt;line-height:1.45;margin:0;padding:0}
+  /* page base */
+  html,body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#111;background:#fff;font-size:9.5pt;line-height:1.5;margin:0;padding:0}
   .main{margin-left:0!important;padding:0}
 
-  /* ── Print header ── */
-  #print-header{
-    display:block!important;
-    margin-bottom:18pt;
-    padding-bottom:10pt;
-    border-bottom:2pt solid #0E3416
-  }
+  /* print header */
+  #print-header{display:block!important;margin-bottom:20pt}
 
-  /* ── Department section headers ── */
-  .wed-date-group{page-break-inside:avoid;break-inside:avoid;margin-bottom:12pt}
+  /* department section headers */
+  .wed-date-group{page-break-inside:avoid;break-inside:avoid;margin-bottom:14pt}
   .wed-date{
-    display:flex!important;align-items:center;gap:6pt;
-    font-size:9pt;font-weight:800;color:#0E3416;
-    text-transform:uppercase;letter-spacing:.7pt;
-    padding:4pt 0 4pt;
-    border-bottom:1.5pt solid #0E3416;
-    margin-bottom:7pt
+    display:flex!important;align-items:center;gap:8pt;
+    font-size:8pt;font-weight:800;color:#fff;
+    text-transform:uppercase;letter-spacing:.8pt;
+    padding:4.5pt 10pt;
+    background:#0E3416;
+    margin-bottom:7pt;
+    border-radius:2pt
   }
+  .wed-date>span:first-child{display:none!important}
 
-  /* ── Task cards ── */
+  /* task cards */
   .wed-card{
     page-break-inside:avoid;break-inside:avoid;
-    border:1pt solid #d1d5db;
-    border-radius:3pt;
+    border:1pt solid #e5e7eb;
+    border-left:3.5pt solid #0E3416;
+    border-radius:0 3pt 3pt 0;
     margin:0 0 5pt 0;
     background:#fff;
     overflow:hidden
   }
   .wed-card-head{
-    display:flex!important;align-items:center;gap:7pt;
-    background:#f6f8f6;
-    border-bottom:1pt solid #d1d5db;
-    padding:5pt 8pt
+    display:flex!important;align-items:center;gap:8pt;
+    background:#f9fafb;
+    border-bottom:1pt solid #e5e7eb;
+    padding:5.5pt 9pt
   }
-  .wed-card-title{font-size:10pt;font-weight:700;color:#111;flex:1;line-height:1.3}
-  .wed-card-compact-body{padding:5pt 8pt 6pt}
-  .wed-card-body{padding:5pt 8pt 6pt}
+  .wed-card-title{font-size:10.5pt;font-weight:700;color:#0d1117;flex:1;line-height:1.3}
+  .wed-card-compact-body{padding:5pt 9pt 7pt}
+  .wed-card-body{padding:5pt 9pt 7pt}
 
-  /* ── Meta row (person, priority) ── */
-  .wed-card-meta{display:flex!important;gap:6pt;flex-wrap:wrap;margin-bottom:4pt;font-size:8.5pt;color:#444;font-weight:600}
-  .wed-card-summary{font-size:8.5pt;color:#333;line-height:1.5;margin-bottom:3pt}
+  /* meta row */
+  .wed-card-meta{display:flex!important;gap:7pt;flex-wrap:wrap;align-items:center;margin-bottom:5pt;font-size:8.5pt;color:#374151;font-weight:600}
+  .wed-card-summary{font-size:8.5pt;color:#1f2937;line-height:1.6;margin-bottom:4pt}
 
-  /* ── Summary bullet lines ── */
+  /* show full summary */
   .wed-sum-clip{max-height:none!important;display:block!important}
   .wed-sum-clip::after{display:none!important}
-  #wsum-*{display:block!important}
 
-  /* ── Status badges ── */
-  .badge,.bp,.bd,.bo{display:inline-block!important;padding:1pt 5pt;border-radius:2pt;font-size:7.5pt;font-weight:700;border:1pt solid #ccc;color:#333}
-  .bd{background:#d1fae5!important;color:#065f46!important;border-color:#6ee7b7!important}
-  .bo{background:#fee2e2!important;color:#991b1b!important;border-color:#fca5a5!important}
-  .bp{background:#fef3c7!important;color:#92400e!important;border-color:#fcd34d!important}
+  /* status badges pill style */
+  .badge,.bp,.bd,.bo{display:inline-block!important;padding:1.5pt 6pt;border-radius:10pt;font-size:7pt;font-weight:700;letter-spacing:.2pt}
+  .bd{background:#d1fae5!important;color:#065f46!important;border:1pt solid #6ee7b7!important}
+  .bo{background:#fee2e2!important;color:#991b1b!important;border:1pt solid #fca5a5!important}
+  .bp{background:#fef9c3!important;color:#713f12!important;border:1pt solid #fde047!important}
 
-  /* ── Priority badges ── */
-  .p-high{display:inline-block!important;background:#fee2e2!important;color:#b91c1c!important;padding:1pt 5pt;border-radius:2pt;font-size:7.5pt;font-weight:700}
+  /* priority badges */
+  .p-high{display:inline-block!important;background:#fee2e2!important;color:#b91c1c!important;border:1pt solid #fca5a5!important;padding:1.5pt 6pt;border-radius:10pt;font-size:7pt;font-weight:700}
   .p-low{display:none}
 
-  /* ── Department pill ── */
-  .dept-pill{display:inline-flex!important;font-size:7.5pt;padding:1pt 5pt;border-radius:2pt;border:1pt solid #ccc;background:#f3f4f6;color:#374151}
+  /* department pill */
+  .dept-pill{display:inline-flex!important;font-size:7pt;padding:1.5pt 6pt;border-radius:10pt;border:1pt solid #d1d5db;background:#f3f4f6;color:#374151;font-weight:600}
 
-  /* ── Follow-up note box ── */
+  /* follow-up note left-accent */
   .wed-card-compact-body div[style*="background:var(--sage3)"]{
-    background:#f0f7f0!important;border:1pt solid #ccc!important;
-    padding:3pt 7pt!important;font-size:8.5pt!important;color:#1a3a1a!important;
-    margin-bottom:4pt!important;border-radius:2pt
+    background:#f0fdf4!important;
+    border:none!important;border-left:3pt solid #16a34a!important;
+    padding:3pt 8pt!important;font-size:8.5pt!important;color:#14532d!important;
+    margin-bottom:5pt!important;border-radius:0 2pt 2pt 0!important
   }
 
-  /* ── Meeting note textarea → shown as styled text ── */
+  /* meeting note area ruled lines */
   .ag-ta{
     display:block!important;
     width:100%;
-    border:1pt dashed #d1d5db;
-    border-radius:2pt;
-    padding:4pt 6pt;
-    font-size:8.5pt;font-family:inherit;color:#444;
-    background:#fafafa;
-    resize:none;
-    min-height:16pt;
-    margin-top:4pt
+    border:none;
+    border-top:1pt solid #e5e7eb;
+    padding:5pt 0 2pt;
+    font-size:8.5pt;font-family:inherit;color:#374151;
+    background:repeating-linear-gradient(transparent,transparent 17pt,#e5e7eb 17pt,#e5e7eb 18pt);
+    background-size:100% 18pt;
+    min-height:36pt;
+    line-height:18pt;
+    margin-top:5pt;
+    resize:none
   }
 
-  /* ── Tables ── */
+  /* tables */
   table{border-collapse:collapse;width:100%}
-  th,td{border:1pt solid #d1d5db;padding:4pt 7pt;font-size:8.5pt}
-  th{background:#f0f4f0!important;font-weight:700;color:#111}
+  th,td{border:1pt solid #d1d5db;padding:4.5pt 8pt;font-size:8.5pt}
+  th{background:#f0f4f0!important;font-weight:700;color:#111;letter-spacing:.2pt;text-transform:uppercase;font-size:7.5pt}
 }
 </style>
 </head>
@@ -19373,17 +19379,26 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 
 <!-- PRINT HEADER — hidden on screen, visible only when printing -->
 <div id="print-header" style="display:none">
-  <div style="display:flex;align-items:center;gap:14pt">
-    <div style="width:36pt;height:36pt;background:#0E3416;border-radius:4pt;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13pt;font-weight:900;flex-shrink:0;letter-spacing:-1pt">DP</div>
+  <!-- top accent bar -->
+  <div style="height:5pt;background:linear-gradient(90deg,#0E3416 0%,#1A5C2A 60%,#2d8a45 100%);border-radius:2pt;margin-bottom:14pt"></div>
+  <!-- letterhead row -->
+  <div style="display:flex;align-items:flex-start;gap:14pt">
+    <!-- monogram -->
+    <div style="width:42pt;height:42pt;background:#0E3416;border-radius:4pt;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14pt;font-weight:900;flex-shrink:0;letter-spacing:-1.5pt;line-height:1">DP</div>
+    <!-- company name + user -->
     <div style="flex:1">
-      <div style="font-size:15pt;font-weight:900;color:#0E3416;letter-spacing:.3pt;line-height:1.15">DHANANI PRIVATE EQUITY GROUP</div>
-      <div style="font-size:8pt;color:#555;margin-top:1pt;letter-spacing:.2pt" id="print-user-label">Confidential Internal Report</div>
+      <div style="font-size:17pt;font-weight:900;color:#0E3416;letter-spacing:.5pt;line-height:1.1;font-variant:small-caps">Dhanani Private Equity Group</div>
+      <div style="font-size:8pt;color:#6b7280;margin-top:3pt;letter-spacing:.2pt" id="print-user-label">Confidential Internal Report</div>
     </div>
-    <div style="text-align:right;flex-shrink:0">
-      <div style="font-size:9.5pt;color:#111;font-weight:700" id="print-date-label"></div>
-      <div style="font-size:8pt;color:#777;margin-top:1pt" id="print-page-label">DPEG Task Manager</div>
+    <!-- report title + date -->
+    <div style="text-align:right;flex-shrink:0;padding-top:2pt">
+      <div style="font-size:12pt;font-weight:800;color:#0E3416;letter-spacing:.3pt" id="print-page-label">Summary Report</div>
+      <div style="font-size:8.5pt;color:#374151;font-weight:600;margin-top:3pt" id="print-date-label"></div>
     </div>
   </div>
+  <!-- double rule -->
+  <div style="margin-top:12pt;height:2pt;background:#0E3416;border-radius:1pt"></div>
+  <div style="height:1pt;background:#c6dbc8;margin-top:2.5pt;border-radius:1pt"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -21712,7 +21727,7 @@ async function resolveInlineImages(token,emailId,html){
   });
   try{
     var atts=[];
-    var nextUrl='https://graph.microsoft.com/v1.0/me/messages/'+emailId+'/attachments?$select=id,contentType,contentId,contentBytes&$top=50';
+    var nextUrl='https://graph.microsoft.com/v1.0/me/messages/'+emailId+'/attachments?$select=id,contentType,contentId&$top=50';
     while(nextUrl){
       var res=await fetch(nextUrl,{headers:{Authorization:'Bearer '+token}});
       if(!res.ok)break;
@@ -22177,10 +22192,11 @@ async function sendDraftMessage(token,message,toAttach=[],inlineAttachments=[]){
 }
 
 async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,toAttach=[],composed=null){
+  const prepared=composed||prepareComposedEmail(body);
   const createRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/createForward`,{
     method:'POST',
     headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-    body:JSON.stringify({message:{toRecipients}})
+    body:JSON.stringify({message:{toRecipients},comment:prepared.html})
   });
   if(!createRes.ok){
     const errText=await createRes.text().catch(()=>'');
@@ -22188,27 +22204,6 @@ async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipien
   }
   const draft=await createRes.json();
   const patch={subject,importance};
-  const intro=body?`<div>${escapeHtml(body).replace(/\r?\n/g,'<br>')}</div>`:'';
-  let forwardedBody=draft.body?.content||'';
-  let forwardedBodyType=(draft.body?.contentType||'html').toLowerCase();
-  if(!forwardedBody){
-    const bodyRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}?$select=body`,{headers:{Authorization:`Bearer ${token}`}});
-    if(bodyRes.ok){
-      const bodyData=await bodyRes.json();
-      forwardedBody=bodyData.body?.content||'';
-      forwardedBodyType=(bodyData.body?.contentType||forwardedBodyType).toLowerCase();
-    }
-  }
-  if(forwardedBody&&forwardedBodyType==='text'){
-    forwardedBody=escapeHtml(forwardedBody).replace(/\r?\n/g,'<br>');
-  }
-  if(intro&&forwardedBody){
-    const bIdx=forwardedBody.indexOf('<body');
-    if(bIdx>=0){const bEnd=forwardedBody.indexOf('>',bIdx)+1;patch.body={contentType:'HTML',content:forwardedBody.slice(0,bEnd)+intro+'<br><br>'+forwardedBody.slice(bEnd)};}
-    else{patch.body={contentType:'HTML',content:intro+'<br><br>'+forwardedBody};}
-  }else if(intro||forwardedBody){
-    patch.body={contentType:'HTML',content:intro||forwardedBody};
-  }
   if(ccRecipients.length)patch.ccRecipients=ccRecipients;
   if(bccRecipients.length)patch.bccRecipients=bccRecipients;
   const patchRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}`,{
@@ -22340,7 +22335,7 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
           emailId:forwardedEmail?.id||'',
           conversationId:forwardedEmail?.conversationId||'',
           lastMessageId:forwardedEmail?.id||'',
-          summary:[forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body.slice(0,255),[...forwardAttachmentNames,...manualAttachmentNames].length?`Attachments: ${[...forwardAttachmentNames,...manualAttachmentNames].join(', ')}`:''].filter(Boolean).join('\n'),
+          summary:[forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body,[...forwardAttachmentNames,...manualAttachmentNames].length?`Attachments: ${[...forwardAttachmentNames,...manualAttachmentNames].join(', ')}`:''].filter(Boolean).join('\n'),
           threadSummary:forwardedEmail?.threadSummary||'',
           attachmentNames:[...forwardAttachmentNames,...manualAttachmentNames],
           aiGenerated:!!forwardedEmail?.aiGenerated,
@@ -22606,7 +22601,7 @@ async function createToDoTask(task){
     const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_TODO,account:currentAccount});
     const token=r.accessToken;
     const due=task.date?new Date(task.date):null;
-    const cleanSummary=(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,500);
+    const cleanSummary=(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,4000);
     const taskBody={
       title:`[${task.person}] ${task.title||'Task'}`,
       body:{content:`Assigned to: ${task.person}\nEmail: ${task.email||''}\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}\n\n${cleanSummary}${attachmentNote}`,contentType:'text'},
@@ -22638,7 +22633,7 @@ async function createToDoTask(task){
       body:JSON.stringify({
         recipientEmail:task.email,
         title:task.title||'Task',
-        summary:[(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,600),attachmentNote.trim()].filter(Boolean).join('\n\n'),
+        summary:[(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,4000),attachmentNote.trim()].filter(Boolean).join('\n\n'),
         priority:task.priority||'Normal',
         date:task.date||'',
       }),
@@ -22668,7 +22663,7 @@ async function sendTaskNotification(task){
       `Date:       ${task.date||''}`,
       `Department: ${task.dept||''}`,
     ];
-    if(task.summary)lines.push('','Details:',task.summary.replace(/[•\*]/g,'').slice(0,400));
+    if(task.summary)lines.push('','Details:',task.summary.replace(/[•\*]/g,'').slice(0,2000));
     if(Array.isArray(task.attachmentNames)&&task.attachmentNames.length){
       lines.push('','Attachments from email:',...task.attachmentNames.map(n=>`- ${n}`));
     }
