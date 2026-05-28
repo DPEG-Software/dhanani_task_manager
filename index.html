@@ -21626,30 +21626,39 @@ async function viewFullThread(emailId){
 }
 
 async function resolveInlineImages(token,emailId,html){
-  if(!html)return html;
-  const lower=html.toLowerCase();
-  if(!lower.includes('cid:')&&!lower.includes('src="http')&&!lower.includes("src='http"))return html;
+  if(!html||html.toLowerCase().indexOf('cid:')===-1)return html;
+  // Convert Outlook VML image elements to regular img tags so browsers render them
+  html=html.replace(/<v:imagedata\b[^>]*\bsrc=(["'])(cid:[^"']+)\1[^>]*>/gi,function(m,q,src){
+    return '<img src="'+src+'" style="max-width:100%;height:auto">';
+  });
   try{
-    var res=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+emailId+'/attachments?$select=id,name,contentType,isInline,contentId,contentBytes',{headers:{Authorization:'Bearer '+token}});
-    if(!res.ok)return html;
-    var data=await res.json();
-    var atts=data.value||[];
+    var atts=[];
+    var nextUrl='https://graph.microsoft.com/v1.0/me/messages/'+emailId+'/attachments?$select=id,contentType,contentId,contentBytes&$top=50';
+    while(nextUrl){
+      var res=await fetch(nextUrl,{headers:{Authorization:'Bearer '+token}});
+      if(!res.ok)break;
+      var page=await res.json();
+      (page.value||[]).forEach(function(a){if(a.contentId)atts.push(a);});
+      nextUrl=page['@odata.nextLink']||'';
+    }
     for(var i=0;i<atts.length;i++){
       var att=atts[i];
-      if(!att.contentId)continue;
       if(!att.contentBytes&&att.id){
         try{
-          const one=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+emailId+'/attachments/'+att.id,{headers:{Authorization:'Bearer '+token}});
-          if(one.ok){att={...att,...await one.json()};}
+          var r2=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+emailId+'/attachments/'+att.id,{headers:{Authorization:'Bearer '+token}});
+          if(r2.ok){var d2=await r2.json();if(d2.contentBytes){att.contentBytes=d2.contentBytes;att.contentType=d2.contentType||att.contentType;}}
         }catch(e){}
       }
       if(!att.contentBytes)continue;
-      var cid=String(att.contentId||'').replace(/[<>]/g,'');
-      var cidNoDomain=cid.split('@')[0];
+      var rawCid=String(att.contentId||'').replace(/[<>]/g,'').trim();
+      if(!rawCid)continue;
+      var shortCid=rawCid.indexOf('@')>-1?rawCid.split('@')[0]:'';
       var dataUrl='data:'+(att.contentType||'image/png')+';base64,'+att.contentBytes;
-      [cid,cidNoDomain,encodeURIComponent(cid),encodeURIComponent(cidNoDomain)].filter(Boolean).forEach(function(v){
-        html=html.split('cid:'+v).join(dataUrl);
-        html=html.split('cid:'+v.toLowerCase()).join(dataUrl);
+      [rawCid,shortCid].filter(Boolean).forEach(function(v){
+        var esc=v.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+        html=html.replace(new RegExp('cid:<'+esc+'>','gi'),dataUrl);
+        html=html.replace(new RegExp('cid:'+esc,'gi'),dataUrl);
+        try{html=html.replace(new RegExp('cid:'+encodeURIComponent(v),'gi'),dataUrl);}catch(e){}
       });
     }
     return html;
