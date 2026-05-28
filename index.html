@@ -21235,7 +21235,7 @@ function renderEmailRows(folder,emails){
     const isUnread=!e.isRead&&folder==='inbox';
     const isHigh=String(e.importance||'normal').toLowerCase()==='high';
     const hasAtt=!!e.hasAttachments;
-    return `<div class="ol-email-item${isUnread?' unread':''}" data-email-id="${e.id}" onclick="readEmail('${e.id}','${folder}')">
+    return `<div class="ol-email-item${isUnread?' unread':''}" data-email-id="${e.id}" onclick="readEmail('${e.id}','${folder}',this)">
       <div class="ol-email-top">
         <div class="ol-email-sender">${sender}</div>
         <div style="display:flex;align-items:center;gap:4px">
@@ -21360,7 +21360,7 @@ async function loadUntracked(){
       const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
       const isHigh=String(e.importance||'normal').toLowerCase()==='high';
       const hasAtt=!!e.hasAttachments;
-      return `<div class="ol-email-item" data-email-id="${e.id}" onclick="readEmail('${e.id}','sent')" style="display:flex;align-items:flex-start;gap:8px">
+      return `<div class="ol-email-item" data-email-id="${e.id}" onclick="readEmail('${e.id}','sent',this)" style="display:flex;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
           <div class="ol-email-top"><div class="ol-email-sender">To: ${to}</div><div class="ol-email-date">${dateStr}</div></div>
           <div class="ol-email-subject">${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;margin-right:5px;vertical-align:middle">High</span>`:''}${e.subject||'(no subject)'}</div>
@@ -21554,9 +21554,9 @@ async function viewFullThread(emailId){
   }
 }
 
-async function readEmail(emailId,folder){
+async function readEmail(emailId,folder,clickedEl){
   currentEmailId=emailId;
-  const clickedEl=(typeof event!=='undefined'&&event?.currentTarget)?event.currentTarget:document.querySelector(`[data-email-id="${emailId}"]`);
+  if(!clickedEl)clickedEl=document.querySelector(`[data-email-id="${emailId}"]`);
   document.querySelectorAll('.ol-email-item').forEach(e=>e.classList.remove('active'));
   if(clickedEl)clickedEl.classList.add('active');
   const readerEl=document.getElementById('ol-email-reader');
@@ -21738,7 +21738,7 @@ function replyEmail(emailId){
 From: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}
 
 ${email.bodyPreview}`;
-  openCompose(to,subject,orig,'Reply');
+  openCompose(to,subject,orig,'Reply',emailId);
 }
 
 
@@ -21992,6 +21992,50 @@ async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipien
   }
 }
 
+async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,body,importance,toAttach=[]){
+  const createRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/createReply`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({})
+  });
+  if(!createRes.ok){
+    const errText=await createRes.text().catch(()=>'');
+    throw new Error(`Microsoft Graph createReply failed (${createRes.status}) ${errText}`);
+  }
+  const draft=await createRes.json();
+  const patch={importance};
+  const replyIntro=composeBodyHTML(body);
+  let originalBody=draft.body?.content||'';
+  let originalBodyType=(draft.body?.contentType||'html').toLowerCase();
+  if(!originalBody){
+    const bodyRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}?$select=body`,{headers:{Authorization:`Bearer ${token}`}});
+    if(bodyRes.ok){const bodyData=await bodyRes.json();originalBody=bodyData.body?.content||'';originalBodyType=(bodyData.body?.contentType||originalBodyType).toLowerCase();}
+  }
+  if(originalBody&&originalBodyType==='text'){originalBody=escapeHtml(originalBody).replace(/\r?\n/g,'<br>');}
+  if(replyIntro||originalBody){patch.body={contentType:'HTML',content:[replyIntro,originalBody].filter(Boolean).join('<br><br>');};}
+  if(toRecipients.length)patch.toRecipients=toRecipients;
+  if(ccRecipients.length)patch.ccRecipients=ccRecipients;
+  if(bccRecipients.length)patch.bccRecipients=bccRecipients;
+  const patchRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}`,{
+    method:'PATCH',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify(patch)
+  });
+  if(!patchRes.ok){
+    const errText=await patchRes.text().catch(()=>'');
+    throw new Error(`Microsoft Graph reply draft update failed (${patchRes.status}) ${errText}`);
+  }
+  await addComposeAttachmentsToDraft(token,draft.id,toAttach);
+  const sendRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}/send`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`}
+  });
+  if(!sendRes.ok){
+    const errText=await sendRes.text().catch(()=>'');
+    throw new Error(`Microsoft Graph reply send failed (${sendRes.status}) ${errText}`);
+  }
+}
+
 async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
   const btn=document.getElementById('compose-send-btn');
   if(btn){btn.disabled=true;btn.innerHTML='Sending...';}
@@ -22000,12 +22044,15 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
     const ccRecipients=cc?cc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
     const bccRecipients=bcc?bcc.split(',').map(e=>({emailAddress:{address:e.trim()}})).filter(r=>r.emailAddress.address):[];
     const isOutlookForward=currentComposeType==='Forward'&&currentComposeEmailId;
-    const needsDraftPermission=isOutlookForward||currentComposeFiles.length>0;
+    const isOutlookReply=currentComposeType==='Reply'&&currentComposeEmailId;
+    const needsDraftPermission=isOutlookForward||isOutlookReply||currentComposeFiles.length>0;
     const token=needsDraftPermission?await getDraftAccessToken():await getAccessToken();
     const forwardAttachmentNames=isOutlookForward?await getForwardAttachmentNames(currentComposeEmailId):[];
     const manualAttachmentNames=currentComposeFiles.map(f=>f.name);
     if(isOutlookForward){
       await sendForwardedOutlookMessage(token,currentComposeEmailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,currentComposeFiles);
+    }else if(isOutlookReply){
+      await sendReplyOutlookMessage(token,currentComposeEmailId,toRecipients,ccRecipients,bccRecipients,body,importance,currentComposeFiles);
     }else{
       const message={subject,importance,body:{contentType:'HTML',content:composeBodyHTML(body)},toRecipients};
       if(ccRecipients.length)message.ccRecipients=ccRecipients;
