@@ -18612,7 +18612,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .ol-sb-collapsed .ol-folder{justify-content:center;padding:8px 4px}
 .ol-sb-collapsed #ol-compose-btn{padding:9px;justify-content:center}
 .ol-sb-collapsed #ol-inbox-count,.ol-sb-collapsed #ol-untracked-count{margin-left:0;position:absolute;top:2px;right:2px;font-size:8px;padding:0 3px}
-.ol-email-item{padding:12px 14px;border-bottom:1px solid #f3f4f6;cursor:pointer;transition:background .12s;overflow:hidden}
+.ol-email-item{padding:12px 14px;border-bottom:1px solid #f3f4f6;cursor:pointer;transition:background .12s}
 .ol-email-item:hover{background:#f9fafb}
 .ol-email-item.active{background:var(--sage3);box-shadow:inset 3px 0 0 var(--ink)}
 .ol-email-item.unread .ol-email-subject{font-weight:700;color:var(--body)}
@@ -21238,7 +21238,7 @@ function renderEmailRows(folder,emails){
     return `<div class="ol-email-item${isUnread?' unread':''}" id="email-item-${e.id}" data-email-id="${e.id}" onclick="readEmail('${e.id}','${folder}',this)">
       <div class="ol-email-top">
         <div class="ol-email-sender">${sender}</div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;max-width:55%">
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
           ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd);white-space:nowrap">✓</span>`:''}
           ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;white-space:nowrap">!</span>`:''}
           ${hasAtt?`<svg width="11" height="11" fill="none" stroke="var(--muted)" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
