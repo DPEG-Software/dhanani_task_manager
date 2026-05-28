@@ -18612,11 +18612,11 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 .ol-sb-collapsed .ol-folder{justify-content:center;padding:8px 4px}
 .ol-sb-collapsed #ol-compose-btn{padding:9px;justify-content:center}
 .ol-sb-collapsed #ol-inbox-count,.ol-sb-collapsed #ol-untracked-count{margin-left:0;position:absolute;top:2px;right:2px;font-size:8px;padding:0 3px}
-.ol-email-item{padding:12px 14px;border-bottom:1px solid #f3f4f6;cursor:pointer;transition:background .12s}
+.ol-email-item{padding:12px 11px 12px 11px;border-bottom:1px solid #f3f4f6;border-left:3px solid transparent;cursor:pointer;transition:background .12s;overflow:hidden}
 .ol-email-item:hover{background:#f9fafb}
-.ol-email-item.active{background:var(--sage3);border-left:3px solid var(--ink)}
+.ol-email-item.active{background:var(--sage3);border-left-color:var(--ink)}
 .ol-email-item.unread .ol-email-subject{font-weight:700;color:var(--body)}
-.ol-email-sender{font-size:12.5px;font-weight:600;color:var(--body);margin-bottom:2px}
+.ol-email-sender{font-size:12.5px;font-weight:600;color:var(--body);flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .ol-email-subject{font-size:12px;color:var(--sub);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ol-email-preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ol-email-attachments{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10.5px;color:var(--muted);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -18972,7 +18972,7 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
           <div style="font-size:13px;font-weight:700;color:var(--body);flex:1" id="ol-folder-title">Inbox</div>
           <button onclick="refreshFolder()" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:17px;line-height:1;padding:2px" title="Refresh">&#8635;</button>
         </div>
-        <div style="flex:1;overflow-y:auto" id="ol-email-list">
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden" id="ol-email-list">
           <div class="empty-state"><div class="es-text">Loading emails...</div></div>
         </div>
       </div>
@@ -21238,12 +21238,12 @@ function renderEmailRows(folder,emails){
     return `<div class="ol-email-item${isUnread?' unread':''}" id="email-item-${e.id}" data-email-id="${e.id}" onclick="readEmail('${e.id}','${folder}',this)">
       <div class="ol-email-top">
         <div class="ol-email-sender">${sender}</div>
-        <div style="display:flex;align-items:center;gap:4px">
-          ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd)">✓ Tracked</span>`:''}
-          ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca">High</span>`:''}
-          ${hasAtt?`<svg width="12" height="12" fill="none" stroke="var(--muted)" viewBox="0 0 24 24" title="Has attachments"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
-          <div class="ol-email-date">${dateStr}</div>
-          <button title="AI summary" onclick="event.stopPropagation();toggleListAISummary('${e.id}',this,'${folder}')" style="background:none;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;padding:1px 5px;font-size:9px;color:#7c3aed;font-weight:700;line-height:1.6;flex-shrink:0">✦</button>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;max-width:55%">
+          ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd);white-space:nowrap">✓</span>`:''}
+          ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;white-space:nowrap">!</span>`:''}
+          ${hasAtt?`<svg width="11" height="11" fill="none" stroke="var(--muted)" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
+          <div class="ol-email-date" style="margin-left:0">${dateStr}</div>
+          <button title="AI summary" onclick="event.stopPropagation();toggleListAISummary('${e.id}',this,'${folder}')" style="background:none;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;padding:1px 4px;font-size:9px;color:#7c3aed;font-weight:700;line-height:1.6;flex-shrink:0">✦</button>
         </div>
       </div>
       <div class="ol-email-subject">${e.subject||'(no subject)'}</div>
@@ -21260,6 +21260,7 @@ function renderEmailRows(folder,emails){
 
 async function loadFolder(folder){
   currentFolder=folder;
+  _activeEmailEl=null;
   buildTrackedSet();
   const titleEl=document.getElementById('ol-folder-title');
   if(titleEl)titleEl.textContent=FOLDER_LABELS[folder]||folder;
@@ -21563,19 +21564,22 @@ async function resolveInlineImages(token,emailId,html){
     var atts=data.value||[];
     for(var i=0;i<atts.length;i++){
       var att=atts[i];
-      if(!att.isInline||!att.contentId||!att.contentBytes)continue;
+      if(!att.contentId||!att.contentBytes)continue;
       var cid=att.contentId.replace('<','').replace('>','');
-      var dataUrl='data:'+att.contentType+';base64,'+att.contentBytes;
+      if(html.indexOf('cid:'+cid)===-1)continue;
+      var dataUrl='data:'+(att.contentType||'image/png')+';base64,'+att.contentBytes;
       html=html.split('cid:'+cid).join(dataUrl);
     }
     return html;
   }catch(e){return html;}
 }
 
+var _activeEmailEl=null;
 async function readEmail(emailId,folder,el){
   currentEmailId=emailId;
-  document.querySelectorAll('.ol-email-item').forEach(e=>e.classList.remove('active'));
-  if(el){el.classList.add('active');}else{var item=document.getElementById('email-item-'+emailId);if(item)item.classList.add('active');}
+  if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
+  var _ael=el||document.getElementById('email-item-'+emailId);
+  if(_ael){_ael.classList.add('active');_activeEmailEl=_ael;}
   const readerEl=document.getElementById('ol-email-reader');
   if(!readerEl)return;
   readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading...</div></div>';
