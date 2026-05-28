@@ -22029,7 +22029,7 @@ async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,b
     if(bodyRes.ok){const bodyData=await bodyRes.json();originalBody=bodyData.body?.content||'';originalBodyType=(bodyData.body?.contentType||originalBodyType).toLowerCase();}
   }
   if(originalBody&&originalBodyType==='text'){originalBody=escapeHtml(originalBody).replace(/\r?\n/g,'<br>');}
-  if(replyIntro||originalBody){patch.body={contentType:'HTML',content:[replyIntro,originalBody].filter(Boolean).join('<br><br>');};}
+  if(replyIntro||originalBody){patch.body={contentType:'HTML',content:[replyIntro,originalBody].filter(Boolean).join('<br><br>')};}
   if(toRecipients.length)patch.toRecipients=toRecipients;
   if(ccRecipients.length)patch.ccRecipients=ccRecipients;
   if(bccRecipients.length)patch.bccRecipients=bccRecipients;
