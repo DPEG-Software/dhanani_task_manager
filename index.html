@@ -21815,7 +21815,7 @@ async function readEmail(emailId,folder,el){
       <div style="flex:1;overflow-y:auto;min-height:0">
         ${isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
       </div>`;
-    if(isHtml){var _f=readerEl.querySelector('#email-body-frame');if(_f){_f.addEventListener('load',function(){try{var h=Math.max(_f.contentDocument.body.scrollHeight,400);_f.style.height=h+'px';}catch(e){}});var _initialHtml=bodyContent.replace(/(<img\b[^>]*?\bsrc=(["']))http:\/\//gi,'$1https://');_f.srcdoc=_initialHtml;resolveInlineImages(token,emailId,bodyContent).then(function(resolved){_f.srcdoc=resolved;});}}
+    if(isHtml){var _f=readerEl.querySelector('#email-body-frame');if(_f){_f.addEventListener('load',function(){try{var h=Math.max(_f.contentDocument.body.scrollHeight,400);_f.style.height=h+'px';}catch(e){}});resolveInlineImages(token,emailId,bodyContent).then(function(resolved){_f.srcdoc=resolved;});}}
     if(!email.isRead&&folder==='inbox'){
       const readRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
       if(readRes.ok){
@@ -22598,7 +22598,12 @@ async function createToDoTask(task){
 
   // ── 1. Current user's To Do via silent delegated token (Tasks.ReadWrite) ──
   try{
-    const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_TODO,account:currentAccount});
+    let r;
+    try{
+      r=await msalInstance.acquireTokenSilent({scopes:SCOPES_TODO,account:currentAccount});
+    }catch(tokenErr){
+      r=await msalInstance.acquireTokenPopup({scopes:SCOPES_TODO});
+    }
     const token=r.accessToken;
     const due=task.date?new Date(task.date):null;
     const cleanSummary=(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,4000);
@@ -22621,7 +22626,7 @@ async function createToDoTask(task){
       }
       if(listId)await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(taskBody)});
     }
-  }catch{/* Tasks.ReadWrite not yet admin-consented — skip silently */}
+  }catch(err){console.warn('Current user To Do failed:',err.message);}
 
   // ── 2. Recipient's To Do via Cloudflare Worker app credentials ──
   if(!task.email||!task.email.includes('@dhananipeg.com')||!fnUrl)return;
@@ -22649,6 +22654,7 @@ async function sendTaskNotification(task){
   if(!addr||!addr.includes('@'))return;
   // Only notify internal DPEG addresses
   if(!addr.includes('@dhananipeg.com')&&!addr.includes('@dpeg'))return;
+  createToDoTask(task).catch(err=>console.warn('To Do creation failed:',err.message));
   try{
     const token=await getAccessToken();
     const subject=`Task Assigned to You: ${task.title||'(no subject)'}`;
@@ -22670,8 +22676,6 @@ async function sendTaskNotification(task){
     lines.push('','Please open the DPEG Task Manager to view and update this task.','','Best regards,','DPEG Task Manager');
     const message={subject,body:{contentType:'Text',content:lines.join('\n')},toRecipients:[{emailAddress:{address:addr}}]};
     await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:false})});
-    // Also create in Microsoft To Do (silently, no await so it doesn't block)
-    createToDoTask(task).catch(()=>{});
   }catch(err){
     console.warn('Task notification failed:',err.message);
   }
