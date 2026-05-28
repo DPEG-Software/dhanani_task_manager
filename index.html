@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -18634,28 +18634,104 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 @media print{
-  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @page{margin:1.8cm 2.2cm;size:A4 portrait}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
+
+  /* ── Hide all interactive UI ── */
   .sb,.topbar,.btn,.wed-btn,button,.acct-menu,.week-bar,.tbl-hdr,
   .cn-row,.wed-actions,.rm-btn,.ag-foot,.compose-ac,.deadline-btn,
-  #mo-ai-settings,#mo-admin,.sync-bar,.mo{display:none!important}
-  .main{margin-left:0!important;padding:16pt 24pt}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#111;background:#fff;font-size:10pt}
-  #print-header{display:block!important;margin-bottom:20pt;padding-bottom:12pt;border-bottom:2pt solid #0E3416}
-  .wed-date-group{break-inside:avoid;margin-bottom:14pt}
-  .wed-card{break-inside:avoid;border:1pt solid #ccc;border-radius:4pt;margin:4pt 0;padding:8pt 10pt;background:#fff}
-  .wed-card-head{margin-bottom:4pt}
-  .wed-card-title{font-size:11pt;font-weight:700;color:#111}
-  .wed-card-summary,.wed-card-meta{font-size:9.5pt;color:#333;margin-bottom:3pt}
-  .wed-date{font-size:12pt;font-weight:800;color:#0E3416;padding:6pt 0 3pt;border-bottom:1pt solid #d1d5db;margin-bottom:6pt}
-  .wed-sum-clip{max-height:none!important}
-  .wed-sum-clip::after{display:none!important}
+  #mo-ai-settings,#mo-admin,.sync-bar,.mo,.empty-state,
   .wed-expand-btn{display:none!important}
-  .ag-ta{display:none}
-  .dept-pill{font-size:8.5pt;padding:1pt 5pt;border-radius:3pt}
+
+  /* ── Page base ── */
+  html,body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#111;background:#fff;font-size:9.5pt;line-height:1.45;margin:0;padding:0}
+  .main{margin-left:0!important;padding:0}
+
+  /* ── Print header ── */
+  #print-header{
+    display:block!important;
+    margin-bottom:18pt;
+    padding-bottom:10pt;
+    border-bottom:2pt solid #0E3416
+  }
+
+  /* ── Department section headers ── */
+  .wed-date-group{page-break-inside:avoid;break-inside:avoid;margin-bottom:12pt}
+  .wed-date{
+    display:flex!important;align-items:center;gap:6pt;
+    font-size:9pt;font-weight:800;color:#0E3416;
+    text-transform:uppercase;letter-spacing:.7pt;
+    padding:4pt 0 4pt;
+    border-bottom:1.5pt solid #0E3416;
+    margin-bottom:7pt
+  }
+
+  /* ── Task cards ── */
+  .wed-card{
+    page-break-inside:avoid;break-inside:avoid;
+    border:1pt solid #d1d5db;
+    border-radius:3pt;
+    margin:0 0 5pt 0;
+    background:#fff;
+    overflow:hidden
+  }
+  .wed-card-head{
+    display:flex!important;align-items:center;gap:7pt;
+    background:#f6f8f6;
+    border-bottom:1pt solid #d1d5db;
+    padding:5pt 8pt
+  }
+  .wed-card-title{font-size:10pt;font-weight:700;color:#111;flex:1;line-height:1.3}
+  .wed-card-compact-body{padding:5pt 8pt 6pt}
+  .wed-card-body{padding:5pt 8pt 6pt}
+
+  /* ── Meta row (person, priority) ── */
+  .wed-card-meta{display:flex!important;gap:6pt;flex-wrap:wrap;margin-bottom:4pt;font-size:8.5pt;color:#444;font-weight:600}
+  .wed-card-summary{font-size:8.5pt;color:#333;line-height:1.5;margin-bottom:3pt}
+
+  /* ── Summary bullet lines ── */
+  .wed-sum-clip{max-height:none!important;display:block!important}
+  .wed-sum-clip::after{display:none!important}
+  #wsum-*{display:block!important}
+
+  /* ── Status badges ── */
+  .badge,.bp,.bd,.bo{display:inline-block!important;padding:1pt 5pt;border-radius:2pt;font-size:7.5pt;font-weight:700;border:1pt solid #ccc;color:#333}
+  .bd{background:#d1fae5!important;color:#065f46!important;border-color:#6ee7b7!important}
+  .bo{background:#fee2e2!important;color:#991b1b!important;border-color:#fca5a5!important}
+  .bp{background:#fef3c7!important;color:#92400e!important;border-color:#fcd34d!important}
+
+  /* ── Priority badges ── */
+  .p-high{display:inline-block!important;background:#fee2e2!important;color:#b91c1c!important;padding:1pt 5pt;border-radius:2pt;font-size:7.5pt;font-weight:700}
+  .p-low{display:none}
+
+  /* ── Department pill ── */
+  .dept-pill{display:inline-flex!important;font-size:7.5pt;padding:1pt 5pt;border-radius:2pt;border:1pt solid #ccc;background:#f3f4f6;color:#374151}
+
+  /* ── Follow-up note box ── */
+  .wed-card-compact-body div[style*="background:var(--sage3)"]{
+    background:#f0f7f0!important;border:1pt solid #ccc!important;
+    padding:3pt 7pt!important;font-size:8.5pt!important;color:#1a3a1a!important;
+    margin-bottom:4pt!important;border-radius:2pt
+  }
+
+  /* ── Meeting note textarea → shown as styled text ── */
+  .ag-ta{
+    display:block!important;
+    width:100%;
+    border:1pt dashed #d1d5db;
+    border-radius:2pt;
+    padding:4pt 6pt;
+    font-size:8.5pt;font-family:inherit;color:#444;
+    background:#fafafa;
+    resize:none;
+    min-height:16pt;
+    margin-top:4pt
+  }
+
+  /* ── Tables ── */
   table{border-collapse:collapse;width:100%}
-  th,td{border:1pt solid #ddd;padding:5pt 8pt;font-size:9pt}
-  th{background:#f0f4f0;font-weight:700}
-  .empty-state{display:none}
+  th,td{border:1pt solid #d1d5db;padding:4pt 7pt;font-size:8.5pt}
+  th{background:#f0f4f0!important;font-weight:700;color:#111}
 }
 </style>
 </head>
@@ -19297,15 +19373,15 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
 
 <!-- PRINT HEADER — hidden on screen, visible only when printing -->
 <div id="print-header" style="display:none">
-  <div style="display:flex;align-items:center;gap:18pt;margin-bottom:8pt">
-    <div style="width:40pt;height:40pt;background:#0E3416;border-radius:6pt;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15pt;font-weight:900;flex-shrink:0">DP</div>
-    <div>
-      <div style="font-size:18pt;font-weight:900;color:#0E3416;letter-spacing:.5pt;line-height:1.1">DHANANI PRIVATE EQUITY GROUP</div>
-      <div style="font-size:9pt;color:#555;margin-top:2pt;letter-spacing:.3pt" id="print-user-label">Confidential Internal Report</div>
+  <div style="display:flex;align-items:center;gap:14pt">
+    <div style="width:36pt;height:36pt;background:#0E3416;border-radius:4pt;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13pt;font-weight:900;flex-shrink:0;letter-spacing:-1pt">DP</div>
+    <div style="flex:1">
+      <div style="font-size:15pt;font-weight:900;color:#0E3416;letter-spacing:.3pt;line-height:1.15">DHANANI PRIVATE EQUITY GROUP</div>
+      <div style="font-size:8pt;color:#555;margin-top:1pt;letter-spacing:.2pt" id="print-user-label">Confidential Internal Report</div>
     </div>
-    <div style="margin-left:auto;text-align:right">
-      <div style="font-size:9.5pt;color:#333;font-weight:600" id="print-date-label"></div>
-      <div style="font-size:9pt;color:#888" id="print-page-label">DPEG Task Manager</div>
+    <div style="text-align:right;flex-shrink:0">
+      <div style="font-size:9.5pt;color:#111;font-weight:700" id="print-date-label"></div>
+      <div style="font-size:8pt;color:#777;margin-top:1pt" id="print-page-label">DPEG Task Manager</div>
     </div>
   </div>
 </div>
@@ -21626,7 +21702,10 @@ async function viewFullThread(emailId){
 }
 
 async function resolveInlineImages(token,emailId,html){
-  if(!html||html.toLowerCase().indexOf('cid:')===-1)return html;
+  if(!html)return html;
+  // Upgrade HTTP image URLs to HTTPS to avoid mixed-content blocking on the HTTPS app
+  html=html.replace(/(<img\b[^>]*?\bsrc=(["']))http:\/\//gi,'$1https://');
+  if(html.toLowerCase().indexOf('cid:')===-1)return html;
   // Convert Outlook VML image elements to regular img tags so browsers render them
   html=html.replace(/<v:imagedata\b[^>]*\bsrc=(["'])(cid:[^"']+)\1[^>]*>/gi,function(m,q,src){
     return '<img src="'+src+'" style="max-width:100%;height:auto">';
@@ -21718,10 +21797,10 @@ async function readEmail(emailId,folder,el){
         <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:6px;letter-spacing:.04em">✦ AI SUMMARY</div>
         <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:var(--body)"></div>
       </div>
-      <div style="flex:1;overflow:hidden;min-height:0">
-        ${isHtml?`<iframe id="email-body-frame" srcdoc="${bodyContent.replace(/"/g,'&quot;')}" style="width:100%;height:100%;border:none;display:block" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:#111;overflow-y:auto;height:100%;box-sizing:border-box"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
+      <div style="flex:1;overflow-y:auto;min-height:0">
+        ${isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
       </div>`;
-    if(isHtml){var _f=readerEl.querySelector('#email-body-frame');if(_f){resolveInlineImages(token,emailId,bodyContent).then(function(resolved){_f.srcdoc=resolved;});}}
+    if(isHtml){var _f=readerEl.querySelector('#email-body-frame');if(_f){_f.addEventListener('load',function(){try{var h=Math.max(_f.contentDocument.body.scrollHeight,400);_f.style.height=h+'px';}catch(e){}});var _initialHtml=bodyContent.replace(/(<img\b[^>]*?\bsrc=(["']))http:\/\//gi,'$1https://');_f.srcdoc=_initialHtml;resolveInlineImages(token,emailId,bodyContent).then(function(resolved){_f.srcdoc=resolved;});}}
     if(!email.isRead&&folder==='inbox'){
       const readRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
       if(readRes.ok){
