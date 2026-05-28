@@ -19129,6 +19129,11 @@ td{padding:11px 14px;font-size:13px;vertical-align:middle}
             <option value="low">Low importance</option>
           </select>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Due</span>
+          <input type="date" id="compose-deadline" style="border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+          <span style="font-size:11.5px;color:var(--muted)">Optional task deadline</span>
+        </div>
         <!-- AI Forward Brief — shown only when forwarding -->
         <div id="compose-ai-brief" style="display:none;margin-bottom:8px;padding:10px 13px;background:var(--leaf-bg,#f0fdf4);border:1px solid var(--leaf-bd,#86efac);border-radius:var(--r)">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--fern,#166534);margin-bottom:6px">✦ AI Brief — thread being forwarded</div>
@@ -21783,6 +21788,7 @@ function sanitizeEmailFrameHTML(html){
       const value=attr.value||'';
       if(name.startsWith('on'))el.removeAttribute(attr.name);
       if((name==='href'||name==='src'||name==='xlink:href')&&/^\s*javascript:/i.test(value))el.removeAttribute(attr.name);
+      if((name==='href'||name==='src'||name==='xlink:href')&&/^\s*(cid|file|ms-appx|mhtml):/i.test(value))el.removeAttribute(attr.name);
     });
   });
   return wrap.innerHTML;
@@ -21962,6 +21968,7 @@ function openCompose(to,subject,body,type,emailId){
   document.getElementById('compose-body').value=body||'';
   document.getElementById('compose-title').textContent=type||'New Email';
   const pr=document.getElementById('compose-priority');if(pr)pr.value='normal';
+  const dl=document.getElementById('compose-deadline');if(dl)dl.value='';
   const bccRow=document.getElementById('bcc-row');
   if(bccRow)bccRow.style.display='none';
   resetComposeAttachments();
@@ -22117,13 +22124,14 @@ async function sendEmail(){
   const subject=document.getElementById('compose-subject').value.trim();
   const body=document.getElementById('compose-body').value.trim();
   const importance=document.getElementById('compose-priority')?.value||'normal';
+  const deadline=document.getElementById('compose-deadline')?.value||'';
   if(!to){toast('Please add at least one recipient');return;}
   if(!subject){toast('Please add a subject');return;}
 
   // Check for open threads with any recipient before sending
   const allRecipients=[...to.split(','),...(cc?cc.split(','):[]),...(bcc?bcc.split(','):[])]
     .map(e=>e.trim().toLowerCase()).filter(Boolean);
-  await showUnreadCheckIfNeeded(allRecipients.join(','), ()=>doSendEmail(to,cc,bcc,subject,body,importance));
+  await showUnreadCheckIfNeeded(allRecipients.join(','), ()=>doSendEmail(to,cc,bcc,subject,body,importance,deadline));
 }
 
 async function getForwardAttachmentNames(emailId){
@@ -22348,7 +22356,7 @@ async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,b
   }
 }
 
-async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
+async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline=''){
   const btn=document.getElementById('compose-send-btn');
   if(btn){btn.disabled=true;btn.innerHTML='Sending...';}
   try{
@@ -22411,7 +22419,7 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal'){
           threadSummary:forwardedEmail?.threadSummary||'',
           attachmentNames:[...forwardAttachmentNames,...manualAttachmentNames],
           aiGenerated:!!forwardedEmail?.aiGenerated,
-          person,email,dept:personDept(email,person),date:new Date().toISOString().split('T')[0],status:'Pending',priority:importance==='high'?'High':'Normal',wednesday:false,followup:'',weekOffset:0,
+          person,email,dept:personDept(email,person),date:deadline||new Date().toISOString().split('T')[0],deadline:deadline||'',status:'Pending',priority:importance==='high'?'High':'Normal',wednesday:false,followup:'',weekOffset:0,
           replyCount:forwardedEmail?.conversationId?undefined:1
         };
         tasks.unshift(newTask);
@@ -22667,6 +22675,7 @@ async function createToDoTask(task){
   const attachmentNote=Array.isArray(task.attachmentNames)&&task.attachmentNames.length
     ? `\n\nAttachments from email:\n${task.attachmentNames.map(n=>`- ${n}`).join('\n')}`
     : '';
+  const dueDate=task.deadline||((task.deadline===undefined)?task.date:'');
 
   // ── 1. Current user's To Do via silent delegated token (Tasks.ReadWrite) ──
   try{
@@ -22677,11 +22686,12 @@ async function createToDoTask(task){
       r=await msalInstance.acquireTokenPopup({scopes:SCOPES_TODO});
     }
     const token=r.accessToken;
-    const due=task.date?new Date(task.date):null;
+    const due=dueDate?new Date(dueDate):null;
     const cleanSummary=(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,4000);
+    const deadlineLine=dueDate?`\nDeadline: ${dueDate}`:'';
     const taskBody={
       title:`[${task.person}] ${task.title||'Task'}`,
-      body:{content:`Assigned to: ${task.person}\nEmail: ${task.email||''}\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}\n\n${cleanSummary}${attachmentNote}`,contentType:'text'},
+      body:{content:`Assigned to: ${task.person}\nEmail: ${task.email||''}\nDept: ${task.dept||''}\nPriority: ${task.priority||'Normal'}${deadlineLine}\n\n${cleanSummary}${attachmentNote}`,contentType:'text'},
       importance:task.priority==='High'?'high':'normal',
       status:'notStarted',
     };
@@ -22712,7 +22722,7 @@ async function createToDoTask(task){
         title:task.title||'Task',
         summary:[(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,4000),attachmentNote.trim()].filter(Boolean).join('\n\n'),
         priority:task.priority||'Normal',
-        date:task.date||'',
+        date:dueDate||'',
       }),
     });
   }catch(err){
@@ -22730,6 +22740,7 @@ async function sendTaskNotification(task){
   try{
     const token=await getAccessToken();
     const subject=`Task Assigned to You: ${task.title||'(no subject)'}`;
+    const dueDate=task.deadline||((task.deadline===undefined)?task.date:'');
     const lines=[
       `Hi ${task.person||''},`,
       '',
@@ -22738,9 +22749,9 @@ async function sendTaskNotification(task){
       `Task:       ${task.title||''}`,
       `Status:     ${task.status||'Pending'}`,
       `Priority:   ${task.priority||'Normal'}`,
-      `Date:       ${task.date||''}`,
       `Department: ${task.dept||''}`,
     ];
+    if(dueDate)lines.splice(lines.length-1,0,`Deadline:   ${dueDate}`);
     if(task.summary)lines.push('','Details:',task.summary.replace(/[•\*]/g,'').slice(0,2000));
     if(Array.isArray(task.attachmentNames)&&task.attachmentNames.length){
       lines.push('','Attachments from email:',...task.attachmentNames.map(n=>`- ${n}`));
