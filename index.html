@@ -19515,6 +19515,7 @@ let archives = [];
 let staffConfig = {};
 let userContacts = {};
 let customNotes = [];
+let sharedDataActive = false;
 let selectedTaskIds = new Set();
 let curTaskId = null, curWeek = 0, curSearch = "", curPplSel = null, curDeptSel = null, curPplFilter = "", directoryMode = "people";
 let CH = {};
@@ -19621,13 +19622,29 @@ async function signInWithMicrosoft() {
   }
 }
 
+async function getSignedInProfile(account){
+  const fallbackEmail=normEmail(account.username);
+  try{
+    const r=await msalInstance.acquireTokenSilent({scopes:["User.Read"],account});
+    const res=await fetch("https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName,jobTitle",{headers:{Authorization:`Bearer ${r.accessToken}`}});
+    if(res.ok){
+      const me=await res.json();
+      const candidates=[me.mail,me.userPrincipalName,fallbackEmail].map(normEmail).filter(Boolean);
+      const principalEmail=candidates.find(e=>PRINCIPALS[e])||candidates[0]||fallbackEmail;
+      return {email:principalEmail,name:me.displayName||account.name||principalEmail,role:me.jobTitle||""};
+    }
+  }catch(err){console.warn("Profile lookup skipped:",err.message);}
+  return {email:fallbackEmail,name:account.name||fallbackEmail,role:""};
+}
+
 async function loadUser(account) {
-  const email = account.username.toLowerCase();
+  const profile = await getSignedInProfile(account);
+  const email = profile.email;
   const principal = PRINCIPALS[email];
   currentUser = {
     email,
-    name: principal?.name || account.name || account.username,
-    role: principal?.role || "Team Member",
+    name: principal?.name || profile.name || account.username,
+    role: principal?.role || profile.role || "Team Member",
     wednesday: principal?.wednesday || false,
     folder: email.split("@")[0],
   };
@@ -19715,67 +19732,17 @@ async function loadTasksFromOneDrive() {
   setSyncStatus("syncing", "Loading tasks...");
   try {
     if(await loadSharedCompanyData())return;
-    const token = await getAccessToken();
-    const folder = currentUser.folder;
-    const path = `/me/drive/root:/${ONEDRIVE_FOLDER}/${folder}/tasks.json:/content`;
-    const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) {
-      const text = await res.text();
-      try {
-        const data = JSON.parse(text);
-        if (Array.isArray(data)) {
-          // Flow saved as array
-          tasks = data;
-          archives = [];
-          staffConfig = {};
-          customNotes = [];
-        } else if (data.tasks) {
-          // App saved format
-          tasks = data.tasks || [];
-          archives = data.archives || [];
-          staffConfig = data.staffConfig || {};
-          customNotes = data.customNotes || [];
-        } else if (data.id) {
-          // Flow saved single task object
-          tasks = [data];
-          archives = [];
-          staffConfig = {};
-          customNotes = [];
-        } else {
-          tasks = [];
-          archives = [];
-          staffConfig = {};
-          customNotes = [];
-        }
-      } catch(e) {
-        tasks = [];
-        archives = [];
-        staffConfig = {};
-        customNotes = [];
-      }
-    } else if (res.status === 404) {
-      tasks = [];
-      archives = [];
-      staffConfig = {};
-      customNotes = [];
-      await saveTasksToOneDrive();
-    }
-    setSyncStatus("synced", "Synced with OneDrive");
-    initSelects();
-    refreshAll();
-    renderCharts();
-    renderActivity();
-    if(isAdmin())saveSharedCompanyData().catch(()=>{});
-    autoSyncContacts();
-    loadNotifications().catch(()=>{});
-    startNotifPolling();
-    pollToDoCompletions().catch(()=>{});
+    if(isAdmin() && await migrateLegacyOneDriveToShared())return;
+    sharedDataActive=false;
+    tasks=[];archives=[];staffConfig={};customNotes=[];notifications=[];
+    finishDataLoad();
+    setSyncStatus("error","Shared company data is not configured");
+    toast("Shared company data is not configured. Please deploy the Cloudflare Worker with DPEG_DATA.");
   } catch (err) {
+    sharedDataActive=false;
     setSyncStatus("error", "Sync failed");
-    console.error("OneDrive load error:", err);
-    toast("Could not load from OneDrive. Working offline.");
+    console.error("Shared data load error:", err);
+    toast("Could not load shared company data.");
     refreshAll();
     renderCharts();
     renderActivity();
@@ -19783,24 +19750,50 @@ async function loadTasksFromOneDrive() {
   }
 }
 
-async function saveTasksToOneDrive() {
-  setSyncStatus("syncing", "Saving...");
-  if(await saveSharedCompanyData())return;
-  try {
+async function loadLegacyOneDriveData() {
     const token = await getAccessToken();
     const folder = currentUser.folder;
     const path = `/me/drive/root:/${ONEDRIVE_FOLDER}/${folder}/tasks.json:/content`;
-    const payload = JSON.stringify({ tasks, archives, staffConfig, customNotes }, null, 2);
     const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: payload
+      headers: { Authorization: `Bearer ${token}` }
     });
-    if (!res.ok) throw new Error(`OneDrive save failed (${res.status})`);
-    setSyncStatus("synced", "Saved to OneDrive");
-  } catch (err) {
+    if (!res.ok)return false;
+    applyLoadedData(JSON.parse(await res.text()));
+    return true;
+}
+
+function finishDataLoad(){
+  initSelects();
+  refreshAll();
+  renderCharts();
+  renderActivity();
+  autoSyncContacts();
+  updateNotifBadge();
+  startNotifPolling();
+  pollToDoCompletions().catch(()=>{});
+}
+
+function companyDataIsEmpty(){
+  return !tasks.length && !archives.length && !Object.keys(staffConfig||{}).length && !customNotes.length;
+}
+
+async function migrateLegacyOneDriveToShared(){
+  if(!await loadLegacyOneDriveData())return false;
+  if(companyDataIsEmpty())return false;
+  if(!await saveSharedCompanyData())return false;
+  sharedDataActive=true;
+  setSyncStatus("synced","Migrated and synced company data");
+  finishDataLoad();
+  return true;
+}
+
+async function saveTasksToOneDrive() {
+  setSyncStatus("syncing", "Saving...");
+  if(await saveSharedCompanyData())return;
+  try { throw new Error("Shared company data is not configured"); }
+  catch (err) {
     setSyncStatus("error", "Save failed");
-    console.error("OneDrive save error:", err);
+    console.error("Shared data save error:", err);
   }
 }
 
@@ -19812,6 +19805,7 @@ function applyLoadedData(data){
     archives=data.archives||[];
     staffConfig=data.staffConfig||{};
     customNotes=data.customNotes||[];
+    notifications=Array.isArray(data.notifications)?data.notifications:notifications||[];
   }else if(data?.id){
     tasks=[data];archives=[];staffConfig={};customNotes=[];
   }else{
@@ -19827,8 +19821,9 @@ async function loadSharedCompanyData(){
     const res=await fetch(`${base}/data`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)return false;
     applyLoadedData(await res.json());
+    sharedDataActive=true;
     setSyncStatus("synced","Synced company data");
-    initSelects();refreshAll();renderCharts();renderActivity();autoSyncContacts();
+    finishDataLoad();
     return true;
   }catch(err){
     console.warn("Shared data load skipped:",err.message);
@@ -19841,9 +19836,10 @@ async function saveSharedCompanyData(){
   if(!base)return false;
   try{
     const token=await getAccessToken();
-    const payload=JSON.stringify({tasks,archives,staffConfig,customNotes});
+    const payload=JSON.stringify({tasks,archives,staffConfig,customNotes,notifications});
     const res=await fetch(`${base}/data`,{method:"PUT",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:payload});
     if(!res.ok)return false;
+    sharedDataActive=true;
     setSyncStatus("synced","Saved company data");
     return true;
   }catch(err){
@@ -21065,7 +21061,7 @@ function renderWed(){
     html+=`<div class="wed-date-group">
       <div class="wed-date" style="display:flex;align-items:center;gap:8px">
         <span style="width:10px;height:10px;border-radius:50%;background:#6b7280;display:inline-block;flex-shrink:0"></span>
-        Discussion Notes <span style="font-size:10px;opacity:.6;font-weight:500;text-transform:none;letter-spacing:0">${customNotes.length} note${customNotes.length!==1?'s':''}</span>
+        ${isWednesdayUser?'Wednesday Review Notes':'Discussion Notes'} <span style="font-size:10px;opacity:.6;font-weight:500;text-transform:none;letter-spacing:0">${customNotes.length} note${customNotes.length!==1?'s':''}</span>
       </div>`;
     html+=customNotes.map((n,i)=>`
       <div class="wed-card">
@@ -21077,7 +21073,7 @@ function renderWed(){
           </div>
         </div>
         <div class="wed-card-compact-body">
-          <textarea class="ag-ta" placeholder="Add discussion notes here..." id="cn-note-${i}" rows="1" style="min-height:32px">${n.meetingNote||''}</textarea>
+          <textarea class="ag-ta" placeholder="${isWednesdayUser?'Add Wednesday review notes here...':'Add discussion notes here...'}" id="cn-note-${i}" rows="1" style="min-height:32px">${n.meetingNote||''}</textarea>
         </div>
       </div>`).join('');
     html+=`</div>`;
@@ -21096,10 +21092,10 @@ function toggleWedSum(id){
   btn.innerHTML=hidden?'Less &#9650;':'Full summary &#9662;';
 }
 
-function addCN(){const v=document.getElementById("cn-in").value.trim();if(!v)return;customNotes.unshift({text:v,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),meetingNote:""});document.getElementById("cn-in").value="";renderWed();syncBadges();toast("Note added");}
-function removeCN(i){const el=document.getElementById("cn-note-"+i);if(el)customNotes[i].meetingNote=el.value;customNotes.splice(i,1);renderWed();syncBadges();}
-function removeFromWed(id){const t=tasks.find(x=>x.id===id);if(t)t.wednesday=false;renderWed();toast("Removed from agenda");}
-function clearWed(){tasks.forEach(t=>t.wednesday=false);customNotes=[];renderWed();syncBadges();toast("Cleared");}
+async function addCN(){const v=document.getElementById("cn-in").value.trim();if(!v)return;customNotes.unshift({text:v,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),meetingNote:""});document.getElementById("cn-in").value="";renderWed();syncBadges();toast("Note added");await saveTasksToOneDrive();}
+async function removeCN(i){const el=document.getElementById("cn-note-"+i);if(el)customNotes[i].meetingNote=el.value;customNotes.splice(i,1);renderWed();syncBadges();await saveTasksToOneDrive();}
+async function removeFromWed(id){const t=tasks.find(x=>x.id===id);if(t)t.wednesday=false;renderWed();toast("Removed from agenda");await saveTasksToOneDrive();}
+async function clearWed(){tasks.forEach(t=>t.wednesday=false);customNotes=[];renderWed();syncBadges();toast("Cleared");await saveTasksToOneDrive();}
 function dpegPrint(){
   const dateLabel=document.getElementById('print-date-label');
   const pageLabel=document.getElementById('print-page-label');
@@ -21320,7 +21316,8 @@ async function addTask(){
   clearAddTaskPerson();
   refreshAll();
   sendTaskNotification(task).catch(()=>{});
-  toast(`Task saved${email?`. Notification sent to ${email}`:""}`);
+  createToDoTask(task).catch(()=>{});
+  toast(`Task saved${email?`. To Do assigned to ${email}`:""}`);
   await saveTasksToOneDrive();
 }
 
@@ -22909,6 +22906,7 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
         };
         tasks.unshift(newTask);
         await sendTaskNotification(newTask).catch(err=>console.warn('Task notification failed:',err.message));
+        await createToDoTask(newTask).catch(err=>console.warn('To Do creation failed:',err.message));
       }
       await saveTasksToOneDrive();
       refreshAll();
@@ -23550,31 +23548,17 @@ let processedEmailIds=new Set(JSON.parse(localStorage.getItem('dpeg_processed_do
 let _notifPollTimer=null;
 
 async function loadNotifications(){
+  if(sharedDataActive){updateNotifBadge();return;}
   try{
-    const token=await getAccessToken();
-    const folder=currentUser?.folder||'default';
-    const path=`/me/drive/root:/${ONEDRIVE_FOLDER}/${folder}/notifications.json:/content`;
-    const res=await fetch(`https://graph.microsoft.com/v1.0${path}`,{headers:{Authorization:`Bearer ${token}`}});
-    if(res.ok){
-      const data=await res.json();
-      notifications=Array.isArray(data)?data:[];
-    }else{
-      notifications=[];
-    }
+    notifications=[];
   }catch{notifications=[];}
   updateNotifBadge();
 }
 
 async function saveNotifications(){
+  if(sharedDataActive){await saveSharedCompanyData();return;}
   try{
-    const token=await getAccessToken();
-    const folder=currentUser?.folder||'default';
-    const path=`/me/drive/root:/${ONEDRIVE_FOLDER}/${folder}/notifications.json:/content`;
-    await fetch(`https://graph.microsoft.com/v1.0${path}`,{
-      method:'PUT',
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify(notifications,null,2)
-    });
+    console.warn('Notifications save skipped: shared company data is not active');
   }catch(err){console.warn('Notifications save failed:',err.message);}
 }
 
@@ -23760,9 +23744,11 @@ async function addTaskFromEmail(emailId){
   trackedEmailIds.add(emailId);
   await saveTasksToOneDrive();
   refreshAll();
-  if(result.created)sendTaskNotification(result.task).catch(()=>{});
+  if(result.created){
+    sendTaskNotification(result.task).catch(()=>{});
+    createToDoTask(result.task).catch(()=>{});
+  }
   toast(result.created?'Task added to Action Log':'Updated existing thread in Action Log');
-  // Refresh reader to show tracked status
   readEmail(emailId,currentFolder);
 }
 
