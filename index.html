@@ -18784,6 +18784,10 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
   </div>
   <nav class="sb-nav">
     <div class="sb-lbl">Operations</div>
+    <button class="ni" id="nav-notifications-btn" onclick="nav('notifications')">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Notifications <span class="nb red" id="nb-notif" style="display:none">0</span>
+    </button>
     <button class="ni active" onclick="nav('dashboard')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke-width="2"/></svg>
       Dashboard
@@ -19028,6 +19032,17 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
     <div id="summary-print-report" style="display:none"></div>
   </div>
 
+  <!-- NOTIFICATIONS -->
+  <div class="page" id="page-notifications">
+    <div class="dash-row" style="margin-bottom:12px;align-items:center">
+      <div style="font-size:14px;font-weight:700;color:var(--body)">Notifications</div>
+      <button class="btn btn-ghost btn-sm" onclick="markAllNotificationsRead()" style="margin-left:auto">Mark all read</button>
+    </div>
+    <div id="notif-list" style="display:flex;flex-direction:column;gap:8px">
+      <div style="padding:40px;text-align:center;font-size:12px;color:var(--muted)">No notifications yet</div>
+    </div>
+  </div>
+
   <!-- OUTLOOK -->
   <div class="page" id="page-outlook" style="padding:0;margin:-12px -16px;height:calc(100vh - 46px)">
     <div id="ol-layout" style="display:flex;height:100%;overflow:hidden;background:#fff;border-top:1px solid #e5e7eb">
@@ -19066,6 +19081,16 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><circle cx="12" cy="12" r="9" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke-width="2" stroke-linecap="round"/></svg>
             <span>Untracked</span>
             <span id="ol-untracked-count" style="margin-left:auto;background:#fffbeb;color:#92400e;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;display:none"></span>
+          </div>
+          <div id="ol-folder-deleteditems" class="ol-folder" onclick="loadFolder('deleteditems')" title="Deleted Items">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Deleted Items</span>
+          </div>
+          <div style="height:1px;background:#e5e7eb;margin:5px 2px"></div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#9ca3af;padding:5px 6px 3px">Calendar</div>
+          <div id="ol-folder-calendar" class="ol-folder" onclick="loadCalendar()" title="Calendar">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2" stroke-width="2"/><path d="M16 2v4M8 2v4M3 10h18" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Upcoming Events</span>
           </div>
         </div>
         <div id="ol-contacts-sync-bar" style="display:none;padding:6px 10px;border-top:1px solid #e5e7eb;font-size:10px;color:#15803d;align-items:center;gap:5px;background:#f0fdf4;flex-shrink:0">
@@ -19461,7 +19486,7 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
+const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send", "Calendars.Read"];
 const SCOPES_DRAFTS   = ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"];
 const SCOPES_TODO     = ["User.Read", "Tasks.ReadWrite"];
 const SCOPES_CONTACTS = ["User.Read", "Contacts.Read", "People.Read", "User.ReadBasic.All"];
@@ -19744,6 +19769,9 @@ async function loadTasksFromOneDrive() {
     renderActivity();
     if(isAdmin())saveSharedCompanyData().catch(()=>{});
     autoSyncContacts();
+    loadNotifications().catch(()=>{});
+    startNotifPolling();
+    pollForDoneReplies().catch(()=>{});
   } catch (err) {
     setSyncStatus("error", "Sync failed");
     console.error("OneDrive load error:", err);
@@ -20565,7 +20593,8 @@ function upsertTaskFromEmail(email,person,address,dept,date){
     existing.replyCount=(existing.replyCount||1)+1;
     return {task:existing,created:false};
   }
-  const task={id:Date.now()+Math.random(),emailId:email.id,emailSubject:email.subject||'(no subject)',conversationId,lastMessageId:email.id||'',title:email.subject||'(no subject)',summary:email.threadSummary||email.bodyPreview||'',threadSummary:email.threadSummary||'',person,email:address,dept,date:(date?new Date(date):new Date()).toISOString().split('T')[0],status:'Pending',priority:emailPriority,wednesday:false,followup:'',weekOffset:0,replyCount:1,lastReplyAt:date||new Date().toISOString()};
+  const rawEmailDate=email.receivedDateTime||email.sentDateTime||'';
+  const task={id:Date.now()+Math.random(),emailId:email.id,emailSubject:email.subject||'(no subject)',conversationId,lastMessageId:email.id||'',title:email.subject||'(no subject)',summary:email.threadSummary||email.bodyPreview||'',threadSummary:email.threadSummary||'',person,email:address,dept,date:(date?new Date(date):new Date()).toISOString().split('T')[0],emailDate:rawEmailDate?new Date(rawEmailDate).toISOString().split('T')[0]:'',status:'Pending',priority:emailPriority,wednesday:false,followup:'',weekOffset:0,replyCount:1,lastReplyAt:date||new Date().toISOString()};
   tasks.unshift(task);
   return {task,created:true};
 }
@@ -20882,7 +20911,8 @@ function renderActivity(){
   if(!recent.length){el.innerHTML=`<div style="padding:20px;text-align:center;font-size:12px;color:var(--muted)">No activity yet</div>`;return;}
   el.innerHTML=recent.map(t=>{
     const dc=nstt(t.status)==="Done"?"done":nstt(t.status)==="Overdue"?"overdue":"";
-    return `<div class="act-item"><div class="act-dot ${dc}"></div><div><div class="act-title">${t.title}</div><div class="act-meta">${t.dept} &bull; ${t.person} &bull; ${fmtD(t.date)}</div></div></div>`;
+    const emailDateLine=t.emailDate&&t.emailDate!==t.date?`<div class="act-meta" style="margin-top:1px;font-size:10.5px;color:#9ca3af">Email sent: ${fmtD(t.emailDate)}</div>`:'';
+    return `<div class="act-item"><div class="act-dot ${dc}"></div><div><div class="act-title">${t.title}</div><div class="act-meta">${t.dept} &bull; ${t.person} &bull; Task added: ${fmtD(t.date)}</div>${emailDateLine}</div></div>`;
   }).join("");
 }
 
@@ -21325,8 +21355,8 @@ function renderCharts(){
 // ============================================================
 // NAVIGATION
 // ============================================================
-const PT={dashboard:"Dashboard",master:"Action Log",people:"People & Departments",wednesday:isWednesdayUser?"Wednesday Review":"Discussion Notes",archive:"Archive",summary:"Summary Sheet",outlook:"Outlook"};
-const PS={dashboard:"Real-time overview of task activity",master:"All dispatched tasks",people:"Team members and departments",wednesday:"Weekly agenda and notes",archive:"Past meeting records",summary:"Task report and CSV export",outlook:"Send and receive emails. Tasks are created automatically for emails sent to DPEG staff."};
+const PT={dashboard:"Dashboard",master:"Action Log",people:"People & Departments",wednesday:isWednesdayUser?"Wednesday Review":"Discussion Notes",archive:"Archive",summary:"Summary Sheet",outlook:"Outlook",notifications:"Notifications"};
+const PS={dashboard:"Real-time overview of task activity",master:"All dispatched tasks",people:"Team members and departments",wednesday:"Weekly agenda and notes",archive:"Past meeting records",summary:"Task report and CSV export",outlook:"Send and receive emails. Tasks are created automatically for emails sent to DPEG staff.",notifications:"Task completion alerts and approvals"};
 function nav(name,mode){
   if(name==="departments"){name="people";mode="departments";}
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
@@ -21336,7 +21366,7 @@ function nav(name,mode){
   document.getElementById("tb-sub").textContent=PS[name]||"";
   document.querySelectorAll(".ni").forEach(btn=>{
     const t=btn.textContent.trim().toLowerCase();
-    if((name==="dashboard"&&t.startsWith("dash"))||(name==="master"&&t.startsWith("action"))||(name==="people"&&(t.startsWith("people")||t.startsWith("dept")))||(name==="wednesday"&&(t.startsWith("wed")||t.startsWith("disc")))||(name==="archive"&&t.startsWith("arch"))||(name==="summary"&&t.startsWith("sum"))||(name==="outlook"&&t.startsWith("out")))
+    if((name==="dashboard"&&t.startsWith("dash"))||(name==="master"&&t.startsWith("action"))||(name==="people"&&(t.startsWith("people")||t.startsWith("dept")))||(name==="wednesday"&&(t.startsWith("wed")||t.startsWith("disc")))||(name==="archive"&&t.startsWith("arch"))||(name==="summary"&&t.startsWith("sum"))||(name==="outlook"&&t.startsWith("out"))||(name==="notifications"&&t.startsWith("notif")))
       btn.classList.add("active");
   });
   curSearch="";document.getElementById("srch").value="";
@@ -21347,6 +21377,7 @@ function nav(name,mode){
   if(name==="dashboard"){renderCharts();renderActivity();}
   if(name==="summary")renderSum();
   if(name==="outlook"){initOlPanels();fetchOutlookContacts();loadFolder("inbox");}
+  if(name==="notifications"){renderNotifications();}
   // Prevent outer body scrollbar while Outlook fills the full viewport
   const mainEl=document.querySelector('.main');
   if(mainEl)mainEl.style.overflowY=name==='outlook'?'hidden':'';
@@ -21534,6 +21565,24 @@ function toast(msg,dur=2600){
 // ============================================================
 // OUTLOOK INTEGRATION — Full featured with CC/BCC/Untracked
 // ============================================================
+
+/*
+  POWER AUTOMATE SETUP (optional, enhances notifications):
+
+  Create a flow with these two steps only:
+
+  Step 1 — Trigger: When a new email arrives (V3)
+  - Folder: Inbox
+  - Subject filter: DONE
+
+  Step 2 — Action: Update file (OneDrive for Business)
+  - File path: /DPEGTaskManager/[recipient]/notifications.json
+  - Append a new notification JSON object to the file
+
+  This flow runs for each recipient separately and
+  gives real-time notifications without polling.
+*/
+
 let currentFolder = 'inbox';
 let currentEmailId = null;
 let emailCache = {};
@@ -21541,8 +21590,8 @@ let trackedEmailIds = new Set();
 let outlookFolderEmails = {};
 let outlookNextLinks = {};
 
-const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts'};
-const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',untracked:'Untracked Emails'};
+const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts',deleteditems:'deleteditems'};
+const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',untracked:'Untracked Emails',deleteditems:'Deleted Items',calendar:'Calendar'};
 
 function buildTrackedSet(){
   trackedEmailIds = new Set(tasks.flatMap(t=>[t.emailId,t.lastMessageId,t.conversationId]).filter(Boolean));
@@ -22097,23 +22146,43 @@ function parseICalData(raw){
   const orgLine=lines.find(l=>/^ORGANIZER/i.test(l))||'';
   const cnM=orgLine.match(/CN=([^;:\r\n]+)/i);
   const mailM=orgLine.match(/mailto:([^\r\n\s;]+)/i);
+  // Parse all ATTENDEE lines
+  const attendees=lines.filter(l=>/^ATTENDEE/i.test(l)).map(l=>{
+    const cn=l.match(/CN=([^;:\r\n]+)/i);
+    const mail=l.match(/mailto:([^\r\n\s;]+)/i);
+    return cn?cn[1].trim():(mail?mail[1].trim():'');
+  }).filter(Boolean);
   return{
     summary:get('SUMMARY'),location:get('LOCATION'),description:get('DESCRIPTION'),
     organizer:cnM?cnM[1].trim():(mailM?mailM[1].trim():''),
     dtstart:dtParse(get('DTSTART')),dtend:dtParse(get('DTEND')),
-    status:get('STATUS')||get('METHOD'),
+    status:get('STATUS')||get('METHOD'),attendees,
   };
 }
-function renderMeetingCard(d){
-  const fmt=(dt)=>{if(!dt||isNaN(dt))return'';return dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});};
+function renderMeetingCard(d,emailSubjectHint){
+  const fmt=(dt)=>{if(!dt||isNaN(dt))return'';return dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});};
+  const fmtT=(dt)=>{if(!dt||isNaN(dt))return'';return dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});};
   const dur=(d.dtstart&&d.dtend&&!isNaN(d.dtstart)&&!isNaN(d.dtend))?Math.round((d.dtend-d.dtstart)/60000):0;
-  const durStr=dur?`(${Math.floor(dur/60)}h${dur%60?` ${dur%60}m`:''})` :'';
+  // Detect status from METHOD or subject hint
+  const subj=String(emailSubjectHint||'').toLowerCase();
+  const method=String(d.status||'').toUpperCase();
+  let statusBadge='';
+  if(method==='CANCEL'||subj.startsWith('canceled:')||subj.startsWith('cancelled:'))
+    statusBadge=`<span style="padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa">Cancelled</span>`;
+  else if(subj.startsWith('accepted:'))
+    statusBadge=`<span style="padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">Accepted</span>`;
+  else if(subj.startsWith('declined:'))
+    statusBadge=`<span style="padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca">Declined</span>`;
   const rows=[];
-  if(d.dtstart&&!isNaN(d.dtstart))rows.push(`<span style="color:#6b7280;font-weight:600">Date</span><span>${escapeHtml(fmt(d.dtstart))} <span style="color:#6b7280">${durStr}</span></span>`);
-  if(d.dtend&&!isNaN(d.dtend)&&dur>0)rows.push(`<span style="color:#6b7280;font-weight:600">Ends</span><span>${escapeHtml(fmt(d.dtend))}</span>`);
-  if(d.location)rows.push(`<span style="color:#6b7280;font-weight:600">Location</span><span>${escapeHtml(d.location)}</span>`);
-  if(d.organizer)rows.push(`<span style="color:#6b7280;font-weight:600">Organizer</span><span>${escapeHtml(d.organizer)}</span>`);
-  return`<div style="padding:20px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#0E3416" stroke-width="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-size:11px;font-weight:700;color:#0E3416;text-transform:uppercase;letter-spacing:.5px">Meeting Request</span></div><div style="background:#f8fdf9;border:1px solid #d1e9d4;border-radius:6px;padding:14px">${d.summary?`<div style="font-size:14px;font-weight:700;color:#111;margin-bottom:12px">${escapeHtml(d.summary)}</div>`:''}<div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px">${rows.join('')}</div>${d.description&&d.description.trim()?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6;white-space:pre-wrap">${escapeHtml(d.description.trim().slice(0,800))}</div>`:''}</div></div>`;
+  if(d.dtstart&&!isNaN(d.dtstart)){
+    const timeStr=dur>0?`${fmtT(d.dtstart)} — ${fmtT(d.dtend)}`:'All day';
+    rows.push(`<span style="color:#6b7280;font-weight:600">Date</span><span>${escapeHtml(fmt(d.dtstart))}</span>`);
+    rows.push(`<span style="color:#6b7280;font-weight:600">Time</span><span>${timeStr}${dur?` <span style="color:#9ca3af">(${Math.floor(dur/60)}h${dur%60?` ${dur%60}m`:''})</span>`:''}</span>`);
+  }
+  rows.push(`<span style="color:#6b7280;font-weight:600">Location</span><span>${d.location?escapeHtml(d.location):'<span style="color:#9ca3af">No location specified</span>'}</span>`);
+  if(d.organizer)rows.push(`<span style="color:#6b7280;font-weight:600">Organiser</span><span>${escapeHtml(d.organizer)}</span>`);
+  if(d.attendees.length)rows.push(`<span style="color:#6b7280;font-weight:600">Attendees</span><span style="line-height:1.6">${d.attendees.map(a=>escapeHtml(a)).join('<br>')}</span>`);
+  return`<div style="padding:20px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#0E3416" stroke-width="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-size:11px;font-weight:700;color:#0E3416;text-transform:uppercase;letter-spacing:.5px">Meeting Request</span>${statusBadge?` ${statusBadge}`:''}</div><div style="background:#f8fdf9;border:1px solid #d1e9d4;border-radius:6px;padding:14px">${d.summary?`<div style="font-size:14px;font-weight:700;color:#111;margin-bottom:12px">${escapeHtml(d.summary)}</div>`:''}<div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px">${rows.join('')}</div>${d.description&&d.description.trim()?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6;white-space:pre-wrap">${escapeHtml(d.description.trim().slice(0,800))}</div>`:''}</div></div>`;
 }
 function icalToReadableText(bodyText){
   const ical=extractICalText(bodyText);
@@ -22121,11 +22190,12 @@ function icalToReadableText(bodyText){
   const d=parseICalData(ical);
   const parts=[];
   if(d.summary)parts.push('Meeting: '+d.summary);
-  if(d.organizer)parts.push('Organizer: '+d.organizer);
+  if(d.organizer)parts.push('Organiser: '+d.organizer);
   const fmt=(dt)=>{if(!dt||isNaN(dt))return'';return dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});};
   if(d.dtstart)parts.push('Date: '+fmt(d.dtstart));
   if(d.dtend&&d.dtend!==d.dtstart)parts.push('Ends: '+fmt(d.dtend));
   if(d.location)parts.push('Location: '+d.location);
+  if(d.attendees&&d.attendees.length)parts.push(`Attendees (${d.attendees.length}): `+d.attendees.slice(0,8).join(', '));
   if(d.description&&d.description.trim())parts.push('Notes: '+d.description.trim().slice(0,500));
   return parts.length?parts.join('\n'):null;
 }
@@ -22191,7 +22261,12 @@ async function readEmail(emailId,folder,el){
             ?`<span style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500">✓ In Tasks</span><button onclick="removeTaskByEmail('${emailId}')" style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">Remove</button>`
             :`<button onclick="addTaskFromEmail('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:none;background:#0E3416;color:#fff;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:background .12s" onmouseover="this.style.background='#1A5C2A'" onmouseout="this.style.background='#0E3416'">+ Add to Tasks</button>`
           }
-          <button onclick="deleteEmailItem('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;margin-left:auto" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'"><svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Delete</button>
+          ${folder==='deleteditems'
+            ?`<div style="display:flex;gap:5px;margin-left:auto">
+                ${pBtn('Restore','<path d="M3 12a9 9 0 019-9 9 9 0 016.7 3.1M21 3v6h-6M21 12a9 9 0 01-9 9 9 9 0 01-6.7-3.1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`restoreEmail('${emailId}')`)}`
+              +`<button onclick="permanentDeleteEmail('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">Delete Permanently</button></div>`
+            :`<button onclick="deleteEmailItem('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;margin-left:auto" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'"><svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Delete</button>`
+          }
         </div>
       </div>
       <div id="email-attachments-top" style="display:none;padding:8px 16px;background:#fafafa;border-bottom:1px solid #e5e7eb;flex-shrink:0"></div>
@@ -22200,7 +22275,7 @@ async function readEmail(emailId,folder,el){
         <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:#111"></div>
       </div>
       <div id="ol-email-body-wrap" style="flex:1;overflow-y:auto;min-height:0">
-        ${isMeeting?renderMeetingCard(parseICalData(icalText)):isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:16px;font-size:13.5px;line-height:1.6;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
+        ${isMeeting?renderMeetingCard(parseICalData(icalText),email.subject):isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:16px;font-size:13.5px;line-height:1.6;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
       </div>`;
     if(!isMeeting&&isHtml){
       var _f=readerEl.querySelector('#email-body-frame');
@@ -22222,7 +22297,7 @@ async function readEmail(emailId,folder,el){
               const icsRaw=atob(d.contentBytes);
               const icalParsed=parseICalData(icsRaw);
               const bodyWrap=document.getElementById('ol-email-body-wrap');
-              if(bodyWrap)bodyWrap.innerHTML=renderMeetingCard(icalParsed);
+              if(bodyWrap)bodyWrap.innerHTML=renderMeetingCard(icalParsed,email.subject);
             }
           }
         }
@@ -23018,10 +23093,13 @@ async function toggleEmailAISummary(emailId){
     const summary=ai||localThreadSummary(messages);
     let html=formatSummaryHTML(summary);
     if(allAtts.length){
-      const namePreview=attachmentNames.slice(0,3).join(', ')+(allAtts.length>3?` +${allAtts.length-3} more`:'');
-      html+=`<div style="margin-top:8px;padding-top:7px;border-top:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:11px;color:#6b7280"><span style="font-weight:600;color:#374151">${allAtts.length} attachment${allAtts.length>1?'s':''}</span>: ${namePreview}</span>
-        <button id="att-sum-btn-${emailId}" onclick="summarizeAttachments('${emailId}')" style="padding:2px 8px;font-size:10px;border:1px solid #d1d5db;border-radius:3px;background:#fff;cursor:pointer;color:#374151;flex-shrink:0">Summarize attachments</button>
+      const nameList=attachmentNames.map(n=>`<span style="font-style:italic">${escapeHtml(n)}</span>`).join(', ');
+      html+=`<div id="att-footer-${emailId}" style="margin-top:8px;padding-top:7px;border-top:1px solid #f0f0f0;font-size:11px;color:#6b7280">
+        📎 This email has ${allAtts.length} attachment${allAtts.length>1?'s':''}: ${nameList}. Would you like me to summarise them?
+        <div style="display:flex;gap:6px;margin-top:5px">
+          <button id="att-sum-btn-${emailId}" onclick="summarizeAttachments('${emailId}')" style="padding:3px 10px;font-size:10px;border:none;border-radius:3px;background:#0E3416;color:#fff;cursor:pointer;font-weight:600">Yes, summarise attachments</button>
+          <button onclick="document.getElementById('att-footer-${emailId}').style.display='none'" style="padding:3px 10px;font-size:10px;border:1px solid #d1d5db;border-radius:3px;background:#fff;cursor:pointer;color:#374151">No thanks</button>
+        </div>
       </div>
       <div id="att-sum-${emailId}" style="display:none"></div>`;
     }
@@ -23043,22 +23121,36 @@ async function summarizeAttachments(emailId){
     const token=await getAccessToken();
     const atts=await fetchVisibleAttachments(emailId);
     const textAtts=[];
+    const unsupported=[];
+    const SUPPORTED_TYPES=['text/plain','text/html','text/csv','application/json','application/xml','application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
     for(const a of atts){
       const ct=(a.contentType||'').toLowerCase();
-      if(!ct.startsWith('text/')&&ct!=='application/json'&&ct!=='application/xml')continue;
+      const isSupported=SUPPORTED_TYPES.some(t=>ct.startsWith(t)||ct===t);
+      if(!isSupported){unsupported.push(a.name);continue;}
       try{
         const r=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/attachments/${a.id}`,{headers:{Authorization:`Bearer ${token}`}});
         if(!r.ok)continue;
         const d=await r.json();
-        if(d.contentBytes){
-          const raw=atob(d.contentBytes);
-          const text=(ct.includes('html')?raw.replace(/<[^>]+>/g,' '):raw).replace(/\s+/g,' ').trim();
-          textAtts.push({name:a.name,text:text.slice(0,800)});
+        if(!d.contentBytes)continue;
+        let text='';
+        const raw=atob(d.contentBytes);
+        if(ct.includes('pdf')){
+          // Extract text from BT...ET blocks (basic PDF text extraction)
+          const btMatches=raw.match(/BT[\s\S]*?ET/g)||[];
+          text=btMatches.map(block=>block.replace(/BT|ET/g,'').replace(/\(([^)]+)\)/g,'$1').replace(/[\r\n]+/g,' ').replace(/Tf|Td|TD|TJ|Tj|Tm|Ts|Tc|Tw|T\*|\d+(\.\d+)?\s/g,' ')).join(' ');
+          if(!text.trim())text='[PDF content could not be extracted as text]';
+        }else if(ct.includes('html')){
+          text=raw.replace(/<[^>]+>/g,' ');
+        }else{
+          text=raw;
         }
+        text=text.replace(/\s+/g,' ').trim();
+        textAtts.push({name:a.name,text:text.slice(0,800)});
       }catch{}
     }
     if(!textAtts.length){
-      container.innerHTML='<div style="font-size:11px;color:#6b7280;padding:6px 0">Attachments are not text-based (PDF, image, etc.) and cannot be read automatically.</div>';
+      const unsuppMsg=unsupported.length?` (${unsupported.map(n=>`"${n}"`).join(', ')} — unsupported type)`:'';
+      container.innerHTML=`<div style="font-size:11px;color:#6b7280;padding:6px 0">Cannot read attachment content automatically${unsuppMsg}.</div>`;
       if(btn){btn.disabled=false;btn.textContent='Summarize attachments';}
       return;
     }
@@ -23073,9 +23165,10 @@ async function summarizeAttachments(emailId){
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const summary=data.summary||'No summary available.';
+    const unsuppHtml=unsupported.length?`<div style="margin-top:6px;font-size:10px;color:#9ca3af">${unsupported.map(n=>`Cannot summarise "${escapeHtml(n)}" — unsupported file type`).join('<br>')}</div>`:'';
     container.innerHTML=`<div style="margin-top:6px;padding:8px 10px;background:#f9fafb;border-radius:4px;border:1px solid #e5e7eb">`+
       `<div style="font-size:10px;font-weight:700;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px">Attachment Summary</div>`+
-      formatSummaryHTML(summary)+'</div>';
+      formatSummaryHTML(summary)+unsuppHtml+'</div>';
     if(btn){btn.disabled=false;btn.textContent='Re-summarize';}
   }catch(e){
     container.innerHTML='<span style="color:#b91c1c;font-size:11px">Could not summarize attachments.</span>';
@@ -23162,34 +23255,360 @@ async function sendTaskNotification(task){
   if(!task.email)return;
   const addr=(task.email||'').trim().toLowerCase();
   if(!addr||!addr.includes('@'))return;
-  // Only notify internal DPEG addresses
   if(!addr.includes('@dhananipeg.com')&&!addr.includes('@dpeg'))return;
   try{
-    await createToDoTask(task);
     const token=await getAccessToken();
-    const subject=`Task Assigned to You: ${task.title||'(no subject)'}`;
+    const assignedBy=currentUser?.name||currentUser?.email||'DPEG Manager';
     const dueDate=task.deadline||((task.deadline===undefined)?task.date:'');
-    const lines=[
-      `Hi ${task.person||''},`,
-      '',
-      'A task has been assigned to you in the DPEG Task Manager.',
-      '',
-      `Task:       ${task.title||''}`,
-      `Status:     ${task.status||'Pending'}`,
-      `Priority:   ${task.priority||'Normal'}`,
-      `Department: ${task.dept||''}`,
-    ];
-    if(dueDate)lines.splice(lines.length-1,0,`Deadline:   ${dueDate}`);
-    if(task.summary)lines.push('','Details:',task.summary.replace(/[•\*]/g,'').slice(0,2000));
-    if(Array.isArray(task.attachmentNames)&&task.attachmentNames.length){
-      lines.push('','Attachments from email:',...task.attachmentNames.map(n=>`- ${n}`));
-    }
-    lines.push('','Please open the DPEG Task Manager to view and update this task.','','Best regards,','DPEG Task Manager');
-    const message={subject,body:{contentType:'Text',content:lines.join('\n')},toRecipients:[{emailAddress:{address:addr}}]};
-    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:false})});
+    const summaryClean=(task.summary||'').replace(/[•*▾▲◆]/g,'').trim().slice(0,600);
+    const attHtml=Array.isArray(task.attachmentNames)&&task.attachmentNames.length
+      ?`<p><strong>Attachments:</strong> ${task.attachmentNames.map(n=>escapeHtml(n)).join(', ')}</p>`:'';
+    const htmlBody=`<div style="font-family:Arial,sans-serif;max-width:600px">
+      <h2 style="color:#0E3416">You have been assigned a task</h2>
+      <p><strong>Task:</strong> ${escapeHtml(task.title||'')}</p>
+      ${summaryClean?`<p><strong>Summary:</strong> ${escapeHtml(summaryClean)}</p>`:''}
+      <p><strong>Assigned by:</strong> ${escapeHtml(assignedBy)}</p>
+      <p><strong>Date:</strong> ${escapeHtml(task.date||'')}</p>
+      ${dueDate?`<p><strong>Deadline:</strong> ${escapeHtml(dueDate)}</p>`:''}
+      <p><strong>Priority:</strong> ${escapeHtml(task.priority||'Normal')}</p>
+      ${attHtml}
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
+      <p>When you complete this task, please reply to this email with the word <strong>DONE</strong> in the subject line to notify your manager.</p>
+      <p><a href="https://dpeg-software.github.io/dhanani_task_manager/" style="color:#0E3416">Open Task Manager</a></p>
+      <p style="color:#9ca3af;font-size:12px">DPEG Task Manager — automated notification</p>
+    </div>`;
+    const subject=`Task Assigned: ${task.title||'(no subject)'}`;
+    const message={subject,body:{contentType:'HTML',content:htmlBody},toRecipients:[{emailAddress:{address:addr}}]};
+    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
   }catch(err){
     console.warn('Task notification failed:',err.message);
   }
+}
+
+// ============================================================
+// DELETED ITEMS — RESTORE & PERMANENT DELETE
+// ============================================================
+async function restoreEmail(emailId){
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/move`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({destinationId:'inbox'})
+    });
+    if(!res.ok)throw new Error('Restore failed');
+    if(outlookFolderEmails['deleteditems']){
+      outlookFolderEmails['deleteditems']=outlookFolderEmails['deleteditems'].filter(e=>e.id!==emailId);
+    }
+    delete emailCache[emailId];
+    const readerEl=document.getElementById('ol-email-reader');
+    if(readerEl)readerEl.innerHTML=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9ca3af;text-align:center;padding:40px"><div style="font-size:13px;font-weight:600;color:#15803d">Email restored to Inbox</div></div>`;
+    renderEmailRows('deleteditems',outlookFolderEmails['deleteditems']||[]);
+    toast('Email restored to Inbox');
+  }catch(err){toast('Could not restore email');}
+}
+
+async function permanentDeleteEmail(emailId){
+  if(!confirm('Permanently delete this email? This cannot be undone.'))return;
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'DELETE',headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok&&res.status!==204)throw new Error('Delete failed');
+    if(outlookFolderEmails['deleteditems']){
+      outlookFolderEmails['deleteditems']=outlookFolderEmails['deleteditems'].filter(e=>e.id!==emailId);
+    }
+    delete emailCache[emailId];
+    const readerEl=document.getElementById('ol-email-reader');
+    if(readerEl)readerEl.innerHTML=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9ca3af;text-align:center;padding:40px"><div style="font-size:13px;font-weight:600;color:#6b7280">Email permanently deleted</div></div>`;
+    renderEmailRows('deleteditems',outlookFolderEmails['deleteditems']||[]);
+    toast('Email permanently deleted');
+  }catch(err){toast('Could not delete email');}
+}
+
+// ============================================================
+// CALENDAR INTEGRATION
+// ============================================================
+let calendarEvents=[];
+
+async function loadCalendar(){
+  // Update folder header and expand mid panel
+  document.querySelectorAll('.ol-folder').forEach(f=>f.classList.remove('active'));
+  const calBtn=document.getElementById('ol-folder-calendar');
+  if(calBtn)calBtn.classList.add('active');
+  currentFolder='calendar';
+  if(!olMidExpanded){olMidExpanded=true;const mp=document.getElementById('ol-mid-panel');if(mp)mp.style.width='300px';updateOlDividerIcons();}
+  const titleEl=document.getElementById('ol-folder-title');
+  if(titleEl)titleEl.textContent='Calendar';
+  const listEl=document.getElementById('ol-email-list');
+  if(listEl)listEl.innerHTML='<div style="padding:20px;text-align:center;font-size:12px;color:#9ca3af">Loading events...</div>';
+  try{
+    const token=await getAccessToken();
+    const today=new Date();today.setHours(0,0,0,0);
+    const end=new Date(today);end.setDate(end.getDate()+30);
+    const url=`https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${today.toISOString()}&endDateTime=${end.toISOString()}&$select=id,subject,start,end,location,organizer,attendees,bodyPreview&$top=50&$orderby=start/dateTime`;
+    const res=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Calendar fetch failed');
+    const data=await res.json();
+    calendarEvents=data.value||[];
+    renderCalendarList(calendarEvents);
+  }catch(err){
+    const listEl=document.getElementById('ol-email-list');
+    if(listEl)listEl.innerHTML=`<div style="padding:20px;text-align:center;font-size:12px;color:#b91c1c">Could not load calendar events</div>`;
+    toast('Could not load calendar');
+  }
+}
+
+function renderCalendarList(events){
+  const listEl=document.getElementById('ol-email-list');
+  if(!listEl)return;
+  if(!events.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No upcoming events</div></div>';return;}
+  // Group by date
+  const groups={};
+  events.forEach(ev=>{
+    const dt=new Date(ev.start?.dateTime||ev.start?.date||'');
+    const key=isNaN(dt)?'Unknown':dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    if(!groups[key])groups[key]=[];
+    groups[key].push(ev);
+  });
+  let html='';
+  Object.entries(groups).forEach(([date,evs])=>{
+    html+=`<div style="padding:5px 10px 2px;font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.8px;background:#fafafa;border-bottom:1px solid #f0f0f0">${escapeHtml(date)}</div>`;
+    evs.forEach(ev=>{
+      const start=ev.start?.dateTime?new Date(ev.start.dateTime):null;
+      const end=ev.end?.dateTime?new Date(ev.end.dateTime):null;
+      const timeStr=start&&!isNaN(start)?start.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})+(end&&!isNaN(end)?` — ${end.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}`:''): 'All day';
+      const loc=ev.location?.displayName||'';
+      const attCount=(ev.attendees||[]).length;
+      html+=`<div class="ol-email-item" onclick="readCalendarEvent('${escapeHtml(ev.id)}')">
+        <div class="ol-email-top"><span class="ol-email-sender">${escapeHtml(ev.subject||'(no title)')}</span></div>
+        <div class="ol-email-subject">${escapeHtml(timeStr)}</div>
+        ${loc?`<div class="ol-email-preview">${escapeHtml(loc)}</div>`:''}
+        ${attCount?`<div style="font-size:10px;color:#9ca3af;margin-top:1px">${attCount} attendee${attCount!==1?'s':''}</div>`:''}
+      </div>`;
+    });
+  });
+  listEl.innerHTML=html;
+}
+
+function readCalendarEvent(eventId){
+  const ev=calendarEvents.find(e=>e.id===eventId);
+  if(!ev)return;
+  const readerEl=document.getElementById('ol-email-reader');
+  if(!readerEl)return;
+  const start=ev.start?.dateTime?new Date(ev.start.dateTime):null;
+  const end=ev.end?.dateTime?new Date(ev.end.dateTime):null;
+  const fmt=(dt)=>dt&&!isNaN(dt)?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}):'';
+  const fmtT=(dt)=>dt&&!isNaN(dt)?dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}):'';
+  const dur=start&&end&&!isNaN(start)&&!isNaN(end)?Math.round((end-start)/60000):0;
+  const durStr=dur?`(${Math.floor(dur/60)}h${dur%60?` ${dur%60}m`:''})`:'';
+  const org=ev.organizer?.emailAddress?.name||ev.organizer?.emailAddress?.address||'';
+  const attendees=(ev.attendees||[]).map(a=>escapeHtml(a.emailAddress?.name||a.emailAddress?.address||''));
+  const pBtn=(label,icon,onclick)=>`<button onclick="${onclick}" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">${icon?`<svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icon}</svg>`:''}${label}</button>`;
+  readerEl.innerHTML=`
+    <div style="padding:12px 16px 10px;border-bottom:1px solid #e5e7eb;flex-shrink:0;background:#fff">
+      <div style="font-size:16px;font-weight:600;color:#111;margin-bottom:8px">${escapeHtml(ev.subject||'(no title)')}</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        ${pBtn('Add to Tasks','<path d="M12 5v14M5 12h14" stroke-width="2" stroke-linecap="round"/>',`addCalendarEventToTasks('${escapeHtml(eventId)}')`)}
+      </div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:20px 16px">
+      <div style="background:#f8fdf9;border:1px solid #d1e9d4;border-radius:6px;padding:14px">
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:12px">
+          ${start?`<span style="color:#6b7280;font-weight:600">Date</span><span>${escapeHtml(fmt(start))}</span>`:''}
+          ${start?`<span style="color:#6b7280;font-weight:600">Time</span><span>${fmtT(start)}${end?` — ${fmtT(end)}`:''} <span style="color:#9ca3af">${durStr}</span></span>`:''}
+          <span style="color:#6b7280;font-weight:600">Location</span><span>${ev.location?.displayName?escapeHtml(ev.location.displayName):'<span style="color:#9ca3af">No location specified</span>'}</span>
+          ${org?`<span style="color:#6b7280;font-weight:600">Organiser</span><span>${escapeHtml(org)}</span>`:''}
+          ${attendees.length?`<span style="color:#6b7280;font-weight:600">Attendees</span><span style="line-height:1.8">${attendees.join('<br>')}</span>`:''}
+        </div>
+        ${ev.bodyPreview?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6">${escapeHtml(ev.bodyPreview.slice(0,500))}</div>`:'' }
+      </div>
+    </div>`;
+}
+
+async function addCalendarEventToTasks(eventId){
+  const ev=calendarEvents.find(e=>e.id===eventId);
+  if(!ev)return;
+  const start=ev.start?.dateTime?new Date(ev.start.dateTime):null;
+  const fmt=(dt)=>dt&&!isNaN(dt)?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}):'';
+  const fmtT=(dt)=>dt&&!isNaN(dt)?dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}):'';
+  const org=ev.organizer?.emailAddress?.name||ev.organizer?.emailAddress?.address||'';
+  const orgEmail=ev.organizer?.emailAddress?.address||'';
+  const summary=`Meeting: ${ev.subject||''} on ${fmt(start)} at ${fmtT(start)}.${ev.bodyPreview?' '+ev.bodyPreview.slice(0,300):''}`;
+  const task={
+    id:Date.now()+Math.random(),
+    title:ev.subject||'(no title)',
+    date:start&&!isNaN(start)?start.toISOString().split('T')[0]:new Date().toISOString().split('T')[0],
+    person:org,email:orgEmail,dept:'Unknown',
+    summary,threadSummary:summary,status:'Pending',priority:'Normal',
+    wednesday:false,followup:'',weekOffset:0,replyCount:1,
+    lastReplyAt:new Date().toISOString(),calendarEventId:eventId
+  };
+  tasks.unshift(task);
+  syncBadges();refreshAll();
+  toast('Calendar event added to Action Log');
+  await saveTasksToOneDrive();
+}
+
+// ============================================================
+// NOTIFICATIONS SYSTEM
+// ============================================================
+let notifications=[];
+let processedEmailIds=new Set(JSON.parse(localStorage.getItem('dpeg_processed_done_emails')||'[]'));
+let _notifPollTimer=null;
+
+async function loadNotifications(){
+  try{
+    const token=await getAccessToken();
+    const folder=currentUser?.folder||'default';
+    const path=`/me/drive/root:/${ONEDRIVE_FOLDER}/${folder}/notifications.json:/content`;
+    const res=await fetch(`https://graph.microsoft.com/v1.0${path}`,{headers:{Authorization:`Bearer ${token}`}});
+    if(res.ok){
+      const data=await res.json();
+      notifications=Array.isArray(data)?data:[];
+    }else{
+      notifications=[];
+    }
+  }catch{notifications=[];}
+  updateNotifBadge();
+}
+
+async function saveNotifications(){
+  try{
+    const token=await getAccessToken();
+    const folder=currentUser?.folder||'default';
+    const path=`/me/drive/root:/${ONEDRIVE_FOLDER}/${folder}/notifications.json:/content`;
+    await fetch(`https://graph.microsoft.com/v1.0${path}`,{
+      method:'PUT',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify(notifications,null,2)
+    });
+  }catch(err){console.warn('Notifications save failed:',err.message);}
+}
+
+async function addNotification(n){
+  notifications.unshift(n);
+  updateNotifBadge();
+  await saveNotifications();
+}
+
+function updateNotifBadge(){
+  const pending=notifications.filter(n=>n.status==='pending').length;
+  const badge=document.getElementById('nb-notif');
+  if(badge){
+    badge.textContent=pending;
+    badge.style.display=pending>0?'':'none';
+  }
+}
+
+async function approveNotification(id){
+  const n=notifications.find(x=>x.id===id);
+  if(!n)return;
+  n.status='approved';
+  if(n.taskId){
+    const task=tasks.find(t=>t.id===n.taskId);
+    if(task){task.status='Done';syncBadges();refreshAll();}
+  }
+  updateNotifBadge();
+  renderNotifications();
+  await saveNotifications();
+  await saveTasksToOneDrive();
+  toast('Task approved as Done');
+}
+
+async function dismissNotification(id){
+  const n=notifications.find(x=>x.id===id);
+  if(!n)return;
+  n.status='dismissed';
+  updateNotifBadge();
+  renderNotifications();
+  await saveNotifications();
+}
+
+async function markAllNotificationsRead(){
+  notifications.filter(n=>n.status==='pending').forEach(n=>n.status='dismissed');
+  updateNotifBadge();
+  renderNotifications();
+  await saveNotifications();
+}
+
+function renderNotifications(){
+  const el=document.getElementById('notif-list');
+  if(!el)return;
+  if(!notifications.length){
+    el.innerHTML='<div style="padding:40px;text-align:center;font-size:12px;color:var(--muted)">No notifications yet</div>';
+    return;
+  }
+  el.innerHTML=notifications.map(n=>{
+    const ts=n.timestamp?new Date(n.timestamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    const statusColor=n.status==='approved'?'#15803d':n.status==='dismissed'?'#9ca3af':'#92400e';
+    const statusLabel=n.status==='approved'?'Approved':n.status==='dismissed'?'Dismissed':'Pending';
+    const icon=n.type==='task_completion'
+      ?`<svg width="16" height="16" fill="none" stroke="#15803d" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      :`<svg width="16" height="16" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    return`<div class="card" style="padding:12px 14px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex-shrink:0;margin-top:1px">${icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;color:var(--body);line-height:1.4;margin-bottom:4px">${escapeHtml(n.message||'')}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:10px;color:var(--muted)">${ts}</span>
+            <span style="font-size:10px;font-weight:600;color:${statusColor}">${statusLabel}</span>
+          </div>
+        </div>
+        ${n.status==='pending'?`<div style="display:flex;gap:5px;flex-shrink:0">
+          ${n.type==='task_completion'?`<button class="btn btn-primary btn-sm" onclick="approveNotification(${n.id})">Approve</button>`:''}
+          <button class="btn btn-ghost btn-sm" onclick="dismissNotification(${n.id})">Dismiss</button>
+        </div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+// TASK COMPLETION POLLING (DONE replies)
+// ============================================================
+async function pollForDoneReplies(){
+  if(!currentUser)return;
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$filter=contains(subject,'DONE')&$select=id,subject,from,receivedDateTime,bodyPreview&$top=10`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)return;
+    const data=await res.json();
+    const msgs=data.value||[];
+    let added=0;
+    for(const msg of msgs){
+      if(processedEmailIds.has(msg.id))continue;
+      processedEmailIds.add(msg.id);
+      // Extract task title from subject (remove Re: DONE - prefix patterns)
+      const subj=String(msg.subject||'').replace(/^(re:\s*)?(done\s*[-:]?\s*)/i,'').trim();
+      const matchTask=tasks.find(t=>t.title&&subj&&(t.title.toLowerCase().includes(subj.toLowerCase())||subj.toLowerCase().includes(t.title.toLowerCase())));
+      if(matchTask&&matchTask.status!=='Done'){
+        const senderName=msg.from?.emailAddress?.name||msg.from?.emailAddress?.address||'Someone';
+        const notif={
+          id:Date.now()+Math.random(),
+          type:'task_completion',
+          message:`${senderName} has completed their task: "${matchTask.title}". Do you want to approve it?`,
+          taskId:matchTask.id,
+          timestamp:new Date().toISOString(),
+          status:'pending'
+        };
+        notifications.unshift(notif);
+        added++;
+      }
+    }
+    if(added>0){
+      updateNotifBadge();
+      await saveNotifications();
+      if(document.getElementById('page-notifications')?.classList.contains('active'))renderNotifications();
+    }
+    // Persist processed IDs
+    try{localStorage.setItem('dpeg_processed_done_emails',JSON.stringify([...processedEmailIds].slice(-200)));}catch{}
+  }catch(err){console.warn('DONE poll failed:',err.message);}
+}
+
+function startNotifPolling(){
+  if(_notifPollTimer)return;
+  _notifPollTimer=setInterval(()=>{pollForDoneReplies();},180000); // 3 minutes
 }
 
 // ============================================================

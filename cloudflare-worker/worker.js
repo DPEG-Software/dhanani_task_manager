@@ -211,26 +211,20 @@ async function handleSummary(request, env) {
     ? `\nATTACHMENTS (${attachmentNames.length}): ${attachmentNames.join(', ')}. Do not analyze attachment content — only acknowledge that attachments exist if relevant.`
     : '';
 
-  const prompt = `You are an executive assistant briefing a busy property investment executive at DPEG (Dhanani Private Equity Group).
+  // Extract emailDate note if present in emailText (appended by client)
+  const emailDateMatch = emailText.match(/\[TASK CONTEXT\][^\n]*email was received on ([^.]+)\. The task is being assigned today: ([^.]+)\./);
+  const emailDateNote = emailDateMatch ? `Note: this email was originally sent on ${emailDateMatch[1].trim()}.` : '';
 
-Subject: "${subject}"${senderName ? `\nExternal contact: ${senderName}` : ''}
-${messageCount > 1 ? `Thread: ${messageCount} messages (oldest → newest below)` : 'Single email'}${attLine}
+  const prompt = `You are an executive assistant at DPEG (Dhanani Private Equity Group). Summarise this email in 2-3 sentences. Focus on what action is needed, who needs to do it, and any deadline or amount mentioned.${emailDateNote ? ' ' + emailDateNote : ''} Be clear and concise. Do not reference any attachments — only the email body text.${attLine ? '\n\nATTACHMENT NOTE: ' + attLine : ''}
 
-THREAD CONTENT (email body only — do not infer or analyze attachment content):
-${emailText.slice(0, 2800)}
-${latestMessageText ? `\nLATEST MESSAGE${latestSender ? ` — from ${latestSender}` : ''}${latestDate ? ` (${latestDate})` : ''}:\n${latestMessageText.slice(0, 700)}` : ''}
+Subject: "${subject}"${senderName ? `\nFrom: ${senderName}` : ''}
+${messageCount > 1 ? `Thread: ${messageCount} messages` : ''}
 
-Write exactly 2-3 bullet sentences. No labels, no headers — just plain bullets starting with •.
-Each bullet must be a single direct, complete sentence. Make every word count.
+EMAIL BODY (summarise this only):
+${emailText.replace(/\[TASK CONTEXT\][\s\S]*$/, '').trim().slice(0, 2800)}
+${latestMessageText ? `\nLATEST MESSAGE${latestSender ? ` from ${latestSender}` : ''}${latestDate ? ` (${latestDate})` : ''}:\n${latestMessageText.slice(0, 700)}` : ''}
 
-Rules:
-- Bullet 1: What this is specifically about — name the property, deal, person, amount, or issue directly.
-- Bullet 2: The latest development — what was just said or sent, with any key figures, dates, or decisions embedded.
-- Bullet 3 (only if something is clearly actionable): What DPEG must do right now, starting with a strong verb. Omit entirely if the latest message is just an acknowledgment.
-- Never write "the email", "this email", "the sender", or vague generalities.
-- State names, dollar amounts, property addresses, and deadlines explicitly.
-- If attachments are present, mention them only as "X attachment(s) included" at the end of a relevant bullet — do not guess their content.
-- Max 120 words total.`;
+Write 2-3 plain sentences. No bullet points, no headers. State names, amounts, properties, and deadlines explicitly.`;
 
   const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
