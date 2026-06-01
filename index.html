@@ -19082,7 +19082,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
             <span>Untracked</span>
             <span id="ol-untracked-count" style="margin-left:auto;background:#fffbeb;color:#92400e;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;display:none"></span>
           </div>
-          <div id="ol-folder-deleteditems" class="ol-folder" onclick="loadFolder('deleteditems')" title="Deleted Items">
+          <div id="ol-folder-deleted" class="ol-folder" onclick="loadFolder('deleted')" title="Deleted Items">
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>Deleted Items</span>
           </div>
@@ -19486,8 +19486,7 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
-const SCOPES_CALENDAR = ["User.Read", "Calendars.Read"];
+const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send", "Calendars.Read", "Tasks.ReadWrite"];
 const SCOPES_DRAFTS   = ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"];
 const SCOPES_TODO     = ["User.Read", "Tasks.ReadWrite"];
 const SCOPES_CONTACTS = ["User.Read", "Contacts.Read", "People.Read", "User.ReadBasic.All"];
@@ -19772,7 +19771,7 @@ async function loadTasksFromOneDrive() {
     autoSyncContacts();
     loadNotifications().catch(()=>{});
     startNotifPolling();
-    pollForDoneReplies().catch(()=>{});
+    pollToDoCompletions().catch(()=>{});
   } catch (err) {
     setSyncStatus("error", "Sync failed");
     console.error("OneDrive load error:", err);
@@ -19987,6 +19986,37 @@ function cleanEmailText(text){
 }
 function cleanSubject(subject){
   return String(subject||"(no subject)").replace(/^\s*(re|fw|fwd):\s*/ig,"").trim();
+}
+function cleanEmailBodyForAI(htmlContent){
+  const div=document.createElement('div');
+  div.innerHTML=htmlContent||'';
+  // Remove reply/forward headers, signatures, quoted blocks
+  div.querySelectorAll([
+    'style','script','blockquote','hr',
+    '[id="divRplyFwdMsg"]','[id="divTaggedMessage"]',
+    '[class*="gmail_quote"]','[class*="gmail_extra"]',
+    '[class*="x_gmail_quote"]','[class*="OutlookMessageHeader"]',
+    '[class*="WordSection"]','[class*="MsoNormal"]'
+  ].join(',')).forEach(x=>x.remove());
+  div.querySelectorAll('p,div,br,tr,td,li,h1,h2,h3,h4,h5,h6').forEach(x=>{
+    x.insertAdjacentText('afterbegin','\n');
+  });
+  const raw=div.textContent||div.innerText||'';
+  const lines=raw.replace(/\r/g,'\n').split('\n').map(l=>l.trim()).filter(l=>l.length>2);
+  const result=[];
+  for(const line of lines){
+    // Stop at common signature/forward separators
+    if(/^_{5,}|-{5,}|={5,}|\*{5,}/.test(line))break;
+    if(/^(from|sent|to|cc|bcc|subject|date)\s*:/i.test(line))break;
+    if(/^(on .{5,} wrote:)/i.test(line))break;
+    // Skip disclaimer/footer lines
+    if(/^(thanks|thank you|regards|best|sincerely|cheers|yours truly|sent from my|confidential|this (message|email)|external email|unsubscribe|disclaimer|privileged)/i.test(line))continue;
+    if(/^(\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/.test(line))continue;
+    if(/^(main|direct|cell|fax|phone|tel|mobile|office)\s*:/i.test(line))continue;
+    if(/https?:\/\/\S+/.test(line)&&line.length<80&&!/\w{4,}/.test(line.replace(/https?:\/\/\S+/g,'')))continue;
+    result.push(line);
+  }
+  return result.join(' ').replace(/\s+/g,' ').trim();
 }
 function uniqueSentences(sentences){
   const seen=new Set();
@@ -20524,8 +20554,9 @@ async function callAISummary(messages, subject, opts={}){
       const from=m.from?.emailAddress?.name||m.from?.emailAddress?.address||'Unknown';
       const dt=new Date(m.receivedDateTime||m.sentDateTime||0);
       const dateStr=isNaN(dt)?'':dt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-      const rawBody=m.body?.contentType==='html'?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||'';
-      const text=icalToReadableText(rawBody)||cleanEmailText(rawBody);
+      const rawHtml=m.body?.contentType==='html'?m.body?.content:'';
+      const rawText=rawHtml?'':m.body?.content||m.bodyPreview||'';
+      const text=rawHtml?cleanEmailBodyForAI(rawHtml):(icalToReadableText(rawText)||cleanEmailText(rawText));
       return `[${from}${dateStr?' — '+dateStr:''}]\n${text}`;
     }).join('\n---\n');
     // Append task assignment date context if provided
@@ -20541,7 +20572,8 @@ async function callAISummary(messages, subject, opts={}){
     const latestSender=latest?.from?.emailAddress?.name||latest?.from?.emailAddress?.address||'';
     const latestDt=new Date(latest?.receivedDateTime||latest?.sentDateTime||0);
     const latestDate=isNaN(latestDt)?'':latestDt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-    const latestMessageText=cleanEmailText(latest?.body?.contentType==='html'?stripEmailHtml(latest?.body?.content):latest?.body?.content||latest?.bodyPreview||'');
+    const latestRawHtml=latest?.body?.contentType==='html'?latest?.body?.content:'';
+    const latestMessageText=latestRawHtml?cleanEmailBodyForAI(latestRawHtml):cleanEmailText(latest?.body?.content||latest?.bodyPreview||'');
     const res=await fetch(fnUrl,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
@@ -21502,24 +21534,31 @@ async function searchEmails(query){
   }
 }
 
-async function deleteEmailItem(emailId){
+async function deleteEmailItem(emailId){return deleteEmail(emailId);}
+
+async function deleteEmail(emailId){
   if(!emailId)return;
-  if(!confirm('Delete this email?'))return;
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'DELETE',headers:{Authorization:`Bearer ${token}`}});
-    if(!res.ok&&res.status!==204)throw new Error('Delete failed');
-    // Remove from cache
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/move`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({destinationId:'deleteditems'})
+    });
+    if(!res.ok)throw new Error('Delete failed');
+    // Remove from current folder list immediately
+    const emailEl=document.getElementById('email-item-'+emailId);
+    if(emailEl)emailEl.remove();
     if(outlookFolderEmails[currentFolder]){
       outlookFolderEmails[currentFolder]=outlookFolderEmails[currentFolder].filter(e=>e.id!==emailId);
     }
     delete emailCache[emailId];
-    // Show next email or empty state
     const readerEl=document.getElementById('ol-email-reader');
-    if(readerEl)readerEl.innerHTML=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9ca3af;text-align:center;padding:40px"><div style="font-size:13px;font-weight:600;color:#6b7280;margin-bottom:3px">Email deleted</div><div style="font-size:11px;color:#9ca3af">Select another email to read</div></div>`;
-    renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
-    toast('Email deleted');
-  }catch(err){toast('Could not delete email');}
+    if(readerEl)readerEl.innerHTML=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9ca3af;text-align:center;padding:40px"><div style="font-size:13px;font-weight:600;color:#6b7280;margin-bottom:3px">Email moved to Deleted Items</div><div style="font-size:11px;color:#9ca3af">Select another email to read</div></div>`;
+    toast('Email moved to Deleted Items');
+    // Refresh deleted folder cache if it was open
+    if(currentFolder==='deleted')loadFolder('deleted');
+  }catch(err){toast('Could not delete email: '+err.message);}
 }
 
 function syncBadges(){
@@ -21590,9 +21629,10 @@ let emailCache = {};
 let trackedEmailIds = new Set();
 let outlookFolderEmails = {};
 let outlookNextLinks = {};
+let deletedFolderID = null;
 
-const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts',deleteditems:'deleteditems'};
-const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',untracked:'Untracked Emails',deleteditems:'Deleted Items',calendar:'Calendar'};
+const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts',deleted:'deleteditems',deleteditems:'deleteditems'};
+const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',untracked:'Untracked Emails',deleted:'Deleted Items',deleteditems:'Deleted Items',calendar:'Calendar'};
 
 function buildTrackedSet(){
   trackedEmailIds = new Set(tasks.flatMap(t=>[t.emailId,t.lastMessageId,t.conversationId]).filter(Boolean));
@@ -22262,7 +22302,7 @@ async function readEmail(emailId,folder,el){
             ?`<span style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500">✓ In Tasks</span><button onclick="removeTaskByEmail('${emailId}')" style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">Remove</button>`
             :`<button onclick="addTaskFromEmail('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:none;background:#0E3416;color:#fff;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:background .12s" onmouseover="this.style.background='#1A5C2A'" onmouseout="this.style.background='#0E3416'">+ Add to Tasks</button>`
           }
-          ${folder==='deleteditems'
+          ${folder==='deleted'
             ?`<div style="display:flex;gap:5px;margin-left:auto">
                 ${pBtn('Restore','<path d="M3 12a9 9 0 019-9 9 9 0 016.7 3.1M21 3v6h-6M21 12a9 9 0 01-9 9 9 9 0 01-6.7-3.1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`restoreEmail('${emailId}')`)}`
               +`<button onclick="permanentDeleteEmail('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">Delete Permanently</button></div>`
@@ -23194,15 +23234,9 @@ async function createToDoTask(task){
     : '';
   const dueDate=task.deadline||((task.deadline===undefined)?task.date:'');
 
-  // ── 1. Current user's To Do via silent delegated token (Tasks.ReadWrite) ──
+  // ── 1. Current user's To Do via Tasks.ReadWrite (now in SCOPES_GRAPH) ──
   try{
-    let r;
-    try{
-      r=await msalInstance.acquireTokenSilent({scopes:SCOPES_TODO,account:currentAccount});
-    }catch(tokenErr){
-      r=await msalInstance.acquireTokenPopup({scopes:SCOPES_TODO});
-    }
-    const token=r.accessToken;
+    const token=await getAccessToken();
     const due=graphDueDate(dueDate);
     const cleanSummary=(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,4000);
     const deadlineLine=dueDate?`\nDeadline: ${dueDate}`:'';
@@ -23223,7 +23257,10 @@ async function createToDoTask(task){
         const cr=await fetch('https://graph.microsoft.com/v1.0/me/todo/lists',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({displayName:'DPEG Assigned Tasks'})});
         if(cr.ok){const cd=await cr.json();listId=cd.id;}
       }
-      if(listId)await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(taskBody)});
+      if(listId){
+        const taskRes=await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${listId}/tasks`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(taskBody)});
+        if(taskRes.ok){const td=await taskRes.json();task.todoListId=listId;task.todoTaskId=td.id;}
+      }
     }
   }catch(err){console.warn('Current user To Do failed:',err.message);}
 
@@ -23298,13 +23335,13 @@ async function restoreEmail(emailId){
       body:JSON.stringify({destinationId:'inbox'})
     });
     if(!res.ok)throw new Error('Restore failed');
-    if(outlookFolderEmails['deleteditems']){
-      outlookFolderEmails['deleteditems']=outlookFolderEmails['deleteditems'].filter(e=>e.id!==emailId);
+    if(outlookFolderEmails['deleted']){
+      outlookFolderEmails['deleted']=outlookFolderEmails['deleted'].filter(e=>e.id!==emailId);
     }
     delete emailCache[emailId];
     const readerEl=document.getElementById('ol-email-reader');
     if(readerEl)readerEl.innerHTML=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9ca3af;text-align:center;padding:40px"><div style="font-size:13px;font-weight:600;color:#15803d">Email restored to Inbox</div></div>`;
-    renderEmailRows('deleteditems',outlookFolderEmails['deleteditems']||[]);
+    renderEmailRows('deleted',outlookFolderEmails['deleted']||[]);
     toast('Email restored to Inbox');
   }catch(err){toast('Could not restore email');}
 }
@@ -23315,13 +23352,13 @@ async function permanentDeleteEmail(emailId){
     const token=await getAccessToken();
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'DELETE',headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok&&res.status!==204)throw new Error('Delete failed');
-    if(outlookFolderEmails['deleteditems']){
-      outlookFolderEmails['deleteditems']=outlookFolderEmails['deleteditems'].filter(e=>e.id!==emailId);
+    if(outlookFolderEmails['deleted']){
+      outlookFolderEmails['deleted']=outlookFolderEmails['deleted'].filter(e=>e.id!==emailId);
     }
     delete emailCache[emailId];
     const readerEl=document.getElementById('ol-email-reader');
     if(readerEl)readerEl.innerHTML=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9ca3af;text-align:center;padding:40px"><div style="font-size:13px;font-weight:600;color:#6b7280">Email permanently deleted</div></div>`;
-    renderEmailRows('deleteditems',outlookFolderEmails['deleteditems']||[]);
+    renderEmailRows('deleted',outlookFolderEmails['deleted']||[]);
     toast('Email permanently deleted');
   }catch(err){toast('Could not delete email');}
 }
@@ -23343,15 +23380,7 @@ async function loadCalendar(){
   const listEl=document.getElementById('ol-email-list');
   if(listEl)listEl.innerHTML='<div style="padding:20px;text-align:center;font-size:12px;color:#9ca3af">Loading events...</div>';
   try{
-    // Use SCOPES_CALENDAR so Calendars.Read is only requested here, not on every login
-    let calToken;
-    try{
-      const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_CALENDAR,account:currentAccount});
-      calToken=r.accessToken;
-    }catch{
-      const r=await msalInstance.acquireTokenPopup({scopes:SCOPES_CALENDAR});
-      calToken=r.accessToken;
-    }
+    const calToken=await getAccessToken();
     const today=new Date();today.setHours(0,0,0,0);
     const end=new Date(today);end.setDate(end.getDate()+30);
     const url=`https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${today.toISOString()}&endDateTime=${end.toISOString()}&$select=id,subject,start,end,location,organizer,attendees,bodyPreview&$top=50&$orderby=start/dateTime`;
@@ -23515,7 +23544,12 @@ async function approveNotification(id){
   n.status='approved';
   if(n.taskId){
     const task=tasks.find(t=>t.id===n.taskId);
-    if(task){task.status='Done';syncBadges();refreshAll();}
+    if(task){
+      task.status='Done';
+      task.completedAt=new Date().toISOString();
+      task.approvedBy=currentUser?.email||'';
+      syncBadges();refreshAll();
+    }
   }
   updateNotifBadge();
   renderNotifications();
@@ -23574,35 +23608,49 @@ function renderNotifications(){
 }
 
 // ============================================================
-// TASK COMPLETION POLLING (DONE replies)
+// TASK COMPLETION POLLING (Microsoft To Do)
 // ============================================================
-async function pollForDoneReplies(){
+async function pollToDoCompletions(){
   if(!currentUser)return;
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$filter=contains(subject,'DONE')&$select=id,subject,from,receivedDateTime,bodyPreview&$top=10`,{headers:{Authorization:`Bearer ${token}`}});
-    if(!res.ok)return;
-    const data=await res.json();
-    const msgs=data.value||[];
+    const listsRes=await fetch('https://graph.microsoft.com/v1.0/me/todo/lists',{headers:{Authorization:`Bearer ${token}`}});
+    if(!listsRes.ok)return;
+    const listsData=await listsRes.json();
+    const lists=listsData.value||[];
     let added=0;
-    for(const msg of msgs){
-      if(processedEmailIds.has(msg.id))continue;
-      processedEmailIds.add(msg.id);
-      // Extract task title from subject (remove Re: DONE - prefix patterns)
-      const subj=String(msg.subject||'').replace(/^(re:\s*)?(done\s*[-:]?\s*)/i,'').trim();
-      const matchTask=tasks.find(t=>t.title&&subj&&(t.title.toLowerCase().includes(subj.toLowerCase())||subj.toLowerCase().includes(t.title.toLowerCase())));
-      if(matchTask&&matchTask.status!=='Done'){
-        const senderName=msg.from?.emailAddress?.name||msg.from?.emailAddress?.address||'Someone';
-        const notif={
-          id:Date.now()+Math.random(),
-          type:'task_completion',
-          message:`${senderName} has completed their task: "${matchTask.title}". Do you want to approve it?`,
-          taskId:matchTask.id,
-          timestamp:new Date().toISOString(),
-          status:'pending'
-        };
-        notifications.unshift(notif);
-        added++;
+    for(const list of lists){
+      const tasksRes=await fetch(
+        `https://graph.microsoft.com/v1.0/me/todo/lists/${list.id}/tasks?$filter=status eq 'completed'&$select=id,title,completedDateTime,status`,
+        {headers:{Authorization:`Bearer ${token}`}}
+      );
+      if(!tasksRes.ok)continue;
+      const tasksData=await tasksRes.json();
+      for(const todoTask of (tasksData.value||[])){
+        const key='todo-'+todoTask.id;
+        if(processedEmailIds.has(key))continue;
+        processedEmailIds.add(key);
+        const titleLower=String(todoTask.title||'').toLowerCase();
+        const matchTask=tasks.find(t=>{
+          if(t.todoTaskId===todoTask.id)return true;
+          if(!t.title)return false;
+          const tl=t.title.toLowerCase();
+          return titleLower.includes(tl)||tl===titleLower||(t.person&&titleLower.includes(t.person.toLowerCase()));
+        });
+        if(matchTask&&matchTask.status!=='Done'){
+          const alreadyPending=notifications.some(n=>n.taskId===matchTask.id&&n.status==='pending');
+          if(alreadyPending)continue;
+          notifications.unshift({
+            id:Date.now()+Math.random(),
+            type:'task_completion',
+            message:`${matchTask.person||'Someone'} has completed their task: "${matchTask.title}". Do you want to approve it?`,
+            taskId:matchTask.id,
+            todoTaskId:todoTask.id,
+            timestamp:new Date().toISOString(),
+            status:'pending'
+          });
+          added++;
+        }
       }
     }
     if(added>0){
@@ -23610,14 +23658,13 @@ async function pollForDoneReplies(){
       await saveNotifications();
       if(document.getElementById('page-notifications')?.classList.contains('active'))renderNotifications();
     }
-    // Persist processed IDs
     try{localStorage.setItem('dpeg_processed_done_emails',JSON.stringify([...processedEmailIds].slice(-200)));}catch{}
-  }catch(err){console.warn('DONE poll failed:',err.message);}
+  }catch(err){console.warn('To Do poll failed:',err.message);}
 }
 
 function startNotifPolling(){
   if(_notifPollTimer)return;
-  _notifPollTimer=setInterval(()=>{pollForDoneReplies();},180000); // 3 minutes
+  _notifPollTimer=setInterval(()=>{pollToDoCompletions();},180000); // 3 minutes
 }
 
 // ============================================================
