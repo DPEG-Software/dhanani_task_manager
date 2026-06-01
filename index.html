@@ -18784,10 +18784,6 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
   </div>
   <nav class="sb-nav">
     <div class="sb-lbl">Operations</div>
-    <button class="ni" id="nav-notifications-btn" onclick="nav('notifications')">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Notifications <span class="nb red" id="nb-notif" style="display:none">0</span>
-    </button>
     <button class="ni active" onclick="nav('dashboard')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke-width="2"/></svg>
       Dashboard
@@ -18815,6 +18811,10 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
     <button class="ni" onclick="nav('summary')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3M3 17v3a2 2 0 002 2h14a2 2 0 002-2v-3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Summary Sheet
+    </button>
+    <button class="ni" id="nav-notifications-btn" onclick="nav('notifications')">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Notifications <span class="nb red" id="nb-notif" style="display:none">0</span>
     </button>
     <div class="sb-lbl">Actions</div>
     <button class="ni" onclick="openAdd()">
@@ -19486,7 +19486,8 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send", "Calendars.Read"];
+const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send"];
+const SCOPES_CALENDAR = ["User.Read", "Calendars.Read"];
 const SCOPES_DRAFTS   = ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"];
 const SCOPES_TODO     = ["User.Read", "Tasks.ReadWrite"];
 const SCOPES_CONTACTS = ["User.Read", "Contacts.Read", "People.Read", "User.ReadBasic.All"];
@@ -23342,11 +23343,19 @@ async function loadCalendar(){
   const listEl=document.getElementById('ol-email-list');
   if(listEl)listEl.innerHTML='<div style="padding:20px;text-align:center;font-size:12px;color:#9ca3af">Loading events...</div>';
   try{
-    const token=await getAccessToken();
+    // Use SCOPES_CALENDAR so Calendars.Read is only requested here, not on every login
+    let calToken;
+    try{
+      const r=await msalInstance.acquireTokenSilent({scopes:SCOPES_CALENDAR,account:currentAccount});
+      calToken=r.accessToken;
+    }catch{
+      const r=await msalInstance.acquireTokenPopup({scopes:SCOPES_CALENDAR});
+      calToken=r.accessToken;
+    }
     const today=new Date();today.setHours(0,0,0,0);
     const end=new Date(today);end.setDate(end.getDate()+30);
     const url=`https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${today.toISOString()}&endDateTime=${end.toISOString()}&$select=id,subject,start,end,location,organizer,attendees,bodyPreview&$top=50&$orderby=start/dateTime`;
-    const res=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(url,{headers:{Authorization:`Bearer ${calToken}`}});
     if(!res.ok)throw new Error('Calendar fetch failed');
     const data=await res.json();
     calendarEvents=data.value||[];
