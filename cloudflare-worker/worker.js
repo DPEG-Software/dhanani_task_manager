@@ -13,6 +13,7 @@ const CORS = {
 };
 
 const DATA_KEY = 'company-state';
+const ADMIN_EMAILS = new Set(['systemmanager1@dhananipeg.com', 'propertymanagement2@dhananipeg.com']);
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -166,13 +167,13 @@ async function handleTodo(request, env) {
 
 // ── /data endpoint: shared company state for Action Log / Wednesday / Admin config
 async function handleData(request, env) {
-  const { error, status } = validateUserToken(request);
+  const { error, status, claims } = validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_DATA) return json({ error: 'DPEG_DATA KV binding is not configured' }, 501);
 
   if (request.method === 'GET') {
     const data = await env.DPEG_DATA.get(DATA_KEY, 'json');
-    return json(data || { tasks: [], archives: [], staffConfig: {}, customNotes: [] });
+    return json(data || { tasks: [], archives: [], staffConfig: {}, customNotes: [], notifications: [] });
   }
 
   if (request.method === 'PUT' || request.method === 'POST') {
@@ -180,11 +181,16 @@ async function handleData(request, env) {
     try { body = await request.json(); }
     catch { return json({ error: 'Invalid JSON body' }, 400); }
 
+    const userEmail = extractEmailAddress(claims.preferred_username || claims.upn || claims.email || '');
+    const existing = await env.DPEG_DATA.get(DATA_KEY, 'json') || {};
     const payload = {
       tasks: Array.isArray(body.tasks) ? body.tasks : [],
       archives: Array.isArray(body.archives) ? body.archives : [],
-      staffConfig: body.staffConfig && typeof body.staffConfig === 'object' ? body.staffConfig : {},
+      staffConfig: ADMIN_EMAILS.has(userEmail) && body.staffConfig && typeof body.staffConfig === 'object'
+        ? body.staffConfig
+        : (existing.staffConfig && typeof existing.staffConfig === 'object' ? existing.staffConfig : {}),
       customNotes: Array.isArray(body.customNotes) ? body.customNotes : [],
+      notifications: Array.isArray(body.notifications) ? body.notifications : [],
       updatedAt: new Date().toISOString(),
     };
     await env.DPEG_DATA.put(DATA_KEY, JSON.stringify(payload));
