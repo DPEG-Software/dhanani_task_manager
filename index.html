@@ -19034,9 +19034,11 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 
   <!-- NOTIFICATIONS -->
   <div class="page" id="page-notifications">
-    <div class="dash-row" style="margin-bottom:12px;align-items:center">
+    <div class="dash-row" style="margin-bottom:8px;align-items:center;gap:6px">
       <div style="font-size:14px;font-weight:700;color:var(--body)">Notifications</div>
-      <button class="btn btn-ghost btn-sm" onclick="markAllNotificationsRead()" style="margin-left:auto">Mark all read</button>
+      <span id="notif-monitor-count" style="font-size:10px;color:var(--muted);margin-left:4px"></span>
+      <button class="btn btn-ghost btn-sm" id="btn-poll-now" onclick="pollNow()" style="margin-left:auto">Poll Now</button>
+      <button class="btn btn-ghost btn-sm" onclick="markAllNotificationsRead()">Mark all read</button>
     </div>
     <div id="notif-list" style="display:flex;flex-direction:column;gap:8px">
       <div style="padding:40px;text-align:center;font-size:12px;color:var(--muted)">No notifications yet</div>
@@ -23673,16 +23675,25 @@ function renderNotifications(){
 // ============================================================
 // TASK COMPLETION POLLING (via Cloudflare Worker /poll-completions)
 // ============================================================
-async function pollToDoCompletions(){
+async function pollToDoCompletions(manual=false){
   if(!currentUser)return;
   const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
-  if(!fnUrl)return;
-  // Only poll tasks assigned to @dhananipeg.com recipients that have saved recipient To Do IDs
+  if(!fnUrl){if(manual)toast('Worker URL not configured — check Settings');return;}
+
   const assignments=tasks.filter(t=>
     t.status!=='Done'&&t.recipientTodoListId&&t.recipientTodoTaskId&&
     t.email&&t.email.includes('@dhananipeg.com')
   ).map(t=>({taskId:t.id,recipientEmail:t.email,todoListId:t.recipientTodoListId,todoTaskId:t.recipientTodoTaskId}));
-  if(!assignments.length)return;
+
+  // Update the monitor count label in the notifications panel
+  const countEl=document.getElementById('notif-monitor-count');
+  if(countEl)countEl.textContent=assignments.length?`(monitoring ${assignments.length} task${assignments.length>1?'s':''})` :'(no tasks being monitored)';
+
+  if(!assignments.length){
+    if(manual)toast('No tasks with To Do IDs to poll. Assign a new task first.');
+    return;
+  }
+
   try{
     const userToken=await getAccessToken();
     const res=await fetch(`${fnUrl}/poll-completions`,{
@@ -23690,7 +23701,12 @@ async function pollToDoCompletions(){
       headers:{'Content-Type':'application/json','Authorization':`Bearer ${userToken}`},
       body:JSON.stringify({assignments}),
     });
-    if(!res.ok)return;
+    if(!res.ok){
+      const errText=await res.text().catch(()=>'');
+      if(manual)toast(`Poll failed (${res.status}): ${errText.slice(0,120)}`);
+      console.warn('Poll failed:',res.status,errText);
+      return;
+    }
     const data=await res.json();
     let added=0;
     for(const item of (data.completed||[])){
@@ -23720,10 +23736,23 @@ async function pollToDoCompletions(){
     if(added>0){
       updateNotifBadge();
       await saveNotifications();
-      if(document.getElementById('page-notifications')?.classList.contains('active'))renderNotifications();
+      renderNotifications();
+      toast(`${added} task completion${added>1?'s':''} need your approval — check Notifications`);
+    }else if(manual){
+      toast(`Polled ${assignments.length} task${assignments.length>1?'s':''} — no completions yet`);
     }
     try{localStorage.setItem('dpeg_processed_done_emails',JSON.stringify([...processedEmailIds].slice(-200)));}catch{}
-  }catch(err){console.warn('To Do poll failed:',err.message);}
+  }catch(err){
+    if(manual)toast(`Poll error: ${err.message}`);
+    console.warn('To Do poll failed:',err.message);
+  }
+}
+
+async function pollNow(){
+  const btn=document.getElementById('btn-poll-now');
+  if(btn){btn.disabled=true;btn.textContent='Polling...';}
+  await pollToDoCompletions(true);
+  if(btn){btn.disabled=false;btn.textContent='Poll Now';}
 }
 
 function startNotifPolling(){
