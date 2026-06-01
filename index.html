@@ -23757,7 +23757,7 @@ async function pollNow(){
 
 function startNotifPolling(){
   if(_notifPollTimer)return;
-  _notifPollTimer=setInterval(()=>{pollToDoCompletions();},180000); // 3 minutes
+  _notifPollTimer=setInterval(()=>{pollToDoCompletions();},60000); // 1 minute
 }
 
 // ============================================================
