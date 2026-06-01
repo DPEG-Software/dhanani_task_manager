@@ -19731,25 +19731,18 @@ async function getAccessToken() {
 async function loadTasksFromOneDrive() {
   setSyncStatus("syncing", "Loading tasks...");
   try {
-    if(await loadSharedCompanyData())return;
-    if(isAdmin() && await migrateLegacyOneDriveToShared())return;
-    if(await loadLegacyOneDriveData()){
-      sharedDataActive=false;
-      finishDataLoad();
-      setSyncStatus("synced","Loaded personal backup");
-      toast("Cloudflare shared data is not configured yet. Loaded your personal backup.");
-      return;
-    }
     sharedDataActive=false;
-    tasks=[];archives=[];staffConfig={};customNotes=[];notifications=[];
+    if(!await loadLegacyOneDriveData()){
+      tasks=[];archives=[];staffConfig={};customNotes=[];notifications=[];
+      await saveTasksToOneDrive();
+    }
+    setSyncStatus("synced", "Synced with OneDrive");
     finishDataLoad();
-    setSyncStatus("error","Shared company data is not configured");
-    toast("Cloudflare shared data is not configured yet. You can still use Outlook, but shared tasks need DPEG_DATA.");
   } catch (err) {
     sharedDataActive=false;
     setSyncStatus("error", "Sync failed");
-    console.error("Shared data load error:", err);
-    toast("Could not load shared company data.");
+    console.error("OneDrive load error:", err);
+    toast("Could not load from OneDrive. Working offline.");
     refreshAll();
     renderCharts();
     renderActivity();
@@ -19813,23 +19806,22 @@ async function migrateLegacyOneDriveToShared(){
 
 async function saveTasksToOneDrive() {
   setSyncStatus("syncing", "Saving...");
-  if(await saveSharedCompanyData())return;
   try {
     const token = await getAccessToken();
     await ensureLegacyOneDriveFolder(token);
     const path = `/me/drive/root:/${ONEDRIVE_FOLDER}/${currentUser.folder}/tasks.json:/content`;
-    const payload = JSON.stringify({tasks,archives,staffConfig,customNotes,notifications});
+    const payload = JSON.stringify({tasks,archives,staffConfig,customNotes,notifications}, null, 2);
     const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: payload
     });
-    if (!res.ok) throw new Error(await res.text().catch(()=>"Personal backup save failed"));
+    if (!res.ok) throw new Error(`OneDrive save failed (${res.status})`);
     sharedDataActive=false;
-    setSyncStatus("synced","Saved personal backup");
+    setSyncStatus("synced","Saved to OneDrive");
   } catch (err) {
     setSyncStatus("error", "Save failed");
-    console.error("Fallback save error:", err);
+    console.error("OneDrive save error:", err);
   }
 }
 
@@ -23584,17 +23576,15 @@ let processedEmailIds=new Set(JSON.parse(localStorage.getItem('dpeg_processed_do
 let _notifPollTimer=null;
 
 async function loadNotifications(){
-  if(sharedDataActive){updateNotifBadge();return;}
   try{
-    notifications=[];
+    notifications=Array.isArray(notifications)?notifications:[];
   }catch{notifications=[];}
   updateNotifBadge();
 }
 
 async function saveNotifications(){
-  if(sharedDataActive){await saveSharedCompanyData();return;}
   try{
-    console.warn('Notifications save skipped: shared company data is not active');
+    await saveTasksToOneDrive();
   }catch(err){console.warn('Notifications save failed:',err.message);}
 }
 
