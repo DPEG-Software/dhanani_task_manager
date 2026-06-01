@@ -202,17 +202,21 @@ async function handleSummary(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
 
-  const { subject = '', emailText = '', senderName = '', messageCount = 1, latestMessageText = '', latestSender = '', latestDate = '' } = body;
+  const { subject = '', emailText = '', senderName = '', messageCount = 1, latestMessageText = '', latestSender = '', latestDate = '', attachmentNames = [] } = body;
   if (!emailText && !subject) {
     return json({ error: 'Provide emailText or subject' }, 400);
   }
 
+  const attLine = attachmentNames.length
+    ? `\nATTACHMENTS (${attachmentNames.length}): ${attachmentNames.join(', ')}. Do not analyze attachment content — only acknowledge that attachments exist if relevant.`
+    : '';
+
   const prompt = `You are an executive assistant briefing a busy property investment executive at DPEG (Dhanani Private Equity Group).
 
 Subject: "${subject}"${senderName ? `\nExternal contact: ${senderName}` : ''}
-${messageCount > 1 ? `Thread: ${messageCount} messages (oldest → newest below)` : 'Single email'}
+${messageCount > 1 ? `Thread: ${messageCount} messages (oldest → newest below)` : 'Single email'}${attLine}
 
-THREAD CONTENT:
+THREAD CONTENT (email body only — do not infer or analyze attachment content):
 ${emailText.slice(0, 2800)}
 ${latestMessageText ? `\nLATEST MESSAGE${latestSender ? ` — from ${latestSender}` : ''}${latestDate ? ` (${latestDate})` : ''}:\n${latestMessageText.slice(0, 700)}` : ''}
 
@@ -225,6 +229,7 @@ Rules:
 - Bullet 3 (only if something is clearly actionable): What DPEG must do right now, starting with a strong verb. Omit entirely if the latest message is just an acknowledgment.
 - Never write "the email", "this email", "the sender", or vague generalities.
 - State names, dollar amounts, property addresses, and deadlines explicitly.
+- If attachments are present, mention them only as "X attachment(s) included" at the end of a relevant bullet — do not guess their content.
 - Max 120 words total.`;
 
   const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -248,6 +253,50 @@ Rules:
   return json({ summary });
 }
 
+// ── /attachment-summary endpoint ─────────────────────────────────────────────
+async function handleAttachmentSummary(request, env) {
+  const { error, status } = validateUserToken(request);
+  if (error) return json({ error }, status);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const { subject = '', attachmentContents = [] } = body;
+  if (!attachmentContents.length) return json({ error: 'No attachment contents provided' }, 400);
+
+  const text = attachmentContents.map(a => `[${a.name}]\n${String(a.text || '').slice(0, 800)}`).join('\n\n---\n\n');
+
+  const prompt = `You are an executive assistant at DPEG (Dhanani Private Equity Group). Summarize the content of the following email attachments.
+
+Email subject: "${subject}"
+
+ATTACHMENT CONTENTS:
+${text.slice(0, 3000)}
+
+Write 1-3 bullet points (•) summarizing what these attachments contain. Be specific — name figures, dates, property addresses, and key details. Max 150 words total. Do not include preamble or labels.`;
+
+  const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 250,
+      temperature: 0.1,
+    }),
+  });
+
+  if (!groqRes.ok) {
+    const err = await groqRes.text().catch(() => '');
+    return json({ error: 'Groq call failed', detail: err }, 502);
+  }
+
+  const groqData = await groqRes.json();
+  const summary = groqData.choices?.[0]?.message?.content?.trim() || '';
+  return json({ summary });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -262,6 +311,7 @@ export default {
     }
 
     if (path === '/todo') return handleTodo(request, env);
+    if (path === '/attachment-summary') return handleAttachmentSummary(request, env);
     return handleSummary(request, env);
   },
 };

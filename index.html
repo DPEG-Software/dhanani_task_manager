@@ -20476,7 +20476,7 @@ async function testAIConnection(){
 // ============================================================
 // AI SUMMARIZATION
 // ============================================================
-async function callAISummary(messages, subject){
+async function callAISummary(messages, subject, opts={}){
   const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
   if(!fnUrl)return null;
   try{
@@ -20491,13 +20491,22 @@ async function callAISummary(messages, subject){
       return null;
     })();
     // Format each message with clear FROM/DATE attribution so the AI knows context
-    const emailText=ordered.map(m=>{
+    let emailText=ordered.map(m=>{
       const from=m.from?.emailAddress?.name||m.from?.emailAddress?.address||'Unknown';
       const dt=new Date(m.receivedDateTime||m.sentDateTime||0);
       const dateStr=isNaN(dt)?'':dt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-      const text=cleanEmailText(m.body?.contentType==='html'?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||'');
+      const rawBody=m.body?.contentType==='html'?stripEmailHtml(m.body?.content):m.body?.content||m.bodyPreview||'';
+      const text=icalToReadableText(rawBody)||cleanEmailText(rawBody);
       return `[${from}${dateStr?' — '+dateStr:''}]\n${text}`;
     }).join('\n---\n');
+    // Append task assignment date context if provided
+    if(opts.emailDate&&opts.assignedDate){
+      const eDt=new Date(opts.emailDate);
+      const aDt=new Date(opts.assignedDate);
+      const eStr=isNaN(eDt)?opts.emailDate:eDt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+      const aStr=isNaN(aDt)?opts.assignedDate:aDt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+      emailText+=`\n\n[TASK CONTEXT] This email was received on ${eStr}. The task is being assigned today: ${aStr}.`;
+    }
     // Latest message details sent separately so the worker can anchor Action needed to it
     const latest=ordered[ordered.length-1];
     const latestSender=latest?.from?.emailAddress?.name||latest?.from?.emailAddress?.address||'';
@@ -20507,7 +20516,7 @@ async function callAISummary(messages, subject){
     const res=await fetch(fnUrl,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
-      body:JSON.stringify({subject:subject||'Email thread',emailText,senderName:sender||'',messageCount:ordered.length,latestMessageText,latestSender,latestDate})
+      body:JSON.stringify({subject:subject||'Email thread',emailText,senderName:sender||'',messageCount:ordered.length,latestMessageText,latestSender,latestDate,...(opts.attachmentNames?.length?{attachmentNames:opts.attachmentNames}:{})})
     });
     if(!res.ok)return null;
     const data=await res.json();
@@ -20517,7 +20526,7 @@ async function callAISummary(messages, subject){
   }
 }
 
-async function attachFreeThreadSummary(email){
+async function attachFreeThreadSummary(email, opts={}){
   try{
     let messages=[email];
     if(email.conversationId){
@@ -20529,7 +20538,7 @@ async function attachFreeThreadSummary(email){
     }
     // Try AI first, fall back to local algorithm
     const subject=email.subject||email.emailSubject||'';
-    const aiSummary=await callAISummary(messages,subject);
+    const aiSummary=await callAISummary(messages,subject,opts);
     email.threadSummary=aiSummary||localThreadSummary(messages);
     if(aiSummary)email.aiGenerated=true;
   }catch(err){
@@ -22066,6 +22075,61 @@ async function resolveInlineImages(token,emailId,html){
 }
 
 var _activeEmailEl=null;
+function extractICalText(str){
+  const m=String(str||'').match(/BEGIN:VCALENDAR[\s\S]*?END:VCALENDAR/i);
+  return m?m[0]:'';
+}
+function parseICalData(raw){
+  const text=String(raw||'').replace(/\r\n[ \t]/g,'').replace(/\r\n/g,'\n').replace(/\n[ \t]/g,'');
+  const lines=text.split('\n');
+  const get=(key)=>{
+    const line=lines.find(l=>new RegExp('^'+key+'(;[^:]*)?:','i').test(l));
+    if(!line)return '';
+    return line.replace(/^[^:]+:/,'').replace(/\\n/g,'\n').replace(/\\,/g,',').replace(/\\;/g,';').trim();
+  };
+  const dtParse=(raw)=>{
+    if(!raw)return null;
+    const v=raw.includes(':')?raw.split(':').pop():raw;
+    const m=v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?/);
+    if(!m)return null;
+    return new Date(+m[1],+m[2]-1,+m[3],m[4]?+m[4]:0,m[5]?+m[5]:0);
+  };
+  const orgLine=lines.find(l=>/^ORGANIZER/i.test(l))||'';
+  const cnM=orgLine.match(/CN=([^;:\r\n]+)/i);
+  const mailM=orgLine.match(/mailto:([^\r\n\s;]+)/i);
+  return{
+    summary:get('SUMMARY'),location:get('LOCATION'),description:get('DESCRIPTION'),
+    organizer:cnM?cnM[1].trim():(mailM?mailM[1].trim():''),
+    dtstart:dtParse(get('DTSTART')),dtend:dtParse(get('DTEND')),
+    status:get('STATUS')||get('METHOD'),
+  };
+}
+function renderMeetingCard(d){
+  const fmt=(dt)=>{if(!dt||isNaN(dt))return'';return dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});};
+  const dur=(d.dtstart&&d.dtend&&!isNaN(d.dtstart)&&!isNaN(d.dtend))?Math.round((d.dtend-d.dtstart)/60000):0;
+  const durStr=dur?`(${Math.floor(dur/60)}h${dur%60?` ${dur%60}m`:''})` :'';
+  const rows=[];
+  if(d.dtstart&&!isNaN(d.dtstart))rows.push(`<span style="color:#6b7280;font-weight:600">Date</span><span>${escapeHtml(fmt(d.dtstart))} <span style="color:#6b7280">${durStr}</span></span>`);
+  if(d.dtend&&!isNaN(d.dtend)&&dur>0)rows.push(`<span style="color:#6b7280;font-weight:600">Ends</span><span>${escapeHtml(fmt(d.dtend))}</span>`);
+  if(d.location)rows.push(`<span style="color:#6b7280;font-weight:600">Location</span><span>${escapeHtml(d.location)}</span>`);
+  if(d.organizer)rows.push(`<span style="color:#6b7280;font-weight:600">Organizer</span><span>${escapeHtml(d.organizer)}</span>`);
+  return`<div style="padding:20px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#0E3416" stroke-width="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-size:11px;font-weight:700;color:#0E3416;text-transform:uppercase;letter-spacing:.5px">Meeting Request</span></div><div style="background:#f8fdf9;border:1px solid #d1e9d4;border-radius:6px;padding:14px">${d.summary?`<div style="font-size:14px;font-weight:700;color:#111;margin-bottom:12px">${escapeHtml(d.summary)}</div>`:''}<div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px">${rows.join('')}</div>${d.description&&d.description.trim()?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6;white-space:pre-wrap">${escapeHtml(d.description.trim().slice(0,800))}</div>`:''}</div></div>`;
+}
+function icalToReadableText(bodyText){
+  const ical=extractICalText(bodyText);
+  if(!ical)return null;
+  const d=parseICalData(ical);
+  const parts=[];
+  if(d.summary)parts.push('Meeting: '+d.summary);
+  if(d.organizer)parts.push('Organizer: '+d.organizer);
+  const fmt=(dt)=>{if(!dt||isNaN(dt))return'';return dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});};
+  if(d.dtstart)parts.push('Date: '+fmt(d.dtstart));
+  if(d.dtend&&d.dtend!==d.dtstart)parts.push('Ends: '+fmt(d.dtend));
+  if(d.location)parts.push('Location: '+d.location);
+  if(d.description&&d.description.trim())parts.push('Notes: '+d.description.trim().slice(0,500));
+  return parts.length?parts.join('\n'):null;
+}
+
 async function readEmail(emailId,folder,el){
   currentEmailId=emailId;
   if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
@@ -22095,6 +22159,9 @@ async function readEmail(emailId,folder,el){
     const dateStr=dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const bodyContent=email.body?.content||email.bodyPreview||'';
     const isHtml=email.body?.contentType==='html';
+    const rawBodyForIcal=isHtml?bodyContent.replace(/<[^>]*>/g,''):bodyContent;
+    const icalText=extractICalText(rawBodyForIcal);
+    const isMeeting=!!icalText;
     const isTracked=trackedEmailIds.has(emailId)||trackedEmailIds.has(email.conversationId);
     // Helper: small pill button
     const pBtn=(label,icon,onclick,extra='')=>`<button onclick="${onclick}" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap${extra?';'+extra:''}" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">${icon?`<svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icon}</svg>`:''}${label}</button>`;
@@ -22132,15 +22199,34 @@ async function readEmail(emailId,folder,el){
         <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:5px;letter-spacing:.04em">✦ AI SUMMARY</div>
         <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:#111"></div>
       </div>
-      <div style="flex:1;overflow-y:auto;min-height:0">
-        ${isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:16px;font-size:13.5px;line-height:1.6;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
+      <div id="ol-email-body-wrap" style="flex:1;overflow-y:auto;min-height:0">
+        ${isMeeting?renderMeetingCard(parseICalData(icalText)):isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:16px;font-size:13.5px;line-height:1.6;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
       </div>`;
-    if(isHtml){
+    if(!isMeeting&&isHtml){
       var _f=readerEl.querySelector('#email-body-frame');
       if(_f){
         _f.addEventListener('load',function(){try{var h=Math.max(_f.contentDocument.body.scrollHeight,400);_f.style.height=h+'px';}catch(e){}});
         resolveInlineImages(token,emailId,bodyContent).then(function(resolved){_f.srcdoc=resolved;});
       }
+    }
+    // Check .ics attachments if no iCal found in body
+    if(!isMeeting&&email.hasAttachments){
+      try{
+        const atts=await fetchVisibleAttachments(emailId);
+        const icsAtt=atts.find(a=>(a.name||'').toLowerCase().endsWith('.ics')||(a.contentType||'').toLowerCase().includes('calendar'));
+        if(icsAtt){
+          const r=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/attachments/${icsAtt.id}`,{headers:{Authorization:`Bearer ${token}`}});
+          if(r.ok){
+            const d=await r.json();
+            if(d.contentBytes){
+              const icsRaw=atob(d.contentBytes);
+              const icalParsed=parseICalData(icsRaw);
+              const bodyWrap=document.getElementById('ol-email-body-wrap');
+              if(bodyWrap)bodyWrap.innerHTML=renderMeetingCard(icalParsed);
+            }
+          }
+        }
+      }catch{}
     }
     if(!email.isRead&&folder==='inbox'){
       const readRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
@@ -22889,9 +22975,15 @@ async function toggleListAISummary(emailId,btn,folder){
       email=await res.json();
       emailCache[emailId]=email;
     }
-    const ai=await callAISummary([email],email.subject||'');
+    const atts=email.hasAttachments?(await fetchVisibleAttachments(emailId).catch(()=>[])):[];
+    const attachmentNames=atts.map(a=>a.name);
+    const ai=await callAISummary([email],email.subject||'',{attachmentNames});
     const summary=ai||localThreadSummary([email]);
-    panel.innerHTML=renderAIBullets(summary);
+    let html=renderAIBullets(summary);
+    if(atts.length){
+      html+=`<div style="margin-top:5px;font-size:10px;color:#6b7280"><span style="font-weight:600">${atts.length} attachment${atts.length>1?'s':''}</span>: ${attachmentNames.join(', ')}</div>`;
+    }
+    panel.innerHTML=html;
     panel.dataset.loaded='1';
   }catch(e){
     panel.innerHTML='<span style="color:#b91c1c;font-size:11px">Could not summarize.</span>';
@@ -22913,15 +23005,81 @@ async function toggleEmailAISummary(emailId){
     if(email.conversationId){
       const token=await getAccessToken();
       const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
-      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=15&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,flag&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=15&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,flag,hasAttachments&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
       if(res.ok){const d=await res.json();if(d.value?.length)messages=d.value;}
     }
-    const ai=await callAISummary(messages,email.subject||'');
+    // Collect visible attachment names from thread (don't fetch content yet)
+    const allAtts=[];
+    for(const m of messages){
+      if(m.hasAttachments){try{const atts=await fetchVisibleAttachments(m.id);allAtts.push(...atts);}catch{}}
+    }
+    const attachmentNames=allAtts.map(a=>a.name);
+    const ai=await callAISummary(messages,email.subject||'',{attachmentNames});
     const summary=ai||localThreadSummary(messages);
-    content.innerHTML=formatSummaryHTML(summary);
+    let html=formatSummaryHTML(summary);
+    if(allAtts.length){
+      const namePreview=attachmentNames.slice(0,3).join(', ')+(allAtts.length>3?` +${allAtts.length-3} more`:'');
+      html+=`<div style="margin-top:8px;padding-top:7px;border-top:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:11px;color:#6b7280"><span style="font-weight:600;color:#374151">${allAtts.length} attachment${allAtts.length>1?'s':''}</span>: ${namePreview}</span>
+        <button id="att-sum-btn-${emailId}" onclick="summarizeAttachments('${emailId}')" style="padding:2px 8px;font-size:10px;border:1px solid #d1d5db;border-radius:3px;background:#fff;cursor:pointer;color:#374151;flex-shrink:0">Summarize attachments</button>
+      </div>
+      <div id="att-sum-${emailId}" style="display:none"></div>`;
+    }
+    content.innerHTML=html;
     panel.dataset.loaded='1';
   }catch(e){
     content.innerHTML='<span style="color:#b91c1c;font-size:12px">Could not summarize.</span>';
+  }
+}
+
+async function summarizeAttachments(emailId){
+  const btn=document.getElementById('att-sum-btn-'+emailId);
+  const container=document.getElementById('att-sum-'+emailId);
+  if(!container)return;
+  if(btn){btn.disabled=true;btn.textContent='Reading…';}
+  container.style.display='block';
+  container.innerHTML='<span style="color:var(--muted);font-style:italic;font-size:11px">Reading attachments…</span>';
+  try{
+    const token=await getAccessToken();
+    const atts=await fetchVisibleAttachments(emailId);
+    const textAtts=[];
+    for(const a of atts){
+      const ct=(a.contentType||'').toLowerCase();
+      if(!ct.startsWith('text/')&&ct!=='application/json'&&ct!=='application/xml')continue;
+      try{
+        const r=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/attachments/${a.id}`,{headers:{Authorization:`Bearer ${token}`}});
+        if(!r.ok)continue;
+        const d=await r.json();
+        if(d.contentBytes){
+          const raw=atob(d.contentBytes);
+          const text=(ct.includes('html')?raw.replace(/<[^>]+>/g,' '):raw).replace(/\s+/g,' ').trim();
+          textAtts.push({name:a.name,text:text.slice(0,800)});
+        }
+      }catch{}
+    }
+    if(!textAtts.length){
+      container.innerHTML='<div style="font-size:11px;color:#6b7280;padding:6px 0">Attachments are not text-based (PDF, image, etc.) and cannot be read automatically.</div>';
+      if(btn){btn.disabled=false;btn.textContent='Summarize attachments';}
+      return;
+    }
+    const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
+    const token2=await getAccessToken();
+    const email=emailCache[emailId];
+    const res=await fetch(fnUrl+'/attachment-summary',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token2}`},
+      body:JSON.stringify({subject:email?.subject||'',attachmentContents:textAtts})
+    });
+    if(!res.ok)throw new Error('Failed');
+    const data=await res.json();
+    const summary=data.summary||'No summary available.';
+    container.innerHTML=`<div style="margin-top:6px;padding:8px 10px;background:#f9fafb;border-radius:4px;border:1px solid #e5e7eb">`+
+      `<div style="font-size:10px;font-weight:700;color:#6b7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px">Attachment Summary</div>`+
+      formatSummaryHTML(summary)+'</div>';
+    if(btn){btn.disabled=false;btn.textContent='Re-summarize';}
+  }catch(e){
+    container.innerHTML='<span style="color:#b91c1c;font-size:11px">Could not summarize attachments.</span>';
+    if(btn){btn.disabled=false;btn.textContent='Summarize attachments';}
   }
 }
 
@@ -23068,8 +23226,10 @@ async function addTaskFromEmail(emailId){
   const p=findPersonByEmail(sender?.address);
   const person=p?.name||sender?.name||sender?.address||'Unknown';
   const address=sender?.address||'';
-  await attachFreeThreadSummary(email);
-  const result=upsertTaskFromEmail(email,person,address,personDept(address,person),email.receivedDateTime||email.sentDateTime||new Date().toISOString());
+  const emailDate=email.receivedDateTime||email.sentDateTime||'';
+  const assignedDate=new Date().toISOString();
+  await attachFreeThreadSummary(email,{assignedDate,emailDate});
+  const result=upsertTaskFromEmail(email,person,address,personDept(address,person),assignedDate);
   trackedEmailIds.add(emailId);
   await saveTasksToOneDrive();
   refreshAll();
