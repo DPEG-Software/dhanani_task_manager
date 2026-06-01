@@ -32,18 +32,22 @@
     const name = (raw.displayName || raw.name || raw.emailAddress?.name || contactNameValue(raw, email)).trim();
     const dept = raw.department || defaultDept || (isInternalEmail(email) ? "Needs Department" : "Outside DPEG");
     const role = raw.jobTitle || raw.role || "";
-    const existingKey = Object.keys(staffConfig).find((k) => normEmail(staffConfig[k]?.email || "") === email);
+    const target = isAdmin() ? staffConfig : userContacts;
+    const saveTarget = isAdmin() ? null : saveUserContacts;
+    const existingKey = Object.keys(target).find((k) => normEmail(target[k]?.email || "") === email);
     const key = existingKey || staffKey(email, name);
-    const existing = staffConfig[key] || {};
+    const existing = target[key] || {};
     const before = JSON.stringify(existing);
-    staffConfig[key] = {
+    target[key] = {
       ...existing,
       name,
       email,
       dept: existing.dept || dept,
       role: existing.role || role,
     };
-    return JSON.stringify(staffConfig[key]) !== before;
+    const changed = JSON.stringify(target[key]) !== before;
+    if(changed && saveTarget)saveTarget();
+    return changed;
   }
 
   async function graphGetAll(url, token, maxPages) {
@@ -187,6 +191,11 @@
       const key = normEmail(p.email);
       map.set(key, { ...(map.get(key) || {}), ...p, email: key });
     });
+    Object.values(userContacts || {}).forEach((p) => {
+      if (!p?.email || !p?.name) return;
+      const key = normEmail(p.email);
+      map.set(key, { ...(map.get(key) || {}), ...p, email: key });
+    });
     return [...map.values()];
   }
 
@@ -258,7 +267,6 @@
   }
 
   window.syncContacts = async function syncContacts() {
-    if (!isAdmin()) { toast("Admin access only"); return; }
     const btn = document.getElementById("sync-contacts-btn");
     const status = document.getElementById("sync-status");
     if (btn) { btn.disabled = true; btn.textContent = "Syncing..."; }
@@ -275,8 +283,12 @@
       try { changed += await syncOutlookContactsFull(token); } catch (err) { console.warn("Outlook contacts sync skipped:", err.message); }
       try { changed += await syncPeopleSuggestions(token); } catch (err) { console.warn("People suggestions sync skipped:", err.message); }
       try { changed += await syncMailboxNames(token); } catch (err) { console.warn("Mailbox contact sync skipped:", err.message); }
-      mergeDuplicateStaffContacts();
-      await saveTasksToOneDrive();
+      if(isAdmin()){
+        mergeDuplicateStaffContacts();
+        await saveTasksToOneDrive();
+      }else{
+        saveUserContacts();
+      }
       renderAdminPeopleList();
       renderAdminDeptEditor();
       initSelects();
@@ -297,15 +309,21 @@
   };
 
   window.autoSyncContacts = async function autoSyncContacts() {
-    if (!isAdmin()) return;
     try {
+      const last=Number(localStorage.getItem(`dpeg_contacts_auto_${normEmail(currentUser?.email||'')}`)||0);
+      if(!isAdmin() && Date.now()-last<7*24*60*60*1000)return;
       const token = (await msalInstance.acquireTokenSilent({ scopes: SCOPES_CONTACTS, account: currentAccount })).accessToken;
-      const before = JSON.stringify(staffConfig);
+      const before = JSON.stringify(isAdmin()?staffConfig:userContacts);
       try { await syncOrgDirectory(token); } catch {}
       try { await syncOutlookContactsFull(token); } catch {}
       try { await syncPeopleSuggestions(token); } catch {}
-      mergeDuplicateStaffContacts();
-      if (JSON.stringify(staffConfig) !== before) await saveTasksToOneDrive();
+      if(isAdmin()){
+        mergeDuplicateStaffContacts();
+        if (JSON.stringify(staffConfig) !== before) await saveTasksToOneDrive();
+      }else{
+        if (JSON.stringify(userContacts) !== before) saveUserContacts();
+        localStorage.setItem(`dpeg_contacts_auto_${normEmail(currentUser?.email||'')}`,String(Date.now()));
+      }
     } catch {}
   };
 

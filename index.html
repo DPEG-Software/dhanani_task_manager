@@ -18603,27 +18603,33 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 .toast.show{opacity:1;transform:none}
 
 /* OUTLOOK */
-.ol-folder{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);cursor:pointer;font-size:12.5px;font-weight:500;color:var(--sub);transition:all .15s;margin-bottom:1px}
-.ol-folder:hover{background:var(--sage3);color:var(--ink)}
-.ol-folder.active{background:var(--sage2);color:var(--ink);font-weight:700}
-.ol-sb-collapsed .ol-sb-text{display:none}
-.ol-sb-collapsed .ol-sb-label{display:none}
-.ol-sb-collapsed .ol-sb-sep{margin:3px 0}
-.ol-sb-collapsed .ol-folder{justify-content:center;padding:8px 4px}
-.ol-sb-collapsed #ol-compose-btn{padding:9px;justify-content:center}
-.ol-sb-collapsed #ol-inbox-count,.ol-sb-collapsed #ol-untracked-count{margin-left:0;position:absolute;top:2px;right:2px;font-size:8px;padding:0 3px}
-.ol-email-item{display:block;width:100%;box-sizing:border-box;padding:12px 14px;border-bottom:1px solid #f3f4f6;cursor:pointer;transition:background .12s;overflow:hidden;position:relative}
-.ol-email-item:hover{background:#f9fafb}
-.ol-email-item.active{background:var(--sage3);box-shadow:inset 3px 0 0 var(--ink)}
-.ol-email-item.unread .ol-email-subject{font-weight:700;color:var(--body)}
-.ol-email-sender{font-size:12.5px;font-weight:600;color:var(--body);flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block}
-.ol-email-top{display:flex;align-items:center;gap:6px;margin-bottom:2px;width:100%;box-sizing:border-box}
-.ol-email-subject{font-size:12px;color:var(--sub);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
-.ol-email-preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
-.ol-email-attachments{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10.5px;color:var(--muted);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ol-folder{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-weight:500;color:#4b5563;transition:background .12s;margin-bottom:1px;border:none;background:none;width:100%;text-align:left;white-space:nowrap;overflow:hidden}
+.ol-folder:hover{background:#f5f5f5;color:#111}
+.ol-folder.active{background:#EBF2EC;color:#0E3416;font-weight:700}
+.ol-email-item{display:block;width:100%;box-sizing:border-box;padding:8px 10px;border-bottom:1px solid #f0f0f0;cursor:pointer;transition:background .12s;overflow:hidden;position:relative}
+.ol-email-item:hover{background:#f5f5f5}
+.ol-email-item.active{background:#EBF2EC;border-left:2px solid #0E3416;padding-left:8px}
+.ol-email-item.unread{border-left:2px solid #0E3416;padding-left:8px}
+.ol-email-item.unread .ol-email-sender{font-weight:700}
+.ol-email-item.unread .ol-email-subject{font-weight:700;color:#111}
+.ol-email-item .ol-sum-btn{display:none}
+.ol-email-item:hover .ol-sum-btn{display:inline-flex}
+.ol-email-sender{font-size:12px;font-weight:500;color:#111;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block}
+.ol-email-top{display:flex;align-items:center;gap:4px;margin-bottom:2px;width:100%;box-sizing:border-box}
+.ol-email-subject{font-size:12px;color:#4b5563;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%;font-weight:400}
+.ol-email-preview{font-size:11px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%}
+.ol-email-attachments{display:flex;align-items:center;gap:4px;margin-top:3px;font-size:10px;color:#9ca3af;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ol-email-attachments svg{flex-shrink:0}
-.ol-email-date{font-size:10.5px;color:var(--muted);margin-left:auto;white-space:nowrap;flex-shrink:0}
-.ol-email-top{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.ol-email-date{font-size:10px;color:#9ca3af;margin-left:auto;white-space:nowrap;flex-shrink:0}
+.ol-search-input{width:100%;border:none;outline:none;font-family:Inter,sans-serif;font-size:12px;color:#111;background:transparent;padding:0}
+.ol-search-input::placeholder{color:#9ca3af}
+.ol-divider-btn{width:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;border-right:1px solid #e5e7eb;background:#fafafa;transition:background .12s;height:100%;position:relative;z-index:2}
+.ol-divider-btn:hover{background:#f0f0f0}
+/* Thin scrollbars in Outlook panels */
+#page-outlook ::-webkit-scrollbar{width:4px;height:4px}
+#page-outlook ::-webkit-scrollbar-track{background:transparent}
+#page-outlook ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
+#page-outlook ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
 
 /* ONEDRIVE SYNC INDICATOR */
 .sync-bar{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);padding:4px 0}
@@ -19024,62 +19030,78 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 
   <!-- OUTLOOK -->
   <div class="page" id="page-outlook" style="padding:0;margin:-12px -16px;height:calc(100vh - 46px)">
-    <div style="display:grid;grid-template-columns:180px 320px 1fr;height:100%;overflow:hidden;background:var(--white);border-top:1px solid var(--border)">
+    <div id="ol-layout" style="display:flex;height:100%;overflow:hidden;background:#fff;border-top:1px solid #e5e7eb">
 
-      <!-- LEFT: Folders -->
-      <div id="ol-left-panel" style="border-right:1px solid var(--border);background:#f9fafb;display:flex;flex-direction:column;height:100%;overflow:hidden;transition:width .2s ease">
-        <div style="padding:10px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:6px">
-          <button id="ol-compose-btn" class="btn btn-primary" style="flex:1;min-width:0;font-size:12.5px;padding:9px 10px;display:flex;align-items:center;justify-content:center;gap:6px;overflow:hidden" onclick="openCompose()" title="New Email">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M12 5v14M5 12h14" stroke-width="2.5" stroke-linecap="round"/></svg>
-            <span class="ol-sb-text">New Email</span>
-          </button>
-          <button id="ol-sb-toggle" onclick="toggleOlSidebar()" title="Collapse sidebar" style="border:1px solid var(--border);background:none;cursor:pointer;padding:5px 6px;border-radius:var(--r);color:var(--muted);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s" onmouseover="this.style.background='var(--sage3)'" onmouseout="this.style.background='none'">
-            <svg id="ol-sb-arrow" width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <!-- LEFT: Folder Panel -->
+      <div id="ol-left-panel" style="width:0;min-width:0;flex-shrink:0;overflow:hidden;background:#fafafa;display:flex;flex-direction:column;height:100%;transition:width .18s ease">
+        <div style="padding:8px;border-bottom:1px solid #e5e7eb;flex-shrink:0;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:5px;background:#f5f5f5;border:1px solid #e5e7eb;border-radius:4px;padding:5px 8px">
+            <svg width="12" height="12" fill="none" stroke="#9ca3af" viewBox="0 0 24 24" style="flex-shrink:0"><circle cx="11" cy="11" r="8" stroke-width="2"/><path d="M21 21l-4.35-4.35" stroke-width="2" stroke-linecap="round"/></svg>
+            <input id="ol-search-input" class="ol-search-input" type="text" placeholder="Search email..." oninput="handleOlSearch(this.value)" autocomplete="off">
+            <button id="ol-search-clear" onclick="clearOlSearch()" style="display:none;background:none;border:none;cursor:pointer;color:#9ca3af;font-size:15px;line-height:1;padding:0 1px" title="Clear">×</button>
+          </div>
+          <button id="ol-compose-btn" class="btn btn-primary" style="width:100%;font-size:11.5px;padding:7px 10px;display:flex;align-items:center;justify-content:center;gap:5px" onclick="openCompose()" title="New Email">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M12 5v14M5 12h14" stroke-width="2.5" stroke-linecap="round"/></svg>
+            New Email
           </button>
         </div>
-        <div style="padding:6px;flex:1;overflow-y:auto">
-          <div class="ol-sb-label" style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:8px 8px 4px">Folders</div>
-          <div id="ol-folder-inbox" class="ol-folder active" onclick="loadFolder('inbox')" title="Inbox" style="position:relative">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4" stroke-width="2" stroke-linecap="round"/></svg>
-            <span class="ol-sb-text">Inbox</span>
-            <span id="ol-inbox-count" style="margin-left:auto;background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;display:none"></span>
+        <div style="padding:5px;flex:1;overflow-y:auto">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#9ca3af;padding:8px 6px 4px">Folders</div>
+          <div id="ol-folder-inbox" class="ol-folder active" onclick="loadFolder('inbox')" title="Inbox">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Inbox</span>
+            <span id="ol-inbox-count" style="margin-left:auto;background:#fee2e2;color:#b91c1c;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;display:none"></span>
           </div>
           <div id="ol-folder-sent" class="ol-folder" onclick="loadFolder('sent')" title="Sent Items">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span class="ol-sb-text">Sent Items</span>
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Sent Items</span>
           </div>
           <div id="ol-folder-drafts" class="ol-folder" onclick="loadFolder('drafts')" title="Drafts">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="2" stroke-linecap="round"/></svg>
-            <span class="ol-sb-text">Drafts</span>
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Drafts</span>
           </div>
-          <div class="ol-sb-sep" style="height:1px;background:var(--border);margin:6px 0"></div>
-          <div class="ol-sb-label" style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:4px 8px 4px">Tracking</div>
-          <div id="ol-folder-untracked" class="ol-folder" onclick="loadFolder('untracked')" title="Untracked" style="position:relative">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><circle cx="12" cy="12" r="9" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke-width="2" stroke-linecap="round"/></svg>
-            <span class="ol-sb-text">Untracked</span>
-            <span id="ol-untracked-count" style="margin-left:auto;background:var(--amber-bg);color:var(--amber);font-size:10px;font-weight:700;padding:1px 6px;border-radius:20px;display:none"></span>
+          <div style="height:1px;background:#e5e7eb;margin:5px 2px"></div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#9ca3af;padding:5px 6px 3px">Tracking</div>
+          <div id="ol-folder-untracked" class="ol-folder" onclick="loadFolder('untracked')" title="Untracked">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><circle cx="12" cy="12" r="9" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke-width="2" stroke-linecap="round"/></svg>
+            <span>Untracked</span>
+            <span id="ol-untracked-count" style="margin-left:auto;background:#fffbeb;color:#92400e;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;display:none"></span>
           </div>
+        </div>
+        <div id="ol-contacts-sync-bar" style="display:none;padding:6px 10px;border-top:1px solid #e5e7eb;font-size:10px;color:#15803d;align-items:center;gap:5px;background:#f0fdf4;flex-shrink:0">
+          <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M20 6L9 17l-5-5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span id="ol-contacts-sync-text">Contacts synced</span>
         </div>
       </div>
 
+      <!-- DIVIDER 1 -->
+      <div class="ol-divider-btn" id="ol-divider-left" onclick="toggleOlLeft()" title="Toggle folders">
+        <svg id="ol-divider-left-icon" width="8" height="14" fill="none" stroke="#9ca3af" viewBox="0 0 8 14"><path d="M2 2l4 5-4 5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+
       <!-- MIDDLE: Email List -->
-      <div style="border-right:1px solid var(--border);display:flex;flex-direction:column;height:100%;overflow:hidden">
-        <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0;display:flex;align-items:center;gap:8px">
-          <div style="font-size:13px;font-weight:700;color:var(--body);flex:1" id="ol-folder-title">Inbox</div>
-          <button onclick="refreshFolder()" style="border:none;background:none;cursor:pointer;color:var(--muted);font-size:17px;line-height:1;padding:2px" title="Refresh">&#8635;</button>
+      <div id="ol-mid-panel" style="width:0;min-width:0;flex-shrink:0;overflow:hidden;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;height:100%;transition:width .18s ease">
+        <div style="padding:7px 10px;border-bottom:1px solid #e5e7eb;background:#fafafa;flex-shrink:0;display:flex;align-items:center;gap:6px;min-width:0">
+          <div style="font-size:12px;font-weight:700;color:#111;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="ol-folder-title">Inbox</div>
+          <button onclick="refreshFolder()" style="border:none;background:none;cursor:pointer;color:#9ca3af;font-size:15px;line-height:1;padding:2px;transition:color .12s;flex-shrink:0" onmouseover="this.style.color='#111'" onmouseout="this.style.color='#9ca3af'" title="Refresh">&#8635;</button>
         </div>
         <div style="flex:1;overflow-y:auto;overflow-x:hidden" id="ol-email-list">
           <div class="empty-state"><div class="es-text">Loading emails...</div></div>
         </div>
       </div>
 
-      <!-- RIGHT: Email Reader — FIXED, does not scroll with list -->
-      <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+      <!-- DIVIDER 2 -->
+      <div class="ol-divider-btn" id="ol-divider-mid" onclick="toggleOlMid()" title="Toggle email list">
+        <svg id="ol-divider-mid-icon" width="8" height="14" fill="none" stroke="#9ca3af" viewBox="0 0 8 14"><path d="M2 2l4 5-4 5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+
+      <!-- RIGHT: Email Reader -->
+      <div id="ol-right-panel" style="flex:1;display:flex;flex-direction:column;height:100%;overflow:hidden;min-width:0">
         <div id="ol-email-reader" style="flex:1;overflow:hidden;display:flex;flex-direction:column;height:100%;min-height:0">
-          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px">
-            <svg width="48" height="48" fill="none" stroke="#d1d5db" viewBox="0 0 24 24" style="margin-bottom:14px"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <div style="font-size:14px;font-weight:600;color:var(--body);margin-bottom:4px">Select an email</div>
-            <div style="font-size:12px;color:var(--muted)">Click any email from the list to read it here</div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9ca3af;text-align:center;padding:40px">
+            <svg width="40" height="40" fill="none" stroke="#d1d5db" viewBox="0 0 24 24" style="margin-bottom:12px"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div style="font-size:13px;font-weight:600;color:#6b7280;margin-bottom:3px">Select an email to read</div>
+            <div style="font-size:11px;color:#9ca3af">Use the arrows on the left to open folder and email panels</div>
           </div>
         </div>
       </div>
@@ -21315,33 +21337,148 @@ function nav(name,mode){
   if(name==="archive")renderArc();
   if(name==="dashboard"){renderCharts();renderActivity();}
   if(name==="summary")renderSum();
-  if(name==="outlook"){loadFolder("inbox");}
+  if(name==="outlook"){initOlPanels();fetchOutlookContacts();loadFolder("inbox");}
   // Prevent outer body scrollbar while Outlook fills the full viewport
   const mainEl=document.querySelector('.main');
   if(mainEl)mainEl.style.overflowY=name==='outlook'?'hidden':'';
 }
 
-let olSidebarCollapsed=false;
+let olLeftExpanded=false;
+let olMidExpanded=false;
+let outlookContacts=[];
+let olSearchTimer=null;
 let currentComposeType='';
 let currentComposeEmailId=null;
 let currentComposeFiles=[];
-function toggleOlSidebar(){
-  olSidebarCollapsed=!olSidebarCollapsed;
-  const panel=document.getElementById('ol-left-panel');
-  const grid=panel?.parentElement;
-  const arrow=document.getElementById('ol-sb-arrow');
-  const toggle=document.getElementById('ol-sb-toggle');
-  if(olSidebarCollapsed){
-    panel.classList.add('ol-sb-collapsed');
-    if(grid)grid.style.gridTemplateColumns='48px 320px 1fr';
-    if(toggle)toggle.title='Expand sidebar';
-    if(arrow)arrow.innerHTML='<path d="M9 18l6-6-6-6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
-  }else{
-    panel.classList.remove('ol-sb-collapsed');
-    if(grid)grid.style.gridTemplateColumns='180px 320px 1fr';
-    if(toggle)toggle.title='Collapse sidebar';
-    if(arrow)arrow.innerHTML='<path d="M15 18l-6-6 6-6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+
+function initOlPanels(){
+  olLeftExpanded=false;
+  olMidExpanded=false;
+  const lp=document.getElementById('ol-left-panel');
+  const mp=document.getElementById('ol-mid-panel');
+  if(lp)lp.style.width='0';
+  if(mp)mp.style.width='0';
+  updateOlDividerIcons();
+}
+
+function toggleOlLeft(){
+  olLeftExpanded=!olLeftExpanded;
+  const lp=document.getElementById('ol-left-panel');
+  if(lp)lp.style.width=olLeftExpanded?'190px':'0';
+  updateOlDividerIcons();
+}
+
+function toggleOlMid(){
+  olMidExpanded=!olMidExpanded;
+  const mp=document.getElementById('ol-mid-panel');
+  if(mp)mp.style.width=olMidExpanded?'300px':'0';
+  updateOlDividerIcons();
+}
+
+function updateOlDividerIcons(){
+  const li=document.getElementById('ol-divider-left-icon');
+  const mi=document.getElementById('ol-divider-mid-icon');
+  if(li)li.innerHTML=olLeftExpanded?'<path d="M6 2l-4 5 4 5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+    :'<path d="M2 2l4 5-4 5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  if(mi)mi.innerHTML=olMidExpanded?'<path d="M6 2l-4 5 4 5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+    :'<path d="M2 2l4 5-4 5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
+}
+
+function toggleOlSidebar(){toggleOlLeft();}
+
+async function fetchOutlookContacts(){
+  try{
+    const token=await getAccessToken();
+    const res=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=100&$select=displayName,scoredEmailAddresses,jobTitle,department',{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)return;
+    const data=await res.json();
+    const people=data.value||[];
+    outlookContacts=people.filter(p=>p.scoredEmailAddresses?.length).map(p=>({
+      name:p.displayName||'',
+      email:(p.scoredEmailAddresses[0]?.address||'').toLowerCase(),
+      role:p.jobTitle||'',
+      dept:p.department||'Unknown'
+    })).filter(p=>p.email);
+    // Merge into staffConfig if not present
+    outlookContacts.forEach(c=>{
+      const existing=Object.values(staffConfig||{}).find(s=>normEmail(s.email)===normEmail(c.email));
+      if(!existing&&c.email){staffConfig[c.email]=c;}
+    });
+    const bar=document.getElementById('ol-contacts-sync-bar');
+    const txt=document.getElementById('ol-contacts-sync-text');
+    if(bar&&txt){
+      txt.textContent=`${outlookContacts.length} contacts synced`;
+      bar.style.display='flex';
+      setTimeout(()=>{if(bar)bar.style.display='none';},4000);
+    }
+  }catch(err){console.log('Contacts sync skipped:',err);}
+}
+
+let _olSearchActive=false;
+function handleOlSearch(val){
+  const clearBtn=document.getElementById('ol-search-clear');
+  if(clearBtn)clearBtn.style.display=val.length>0?'block':'none';
+  clearTimeout(olSearchTimer);
+  if(val.length<3){
+    if(_olSearchActive){_olSearchActive=false;renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);}
+    return;
   }
+  olSearchTimer=setTimeout(()=>searchEmails(val),400);
+}
+
+function clearOlSearch(){
+  const inp=document.getElementById('ol-search-input');
+  const clearBtn=document.getElementById('ol-search-clear');
+  if(inp)inp.value='';
+  if(clearBtn)clearBtn.style.display='none';
+  _olSearchActive=false;
+  renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
+  const titleEl=document.getElementById('ol-folder-title');
+  if(titleEl)titleEl.textContent=FOLDER_LABELS[currentFolder]||currentFolder;
+}
+
+async function searchEmails(query){
+  _olSearchActive=true;
+  const listEl=document.getElementById('ol-email-list');
+  if(!listEl)return;
+  // Auto-expand mid panel for search results
+  if(!olMidExpanded){olMidExpanded=true;const mp=document.getElementById('ol-mid-panel');if(mp)mp.style.width='300px';updateOlDividerIcons();}
+  const titleEl=document.getElementById('ol-folder-title');
+  if(titleEl)titleEl.textContent='Searching...';
+  listEl.innerHTML='<div class="empty-state"><div class="es-text">Searching...</div></div>';
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$search="${encodeURIComponent(query)}"&$top=20&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Search failed');
+    const data=await res.json();
+    const results=data.value||[];
+    if(titleEl)titleEl.textContent=`Results (${results.length})`;
+    if(!results.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No results</div><div class="es-sub">Try different keywords</div></div>';return;}
+    renderEmailRows('inbox',results);
+  }catch(err){
+    if(titleEl)titleEl.textContent='Search';
+    if(listEl)listEl.innerHTML='<div class="empty-state"><div class="es-text">Search failed</div></div>';
+  }
+}
+
+async function deleteEmailItem(emailId){
+  if(!emailId)return;
+  if(!confirm('Delete this email?'))return;
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'DELETE',headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok&&res.status!==204)throw new Error('Delete failed');
+    // Remove from cache
+    if(outlookFolderEmails[currentFolder]){
+      outlookFolderEmails[currentFolder]=outlookFolderEmails[currentFolder].filter(e=>e.id!==emailId);
+    }
+    delete emailCache[emailId];
+    // Show next email or empty state
+    const readerEl=document.getElementById('ol-email-reader');
+    if(readerEl)readerEl.innerHTML=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#9ca3af;text-align:center;padding:40px"><div style="font-size:13px;font-weight:600;color:#6b7280;margin-bottom:3px">Email deleted</div><div style="font-size:11px;color:#9ca3af">Select another email to read</div></div>`;
+    renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
+    toast('Email deleted');
+  }catch(err){toast('Could not delete email');}
 }
 
 function syncBadges(){
@@ -21447,7 +21584,8 @@ function showComposeAC(inputId, acId){
   const token=(lastSep>=0?val.slice(lastSep+1):val).trim().toLowerCase();
   if(!token.length){ac.style.display='none';return;}
   const seen=new Set();
-  const matches=Object.values(staffConfig).filter(p=>p?.email&&p?.name)
+  const allContacts=[...Object.values(staffConfig||{}),...(outlookContacts||[])];
+  const matches=allContacts.filter(p=>p?.email&&p?.name)
     .filter(p=>{
       const k=normEmail(p.email||'');
       if(!k||seen.has(k))return false;
@@ -21530,40 +21668,41 @@ function toggleBcc(){
 function renderEmailRows(folder,emails){
   const listEl=document.getElementById('ol-email-list');
   if(!listEl)return;
-  if(!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails found</div></div>';return;}
+  if(!emails||!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails</div></div>';return;}
   const rows=emails.map(e=>{
     const isTracked=trackedEmailIds.has(e.id)||trackedEmailIds.has(e.conversationId);
-    const sender=folder==='sent'?(e.toRecipients?.[0]?.emailAddress?.name||e.toRecipients?.[0]?.emailAddress?.address||'Unknown'):(e.from?.emailAddress?.name||e.from?.emailAddress?.address||'Unknown');
-    const dt=new Date(e.receivedDateTime||e.sentDateTime);
-    const now=new Date();
-    const isToday=dt.toDateString()===now.toDateString();
-    const dateStr=isToday?dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
     const isUnread=!e.isRead&&folder==='inbox';
     const isHigh=String(e.importance||'normal').toLowerCase()==='high';
     const hasAtt=!!e.hasAttachments;
     const safeId=escapeHtml(e.id||'');
     const safeFolder=escapeHtml(folder||'inbox');
+    // Sender
+    const sender=folder==='sent'
+      ?(e.toRecipients?.[0]?.emailAddress?.name||e.toRecipients?.[0]?.emailAddress?.address||'Unknown')
+      :(e.from?.emailAddress?.name||e.from?.emailAddress?.address||'Unknown');
+    // Date
+    const dt=new Date(e.receivedDateTime||e.sentDateTime);
+    const now=new Date();
+    const isToday=dt.toDateString()===now.toDateString();
+    const dateStr=isToday?dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    // Badges
+    const trackedBadge=isTracked?`<span style="background:#f0fdf4;color:#15803d;font-size:9px;font-weight:700;padding:1px 6px 1px 5px;border-radius:10px;border:1px solid #bbf7d0;white-space:nowrap;flex-shrink:0">✓</span>`:'';
+    const highBadge=isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;border:1px solid #fecaca;white-space:nowrap;flex-shrink:0">!</span>`:'';
+    const attIcon=hasAtt?`<svg width="10" height="10" fill="none" stroke="#9ca3af" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:'';
+    const sumBtn=`<button class="ol-sum-btn" title="AI Summary" onclick="event.stopPropagation();toggleListAISummary(this.closest('.ol-email-item').dataset.emailId,this,'${safeFolder}')" style="width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;background:none;border:1px solid #e9d5ff;border-radius:4px;cursor:pointer;color:#7c3aed;padding:0;flex-shrink:0;transition:all .12s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='none'"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg></button>`;
     return `<div class="ol-email-item${isUnread?' unread':''}" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readEmail(this.dataset.emailId,'${safeFolder}',this)">
       <div class="ol-email-top">
-        <div class="ol-email-sender">${escapeHtml(sender)}</div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-          ${isTracked?`<span style="background:var(--leaf-bg);color:var(--leaf);font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid var(--leaf-bd);white-space:nowrap">✓</span>`:''}
-          ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;white-space:nowrap">!</span>`:''}
-          ${flagBadge(e,true)}
-          ${hasAtt?`<svg width="11" height="11" fill="none" stroke="var(--muted)" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:''}
-          <div class="ol-email-date" style="margin-left:0">${dateStr}</div>
-          <button title="AI summary" onclick="event.stopPropagation();toggleListAISummary(this.closest('.ol-email-item').dataset.emailId,this,'${safeFolder}')" style="display:inline-flex;align-items:center;gap:3px;background:none;border:1px solid #e9d5ff;border-radius:12px;cursor:pointer;padding:2px 7px 2px 5px;font-size:10.5px;color:#7c3aed;font-weight:500;line-height:1.5;flex-shrink:0;transition:all .15s" onmouseover="this.style.background='#f5f3ff';this.style.borderColor='#c4b5fd'" onmouseout="this.style.background='none';this.style.borderColor='#e9d5ff'"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarize</button>
-        </div>
+        <span class="ol-email-sender">${escapeHtml(sender)}</span>
+        <span style="display:flex;align-items:center;gap:3px;flex-shrink:0">${trackedBadge}${highBadge}${attIcon}${sumBtn}<span class="ol-email-date">${dateStr}</span></span>
       </div>
       <div class="ol-email-subject">${escapeHtml(e.subject||'(no subject)')}</div>
       <div class="ol-email-preview">${escapeHtml(e.bodyPreview||'')}</div>
-      ${hasAtt?`<div class="ol-email-attachments"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attachment</span></div>`:''}
-      <div id="list-ai-sum-${safeId}" style="display:none;margin-top:5px;padding:7px 10px 7px 9px;background:#faf8ff;border-left:2.5px solid #7c3aed;border-radius:0 6px 6px 0;"></div>
+      <div id="list-ai-sum-${safeId}" style="display:none;margin-top:5px;padding:6px 9px;background:#faf8ff;border-left:2px solid #7c3aed;border-radius:0 4px 4px 0;font-size:11px;color:#4b5563;line-height:1.5"></div>
     </div>`;
   }).join('');
   const footer=outlookNextLinks[folder]
-    ?`<div style="padding:12px 14px;border-top:1px solid var(--border);background:#fff"><button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center" onclick="loadMoreEmails('${folder}')">Load more emails</button></div>`
-    :`<div style="padding:10px 14px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);text-align:center">Showing ${emails.length} emails</div>`;
+    ?`<div style="padding:10px;border-top:1px solid #f0f0f0"><button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;font-size:11px" onclick="loadMoreEmails('${folder}')">Load more</button></div>`
+    :`<div style="padding:8px 10px;border-top:1px solid #f0f0f0;font-size:10px;color:#9ca3af;text-align:center">${emails.length} emails</div>`;
   listEl.innerHTML=rows+footer;
 }
 
@@ -21573,6 +21712,7 @@ async function loadFolder(folder){
   buildTrackedSet();
   const titleEl=document.getElementById('ol-folder-title');
   if(titleEl)titleEl.textContent=FOLDER_LABELS[folder]||folder;
+  if(!olMidExpanded){olMidExpanded=true;const mp=document.getElementById('ol-mid-panel');if(mp)mp.style.width='300px';updateOlDividerIcons();}
   document.querySelectorAll('.ol-folder').forEach(f=>f.classList.remove('active'));
   const af=document.getElementById('ol-folder-'+folder);
   if(af)af.classList.add('active');
@@ -21933,7 +22073,7 @@ async function readEmail(emailId,folder,el){
   if(_ael){_ael.classList.add('active');_activeEmailEl=_ael;}
   const readerEl=document.getElementById('ol-email-reader');
   if(!readerEl)return;
-  readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading...</div></div>';
+  readerEl.innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px">Loading...</div>';
   try{
     const token=await getAccessToken();
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments,flag`,{headers:{Authorization:`Bearer ${token}`}});
@@ -21941,47 +22081,67 @@ async function readEmail(emailId,folder,el){
     const email=await res.json();
     emailCache[emailId]=email;
     const sender=email.from?.emailAddress;
-    const toList=email.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
-    const ccList=email.ccRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
+    // To: show first 2, then +X others
+    const toAll=email.toRecipients||[];
+    const toDisplay=toAll.slice(0,2).map(r=>r.emailAddress?.name||r.emailAddress?.address||'').filter(Boolean);
+    const toExtra=toAll.length>2?` <span style="color:#9ca3af">+${toAll.length-2} others</span>`:'';
+    const toStr=toDisplay.length?escapeHtml(toDisplay.join(', '))+toExtra:'—';
+    // CC
+    const ccAll=email.ccRecipients||[];
+    const ccDisplay=ccAll.slice(0,2).map(r=>r.emailAddress?.name||r.emailAddress?.address||'').filter(Boolean);
+    const ccExtra=ccAll.length>2?` <span style="color:#9ca3af">+${ccAll.length-2} others</span>`:'';
+    const ccStr=ccDisplay.length?escapeHtml(ccDisplay.join(', '))+ccExtra:'';
     const dt=new Date(email.receivedDateTime||email.sentDateTime);
     const dateStr=dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const bodyContent=email.body?.content||email.bodyPreview||'';
     const isHtml=email.body?.contentType==='html';
     const isTracked=trackedEmailIds.has(emailId)||trackedEmailIds.has(email.conversationId);
+    // Helper: small pill button
+    const pBtn=(label,icon,onclick,extra='')=>`<button onclick="${onclick}" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap${extra?';'+extra:''}" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">${icon?`<svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icon}</svg>`:''}${label}</button>`;
     readerEl.innerHTML=`
-      <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
-        <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:10px;line-height:1.3;display:flex;align-items:center;gap:7px">${flagBadge(email,true)}<span>${escapeHtml(email.subject||'(no subject)')}</span></div>
-        <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">From:</span> ${escapeHtml(sender?.name||'')} &lt;${escapeHtml(sender?.address||'')}&gt;</div>
-        <div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">To:</span> ${escapeHtml(toList)}</div>
-        ${ccList?`<div style="font-size:12px;color:var(--body);margin-bottom:3px"><span style="color:var(--muted);font-weight:600">CC:</span> ${escapeHtml(ccList)}</div>`:''}
-        <div style="font-size:11px;color:var(--muted);margin-bottom:12px">${dateStr}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="replyEmail('${emailId}')">
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Reply
-          </button>
-          <button class="btn btn-ghost btn-sm" onclick="forwardEmail('${emailId}')">
-            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Forward
-          </button>
-          <button class="btn btn-ghost btn-sm" onclick="viewFullThread('${emailId}')">View Full Thread</button>
-          ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
-          <button class="btn btn-ghost btn-sm" onclick="toggleEmailAISummary('${emailId}')" style="color:#7c3aed;border-color:#c4b5fd" title="AI summary of this thread">✦ AI Summary</button>
+      <div style="padding:12px 16px 10px;border-bottom:1px solid #e5e7eb;flex-shrink:0;background:#fff">
+        <div style="font-size:16px;font-weight:600;color:#111;margin-bottom:8px;line-height:1.3">${escapeHtml(email.subject||'(no subject)')}</div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px">
+          <span style="font-size:11px;color:#9ca3af;font-weight:600;width:32px;flex-shrink:0">From</span>
+          <span style="font-size:12px;color:#111">${escapeHtml(sender?.name||'')}${sender?.address?` <span style="color:#9ca3af">&lt;${escapeHtml(sender.address)}&gt;</span>`:''}</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px">
+          <span style="font-size:11px;color:#9ca3af;font-weight:600;width:32px;flex-shrink:0">To</span>
+          <span style="font-size:12px;color:#111">${toStr}</span>
+        </div>
+        ${ccStr?`<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px"><span style="font-size:11px;color:#9ca3af;font-weight:600;width:32px;flex-shrink:0">CC</span><span style="font-size:12px;color:#111">${ccStr}</span></div>`:''}
+        <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px">
+          <span style="font-size:11px;color:#9ca3af;font-weight:600;width:32px;flex-shrink:0">Date</span>
+          <span style="font-size:12px;color:#9ca3af">${dateStr}</span>
+        </div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+          ${pBtn('Reply','<path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`replyEmail('${emailId}')`)}
+          ${pBtn('Forward','<path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`forwardEmail('${emailId}')`)}
+          ${pBtn('Thread','<path d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`viewFullThread('${emailId}')`)}
+          ${email.webLink?pBtn('Outlook','<path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`openEmailInOutlook('${emailId}')`):''}
+          <button onclick="toggleEmailAISummary('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e9d5ff;background:#fff;color:#7c3aed;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='#fff'"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarize</button>
           ${isTracked
-            ?`<span class="btn btn-ghost btn-sm" style="color:var(--leaf);border-color:var(--leaf-bd);background:var(--leaf-bg);cursor:default">✓ In Action Log</span><button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="removeTaskByEmail('${emailId}')">Remove</button>`
-            :`<button class="btn btn-primary btn-sm" onclick="addTaskFromEmail('${emailId}')">+ Add to Tasks</button>`
+            ?`<span style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500">✓ In Tasks</span><button onclick="removeTaskByEmail('${emailId}')" style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">Remove</button>`
+            :`<button onclick="addTaskFromEmail('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:none;background:#0E3416;color:#fff;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:background .12s" onmouseover="this.style.background='#1A5C2A'" onmouseout="this.style.background='#0E3416'">+ Add to Tasks</button>`
           }
+          <button onclick="deleteEmailItem('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;margin-left:auto" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'"><svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Delete</button>
         </div>
       </div>
-      <div id="email-attachments-top" style="display:none;padding:8px 20px 10px;background:#f9fafb;border-bottom:1px solid var(--border);flex-shrink:0"></div>
-      <div id="email-ai-summary-panel" style="display:none;padding:10px 20px;background:#f5f3ff;border-bottom:1px solid #ddd6fe;flex-shrink:0">
-        <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:6px;letter-spacing:.04em">✦ AI SUMMARY</div>
-        <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:var(--body)"></div>
+      <div id="email-attachments-top" style="display:none;padding:8px 16px;background:#fafafa;border-bottom:1px solid #e5e7eb;flex-shrink:0"></div>
+      <div id="email-ai-summary-panel" style="display:none;padding:10px 16px;background:#f5f3ff;border-bottom:1px solid #ddd6fe;flex-shrink:0">
+        <div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:5px;letter-spacing:.04em">✦ AI SUMMARY</div>
+        <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:#111"></div>
       </div>
       <div style="flex:1;overflow-y:auto;min-height:0">
-        ${isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:18px 20px;font-size:13.5px;line-height:1.7;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
+        ${isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:16px;font-size:13.5px;line-height:1.6;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
       </div>`;
-    if(isHtml){var _f=readerEl.querySelector('#email-body-frame');if(_f){_f.addEventListener('load',function(){try{var h=Math.max(_f.contentDocument.body.scrollHeight,400);_f.style.height=h+'px';}catch(e){}});resolveInlineImages(token,emailId,bodyContent).then(function(resolved){_f.srcdoc=resolved;});}}
+    if(isHtml){
+      var _f=readerEl.querySelector('#email-body-frame');
+      if(_f){
+        _f.addEventListener('load',function(){try{var h=Math.max(_f.contentDocument.body.scrollHeight,400);_f.style.height=h+'px';}catch(e){}});
+        resolveInlineImages(token,emailId,bodyContent).then(function(resolved){_f.srcdoc=resolved;});
+      }
+    }
     if(!email.isRead&&folder==='inbox'){
       const readRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
       if(readRes.ok){
@@ -21999,13 +22159,13 @@ async function readEmail(emailId,folder,el){
           const attDiv=document.getElementById('email-attachments-top');
           if(attDiv){
             attDiv.style.display='block';
-            attDiv.innerHTML=`<div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:5px"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-weight:600;text-transform:uppercase;letter-spacing:.4px">${atts.length} attachment${atts.length>1?'s':''}</span></div><div style="display:flex;gap:7px;flex-wrap:wrap">${atts.map(a=>attachmentChipHTML(emailId,a)).join('')}</div>`;
+            attDiv.innerHTML=`<div style="font-size:10px;color:#9ca3af;margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${atts.length} attachment${atts.length>1?'s':''}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${atts.map(a=>attachmentChipHTML(emailId,a)).join('')}</div>`;
           }
         }
       }catch{}
     }
   }catch(err){
-    readerEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load email</div></div>';
+    readerEl.innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;padding:40px;text-align:center">Could not load email</div>';
   }
 }
 

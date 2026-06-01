@@ -8,9 +8,11 @@ const AZURE_CLIENT_ID = '8d523e65-0163-49c7-881b-407c0222527e';
 
 const CORS = {
   'Access-Control-Allow-Origin':  ALLOWED_ORIGIN,
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
+
+const DATA_KEY = 'company-state';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -161,6 +163,36 @@ async function handleTodo(request, env) {
   return json({ success: true });
 }
 
+// ── /data endpoint: shared company state for Action Log / Wednesday / Admin config
+async function handleData(request, env) {
+  const { error, status } = validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_DATA) return json({ error: 'DPEG_DATA KV binding is not configured' }, 501);
+
+  if (request.method === 'GET') {
+    const data = await env.DPEG_DATA.get(DATA_KEY, 'json');
+    return json(data || { tasks: [], archives: [], staffConfig: {}, customNotes: [] });
+  }
+
+  if (request.method === 'PUT' || request.method === 'POST') {
+    let body;
+    try { body = await request.json(); }
+    catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+    const payload = {
+      tasks: Array.isArray(body.tasks) ? body.tasks : [],
+      archives: Array.isArray(body.archives) ? body.archives : [],
+      staffConfig: body.staffConfig && typeof body.staffConfig === 'object' ? body.staffConfig : {},
+      customNotes: Array.isArray(body.customNotes) ? body.customNotes : [],
+      updatedAt: new Date().toISOString(),
+    };
+    await env.DPEG_DATA.put(DATA_KEY, JSON.stringify(payload));
+    return json({ success: true, updatedAt: payload.updatedAt });
+  }
+
+  return json({ error: 'Method not allowed' }, 405);
+}
+
 // ── / endpoint (existing AI summary) ─────────────────────────────────────────
 async function handleSummary(request, env) {
   const { error, status, claims } = validateUserToken(request);
@@ -222,11 +254,13 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS });
     }
+    const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
+    if (path === '/data') return handleData(request, env);
+
     if (request.method !== 'POST') {
       return json({ error: 'Only POST allowed' }, 405);
     }
 
-    const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
     if (path === '/todo') return handleTodo(request, env);
     return handleSummary(request, env);
   },
