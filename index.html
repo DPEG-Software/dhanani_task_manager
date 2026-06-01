@@ -19733,11 +19733,18 @@ async function loadTasksFromOneDrive() {
   try {
     if(await loadSharedCompanyData())return;
     if(isAdmin() && await migrateLegacyOneDriveToShared())return;
+    if(await loadLegacyOneDriveData()){
+      sharedDataActive=false;
+      finishDataLoad();
+      setSyncStatus("synced","Loaded personal backup");
+      toast("Cloudflare shared data is not configured yet. Loaded your personal backup.");
+      return;
+    }
     sharedDataActive=false;
     tasks=[];archives=[];staffConfig={};customNotes=[];notifications=[];
     finishDataLoad();
     setSyncStatus("error","Shared company data is not configured");
-    toast("Shared company data is not configured. Please deploy the Cloudflare Worker with DPEG_DATA.");
+    toast("Cloudflare shared data is not configured yet. You can still use Outlook, but shared tasks need DPEG_DATA.");
   } catch (err) {
     sharedDataActive=false;
     setSyncStatus("error", "Sync failed");
@@ -19760,6 +19767,23 @@ async function loadLegacyOneDriveData() {
     if (!res.ok)return false;
     applyLoadedData(JSON.parse(await res.text()));
     return true;
+}
+
+async function ensureLegacyOneDriveFolder(token) {
+  async function ensureFolder(path, createEndpoint, name) {
+    const check = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (check.ok) return true;
+    const create = await fetch(`https://graph.microsoft.com/v1.0${createEndpoint}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, folder: {}, "@microsoft.graph.conflictBehavior": "replace" })
+    });
+    return create.ok;
+  }
+  if (!await ensureFolder(`/me/drive/root:/${ONEDRIVE_FOLDER}`, "/me/drive/root/children", ONEDRIVE_FOLDER)) return false;
+  return ensureFolder(`/me/drive/root:/${ONEDRIVE_FOLDER}/${currentUser.folder}`, `/me/drive/root:/${ONEDRIVE_FOLDER}:/children`, currentUser.folder);
 }
 
 function finishDataLoad(){
@@ -19790,10 +19814,22 @@ async function migrateLegacyOneDriveToShared(){
 async function saveTasksToOneDrive() {
   setSyncStatus("syncing", "Saving...");
   if(await saveSharedCompanyData())return;
-  try { throw new Error("Shared company data is not configured"); }
-  catch (err) {
+  try {
+    const token = await getAccessToken();
+    await ensureLegacyOneDriveFolder(token);
+    const path = `/me/drive/root:/${ONEDRIVE_FOLDER}/${currentUser.folder}/tasks.json:/content`;
+    const payload = JSON.stringify({tasks,archives,staffConfig,customNotes,notifications});
+    const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: payload
+    });
+    if (!res.ok) throw new Error(await res.text().catch(()=>"Personal backup save failed"));
+    sharedDataActive=false;
+    setSyncStatus("synced","Saved personal backup");
+  } catch (err) {
     setSyncStatus("error", "Save failed");
-    console.error("Shared data save error:", err);
+    console.error("Fallback save error:", err);
   }
 }
 
