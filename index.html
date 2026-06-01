@@ -22225,6 +22225,30 @@ function renderMeetingCard(d,emailSubjectHint){
   if(d.attendees.length)rows.push(`<span style="color:#6b7280;font-weight:600">Attendees</span><span style="line-height:1.6">${d.attendees.map(a=>escapeHtml(a)).join('<br>')}</span>`);
   return`<div style="padding:20px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#0E3416" stroke-width="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-size:11px;font-weight:700;color:#0E3416;text-transform:uppercase;letter-spacing:.5px">Meeting Request</span>${statusBadge?` ${statusBadge}`:''}</div><div style="background:#f8fdf9;border:1px solid #d1e9d4;border-radius:6px;padding:14px">${d.summary?`<div style="font-size:14px;font-weight:700;color:#111;margin-bottom:12px">${escapeHtml(d.summary)}</div>`:''}<div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px">${rows.join('')}</div>${d.description&&d.description.trim()?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6;white-space:pre-wrap">${escapeHtml(d.description.trim().slice(0,800))}</div>`:''}</div></div>`;
 }
+function buildMeetingDataFromGraph(email){
+  const parseGDate=(obj)=>{
+    if(!obj?.dateTime)return null;
+    // dateTime is in the specified timeZone — treat as local for display
+    const dt=new Date(obj.dateTime.endsWith('Z')?obj.dateTime:obj.dateTime+'Z');
+    return isNaN(dt)?null:dt;
+  };
+  const attendees=(email.attendees||[]).map(a=>a.emailAddress?.name||a.emailAddress?.address||'').filter(Boolean);
+  const method=String(email.meetingRequestType||'').toLowerCase();
+  let status='';
+  if(method.includes('cancel'))status='CANCEL';
+  else if(method.includes('accept'))status='ACCEPTED';
+  else if(method.includes('decline'))status='DECLINED';
+  return{
+    summary:email.subject||'',
+    location:(email.location?.displayName||email.location?.address?.street||''),
+    description:email.bodyPreview||'',
+    organizer:email.from?.emailAddress?.name||email.from?.emailAddress?.address||'',
+    dtstart:parseGDate(email.startDateTime),
+    dtend:parseGDate(email.endDateTime),
+    status,
+    attendees,
+  };
+}
 function icalToReadableText(bodyText){
   const ical=extractICalText(bodyText);
   if(!ical)return null;
@@ -22251,7 +22275,7 @@ async function readEmail(emailId,folder,el){
   readerEl.innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px">Loading...</div>';
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments,flag`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments,flag,meetingRequestType,startDateTime,endDateTime,location,attendees`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const email=await res.json();
     emailCache[emailId]=email;
@@ -22270,9 +22294,13 @@ async function readEmail(emailId,folder,el){
     const dateStr=dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const bodyContent=email.body?.content||email.bodyPreview||'';
     const isHtml=email.body?.contentType==='html';
-    const rawBodyForIcal=isHtml?bodyContent.replace(/<[^>]*>/g,''):bodyContent;
+    // Detect meeting: first check Graph EventMessage properties, then iCal in body
+    const isMeetingMsg=!!(email.meetingRequestType&&email.meetingRequestType!=='none');
+    const rawBodyForIcal=isHtml?(()=>{const d=document.createElement('div');d.innerHTML=bodyContent;return d.textContent||'';})():bodyContent;
     const icalText=extractICalText(rawBodyForIcal);
-    const isMeeting=!!icalText;
+    const isMeeting=isMeetingMsg||!!icalText;
+    // Build structured meeting data: iCal body takes precedence; fall back to Graph fields
+    const meetingData=isMeeting?(icalText?parseICalData(icalText):buildMeetingDataFromGraph(email)):null;
     const isTracked=trackedEmailIds.has(emailId)||trackedEmailIds.has(email.conversationId);
     // Helper: small pill button
     const pBtn=(label,icon,onclick,extra='')=>`<button onclick="${onclick}" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap${extra?';'+extra:''}" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">${icon?`<svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icon}</svg>`:''}${label}</button>`;
@@ -22316,7 +22344,7 @@ async function readEmail(emailId,folder,el){
         <div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:#111"></div>
       </div>
       <div id="ol-email-body-wrap" style="flex:1;overflow-y:auto;min-height:0">
-        ${isMeeting?renderMeetingCard(parseICalData(icalText),email.subject):isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:16px;font-size:13.5px;line-height:1.6;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
+        ${isMeeting?renderMeetingCard(meetingData,email.subject):isHtml?`<iframe id="email-body-frame" style="width:100%;border:none;display:block;min-height:400px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<div style="padding:16px;font-size:13.5px;line-height:1.6;color:#111"><pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(bodyContent)}</pre></div>`}
       </div>`;
     if(!isMeeting&&isHtml){
       var _f=readerEl.querySelector('#email-body-frame');
@@ -22325,8 +22353,8 @@ async function readEmail(emailId,folder,el){
         resolveInlineImages(token,emailId,bodyContent).then(function(resolved){_f.srcdoc=resolved;});
       }
     }
-    // Check .ics attachments if no iCal found in body
-    if(!isMeeting&&email.hasAttachments){
+    // Check .ics attachments if no iCal found in body (always check for meeting request emails)
+    if(!isMeeting&&(email.hasAttachments||isMeetingMsg)){
       try{
         const atts=await fetchVisibleAttachments(emailId);
         const icsAtt=atts.find(a=>(a.name||'').toLowerCase().endsWith('.ics')||(a.contentType||'').toLowerCase().includes('calendar'));
@@ -23113,10 +23141,27 @@ async function toggleEmailAISummary(emailId){
   if(panel.style.display!=='none'){panel.style.display='none';return;}
   panel.style.display='block';
   if(panel.dataset.loaded)return;
-  content.innerHTML='<span style="color:var(--muted);font-style:italic;font-size:12px">Summarizing thread…</span>';
+  content.innerHTML='<span style="color:var(--muted);font-style:italic;font-size:12px">Summarizing…</span>';
   try{
     const email=emailCache[emailId];
     if(!email){content.innerHTML='<span style="color:#b91c1c">Email not loaded.</span>';return;}
+    // For meeting request emails, build summary from structured meeting data
+    if(email.meetingRequestType&&email.meetingRequestType!=='none'){
+      const mtg=buildMeetingDataFromGraph(email);
+      const fmtDt=(dt)=>dt&&!isNaN(dt)?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+      const lines=[];
+      if(mtg.summary)lines.push('Meeting: '+mtg.summary);
+      if(mtg.organizer)lines.push('Organiser: '+mtg.organizer);
+      if(mtg.dtstart)lines.push('Date: '+fmtDt(mtg.dtstart)+(mtg.dtend?' – '+fmtDt(mtg.dtend):''));
+      if(mtg.location)lines.push('Location: '+mtg.location);
+      if(mtg.attendees.length)lines.push('Attendees: '+mtg.attendees.join(', '));
+      const meetText=lines.join('\n');
+      const fakeMsgs=[{body:{contentType:'text',content:meetText},receivedDateTime:email.receivedDateTime,sentDateTime:email.sentDateTime,from:email.from}];
+      const ai=await callAISummary(fakeMsgs,email.subject||'');
+      content.innerHTML=formatSummaryHTML(ai||meetText);
+      panel.dataset.loaded='1';
+      return;
+    }
     let messages=[email];
     if(email.conversationId){
       const token=await getAccessToken();
@@ -23284,6 +23329,9 @@ async function createToDoTask(task){
       const err=await todoRes.text().catch(()=>'');
       throw new Error(`Recipient To Do failed (${todoRes.status}) ${err}`);
     }
+    const todoData=await todoRes.json().catch(()=>({}));
+    if(todoData.listId)task.recipientTodoListId=todoData.listId;
+    if(todoData.taskId)task.recipientTodoTaskId=todoData.taskId;
   }catch(err){
     console.warn('Recipient To Do (Worker) failed:',err.message);
   }
@@ -23608,49 +23656,46 @@ function renderNotifications(){
 }
 
 // ============================================================
-// TASK COMPLETION POLLING (Microsoft To Do)
+// TASK COMPLETION POLLING (via Cloudflare Worker /poll-completions)
 // ============================================================
 async function pollToDoCompletions(){
   if(!currentUser)return;
+  const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
+  if(!fnUrl)return;
+  // Only poll tasks assigned to @dhananipeg.com recipients that have saved recipient To Do IDs
+  const assignments=tasks.filter(t=>
+    t.status!=='Done'&&t.recipientTodoListId&&t.recipientTodoTaskId&&
+    t.email&&t.email.includes('@dhananipeg.com')
+  ).map(t=>({taskId:t.id,recipientEmail:t.email,todoListId:t.recipientTodoListId,todoTaskId:t.recipientTodoTaskId}));
+  if(!assignments.length)return;
   try{
-    const token=await getAccessToken();
-    const listsRes=await fetch('https://graph.microsoft.com/v1.0/me/todo/lists',{headers:{Authorization:`Bearer ${token}`}});
-    if(!listsRes.ok)return;
-    const listsData=await listsRes.json();
-    const lists=listsData.value||[];
+    const userToken=await getAccessToken();
+    const res=await fetch(`${fnUrl}/poll-completions`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${userToken}`},
+      body:JSON.stringify({assignments}),
+    });
+    if(!res.ok)return;
+    const data=await res.json();
     let added=0;
-    for(const list of lists){
-      const tasksRes=await fetch(
-        `https://graph.microsoft.com/v1.0/me/todo/lists/${list.id}/tasks?$filter=status eq 'completed'&$select=id,title,completedDateTime,status`,
-        {headers:{Authorization:`Bearer ${token}`}}
-      );
-      if(!tasksRes.ok)continue;
-      const tasksData=await tasksRes.json();
-      for(const todoTask of (tasksData.value||[])){
-        const key='todo-'+todoTask.id;
-        if(processedEmailIds.has(key))continue;
-        processedEmailIds.add(key);
-        const titleLower=String(todoTask.title||'').toLowerCase();
-        const matchTask=tasks.find(t=>{
-          if(t.todoTaskId===todoTask.id)return true;
-          if(!t.title)return false;
-          const tl=t.title.toLowerCase();
-          return titleLower.includes(tl)||tl===titleLower||(t.person&&titleLower.includes(t.person.toLowerCase()));
+    for(const item of (data.completed||[])){
+      const key='todo-'+item.todoTaskId;
+      if(processedEmailIds.has(key))continue;
+      processedEmailIds.add(key);
+      const matchTask=tasks.find(t=>t.id===item.taskId);
+      if(matchTask&&matchTask.status!=='Done'){
+        const alreadyPending=notifications.some(n=>n.taskId===matchTask.id&&n.status==='pending');
+        if(alreadyPending)continue;
+        notifications.unshift({
+          id:Date.now()+Math.random(),
+          type:'task_completion',
+          message:`${matchTask.person||'Someone'} has completed their task: "${matchTask.title}". Do you want to approve it?`,
+          taskId:matchTask.id,
+          todoTaskId:item.todoTaskId,
+          timestamp:new Date().toISOString(),
+          status:'pending'
         });
-        if(matchTask&&matchTask.status!=='Done'){
-          const alreadyPending=notifications.some(n=>n.taskId===matchTask.id&&n.status==='pending');
-          if(alreadyPending)continue;
-          notifications.unshift({
-            id:Date.now()+Math.random(),
-            type:'task_completion',
-            message:`${matchTask.person||'Someone'} has completed their task: "${matchTask.title}". Do you want to approve it?`,
-            taskId:matchTask.id,
-            todoTaskId:todoTask.id,
-            timestamp:new Date().toISOString(),
-            status:'pending'
-          });
-          added++;
-        }
+        added++;
       }
     }
     if(added>0){

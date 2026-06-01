@@ -160,7 +160,8 @@ async function handleTodo(request, env) {
     return json({ error: 'Failed to create To Do task', detail: err }, taskRes.status);
   }
 
-  return json({ success: true });
+  const taskData = await taskRes.json().catch(() => ({}));
+  return json({ success: true, listId: defaultList.id, taskId: taskData.id || null });
 }
 
 // ── /data endpoint: shared company state for Action Log / Wednesday / Admin config
@@ -291,6 +292,43 @@ Write 1-3 bullet points (•) summarizing what these attachments contain. Be spe
   return json({ summary });
 }
 
+// ── /poll-completions endpoint ───────────────────────────────────────────────
+async function handlePollCompletions(request, env) {
+  const { error, status } = validateUserToken(request);
+  if (error) return json({ error }, status);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const { assignments = [] } = body;
+  if (!assignments.length) return json({ completed: [] });
+
+  let appToken;
+  try { appToken = await getAppToken(env); }
+  catch (err) { return json({ error: 'Could not acquire app token', detail: err.message }, 502); }
+
+  const completed = [];
+  for (const a of assignments) {
+    const { recipientEmail, todoListId, todoTaskId, taskId } = a;
+    if (!recipientEmail || !todoListId || !todoTaskId) continue;
+    if (!recipientEmail.includes('@dhananipeg.com')) continue;
+    try {
+      const res = await fetch(
+        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists/${todoListId}/tasks/${todoTaskId}?$select=id,status`,
+        { headers: { Authorization: `Bearer ${appToken}` } }
+      );
+      if (!res.ok) continue;
+      const taskData = await res.json();
+      if (taskData.status === 'completed') {
+        completed.push({ taskId, todoTaskId, recipientEmail });
+      }
+    } catch {}
+  }
+
+  return json({ completed });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -305,6 +343,7 @@ export default {
     }
 
     if (path === '/todo') return handleTodo(request, env);
+    if (path === '/poll-completions') return handlePollCompletions(request, env);
     if (path === '/attachment-summary') return handleAttachmentSummary(request, env);
     return handleSummary(request, env);
   },
