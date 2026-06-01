@@ -22275,7 +22275,7 @@ async function readEmail(emailId,folder,el){
   readerEl.innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px">Loading...</div>';
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments,flag,meetingRequestType,startDateTime,endDateTime,location,attendees`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments,flag`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const email=await res.json();
     emailCache[emailId]=email;
@@ -22294,13 +22294,20 @@ async function readEmail(emailId,folder,el){
     const dateStr=dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const bodyContent=email.body?.content||email.bodyPreview||'';
     const isHtml=email.body?.contentType==='html';
-    // Detect meeting: first check Graph EventMessage properties, then iCal in body
-    const isMeetingMsg=!!(email.meetingRequestType&&email.meetingRequestType!=='none');
+    // Detect meeting: @odata.type tells us it's an EventMessage; also scan body for iCal
+    const isEventMsg=String(email['@odata.type']||'').toLowerCase().includes('eventmessage');
     const rawBodyForIcal=isHtml?(()=>{const d=document.createElement('div');d.innerHTML=bodyContent;return d.textContent||'';})():bodyContent;
     const icalText=extractICalText(rawBodyForIcal);
-    const isMeeting=isMeetingMsg||!!icalText;
-    // Build structured meeting data: iCal body takes precedence; fall back to Graph fields
-    const meetingData=isMeeting?(icalText?parseICalData(icalText):buildMeetingDataFromGraph(email)):null;
+    const isMeeting=isEventMsg||!!icalText;
+    // For EventMessage without body iCal, fetch the EventMessage-specific fields
+    let meetingData=icalText?parseICalData(icalText):null;
+    if(isEventMsg&&!meetingData){
+      try{
+        const emRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=meetingRequestType,startDateTime,endDateTime,location,attendees`,{headers:{Authorization:`Bearer ${token}`}});
+        if(emRes.ok){const emData=await emRes.json();Object.assign(email,emData);emailCache[emailId]=email;}
+      }catch{}
+      meetingData=buildMeetingDataFromGraph(email);
+    }
     const isTracked=trackedEmailIds.has(emailId)||trackedEmailIds.has(email.conversationId);
     // Helper: small pill button
     const pBtn=(label,icon,onclick,extra='')=>`<button onclick="${onclick}" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap${extra?';'+extra:''}" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">${icon?`<svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icon}</svg>`:''}${label}</button>`;
@@ -22353,8 +22360,8 @@ async function readEmail(emailId,folder,el){
         resolveInlineImages(token,emailId,bodyContent).then(function(resolved){_f.srcdoc=resolved;});
       }
     }
-    // Check .ics attachments if no iCal found in body (always check for meeting request emails)
-    if(!isMeeting&&(email.hasAttachments||isMeetingMsg)){
+    // Check .ics attachments if no iCal found in body (always check for EventMessage emails)
+    if(!isMeeting&&(email.hasAttachments||isEventMsg)){
       try{
         const atts=await fetchVisibleAttachments(emailId);
         const icsAtt=atts.find(a=>(a.name||'').toLowerCase().endsWith('.ics')||(a.contentType||'').toLowerCase().includes('calendar'));
@@ -23146,7 +23153,7 @@ async function toggleEmailAISummary(emailId){
     const email=emailCache[emailId];
     if(!email){content.innerHTML='<span style="color:#b91c1c">Email not loaded.</span>';return;}
     // For meeting request emails, build summary from structured meeting data
-    if(email.meetingRequestType&&email.meetingRequestType!=='none'){
+    if(String(email['@odata.type']||'').toLowerCase().includes('eventmessage')){
       const mtg=buildMeetingDataFromGraph(email);
       const fmtDt=(dt)=>dt&&!isNaN(dt)?dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
       const lines=[];
