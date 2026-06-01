@@ -21344,7 +21344,7 @@ async function addTask(){
   clearAddTaskPerson();
   refreshAll();
   sendTaskNotification(task).catch(()=>{});
-  createToDoTask(task).catch(()=>{});
+  await createToDoTask(task).catch(()=>{});
   toast(`Task saved${email?`. To Do assigned to ${email}`:""}`);
   await saveTasksToOneDrive();
 }
@@ -23393,7 +23393,6 @@ async function sendTaskNotification(task){
       ${attHtml}
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
       <p>When you complete this task, please reply to this email with the word <strong>DONE</strong> in the subject line to notify your manager.</p>
-      <p><a href="https://dpeg-software.github.io/dhanani_task_manager/" style="color:#0E3416">Open Task Manager</a></p>
       <p style="color:#9ca3af;font-size:12px">DPEG Task Manager — automated notification</p>
     </div>`;
     const subject=`Task Assigned: ${task.title||'(no subject)'}`;
@@ -23768,12 +23767,12 @@ async function addTaskFromEmail(emailId){
   await attachFreeThreadSummary(email,{assignedDate,emailDate});
   const result=upsertTaskFromEmail(email,person,address,personDept(address,person),assignedDate);
   trackedEmailIds.add(emailId);
-  await saveTasksToOneDrive();
   refreshAll();
   if(result.created){
     sendTaskNotification(result.task).catch(()=>{});
-    createToDoTask(result.task).catch(()=>{});
+    await createToDoTask(result.task).catch(()=>{});
   }
+  await saveTasksToOneDrive();
   toast(result.created?'Task added to Action Log':'Updated existing thread in Action Log');
   readEmail(emailId,currentFolder);
 }
