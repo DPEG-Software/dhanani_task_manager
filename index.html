@@ -23392,7 +23392,6 @@ async function sendTaskNotification(task){
       <p><strong>Priority:</strong> ${escapeHtml(task.priority||'Normal')}</p>
       ${attHtml}
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
-      <p>When you complete this task, please reply to this email with the word <strong>DONE</strong> in the subject line to notify your manager.</p>
       <p style="color:#9ca3af;font-size:12px">DPEG Task Manager — automated notification</p>
     </div>`;
     const subject=`Task Assigned: ${task.title||'(no subject)'}`;
@@ -23702,10 +23701,14 @@ async function pollToDoCompletions(){
       if(matchTask&&matchTask.status!=='Done'){
         const alreadyPending=notifications.some(n=>n.taskId===matchTask.id&&n.status==='pending');
         if(alreadyPending)continue;
+        const completedOn=item.completedDateTime
+          ?new Date(item.completedDateTime.endsWith('Z')?item.completedDateTime:item.completedDateTime+'Z').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+          :new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+        const deadlineStr=matchTask.deadline||matchTask.date?` — Deadline: ${matchTask.deadline||matchTask.date}`:'';
         notifications.unshift({
           id:Date.now()+Math.random(),
           type:'task_completion',
-          message:`${matchTask.person||'Someone'} has completed their task: "${matchTask.title}". Do you want to approve it?`,
+          message:`${matchTask.person||'Someone'} completed "${matchTask.title||'task'}"${deadlineStr}. Marked done on ${completedOn}. Do you want to approve?`,
           taskId:matchTask.id,
           todoTaskId:item.todoTaskId,
           timestamp:new Date().toISOString(),

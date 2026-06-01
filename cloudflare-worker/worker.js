@@ -321,13 +321,13 @@ async function handlePollCompletions(request, env) {
     if (!recipientEmail.includes('@dhananipeg.com')) continue;
     try {
       const res = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists/${todoListId}/tasks/${todoTaskId}?$select=id,status`,
+        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists/${todoListId}/tasks/${todoTaskId}?$select=id,status,completedDateTime`,
         { headers: { Authorization: `Bearer ${appToken}` } }
       );
       if (!res.ok) continue;
       const taskData = await res.json();
       if (taskData.status === 'completed') {
-        completed.push({ taskId, todoTaskId, recipientEmail });
+        completed.push({ taskId, todoTaskId, recipientEmail, completedDateTime: taskData.completedDateTime?.dateTime || null });
       }
     } catch {}
   }
