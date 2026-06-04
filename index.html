@@ -18614,6 +18614,8 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 .ol-email-item.unread .ol-email-subject{font-weight:700;color:#111}
 .ol-email-item .ol-sum-btn{display:none}
 .ol-email-item:hover .ol-sum-btn{display:inline-flex}
+.ol-date-group{padding:8px 10px 5px;background:#fff;border-bottom:1px solid #f0f0f0;font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.45px;position:sticky;top:0;z-index:1}
+.ol-thread-count{font-size:10px;color:#6b7280;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:10px;padding:1px 6px;white-space:nowrap}
 .ol-email-sender{font-size:12px;font-weight:500;color:#111;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block}
 .ol-email-top{display:flex;align-items:center;gap:4px;margin-bottom:2px;width:100%;box-sizing:border-box}
 .ol-email-subject{font-size:12px;color:#4b5563;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:100%;font-weight:400}
@@ -21791,15 +21793,63 @@ function toggleBcc(){
   if(btn)btn.style.color=showing?'':'var(--ink)';
 }
 
+function emailTimestamp(e){
+  const t=new Date(e?.receivedDateTime||e?.sentDateTime||0).getTime();
+  return Number.isFinite(t)?t:0;
+}
+
+function emailDateGroupLabel(dt){
+  const d=new Date(dt);
+  if(isNaN(d))return 'Older';
+  const today=new Date();
+  const yesterday=new Date();
+  yesterday.setDate(today.getDate()-1);
+  if(d.toDateString()===today.toDateString())return 'Today';
+  if(d.toDateString()===yesterday.toDateString())return 'Yesterday';
+  return d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+}
+
+function groupEmailsByConversation(emails){
+  const groups=new Map();
+  (emails||[]).forEach(e=>{
+    const key=e.conversationId||e.id;
+    if(!groups.has(key))groups.set(key,{key,messages:[],latest:e});
+    const g=groups.get(key);
+    g.messages.push(e);
+    if(emailTimestamp(e)>emailTimestamp(g.latest))g.latest=e;
+  });
+  return Array.from(groups.values()).sort((a,b)=>emailTimestamp(b.latest)-emailTimestamp(a.latest));
+}
+
+async function readConversationOrEmail(emailId,folder,el){
+  const email=(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId)||emailCache[emailId];
+  const sameThread=email?.conversationId
+    ?(outlookFolderEmails[folder]||[]).filter(e=>e.conversationId===email.conversationId)
+    :[];
+  if(email?.conversationId&&sameThread.length>1){
+    currentEmailId=emailId;
+    if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
+    if(el){el.classList.add('active');_activeEmailEl=el;}
+    emailCache[emailId]=email;
+    await viewFullThread(emailId);
+    return;
+  }
+  await readEmail(emailId,folder,el);
+}
+
 function renderEmailRows(folder,emails){
   const listEl=document.getElementById('ol-email-list');
   if(!listEl)return;
   if(!emails||!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails</div></div>';return;}
-  const rows=emails.map(e=>{
-    const isTracked=trackedEmailIds.has(e.id)||trackedEmailIds.has(e.conversationId);
-    const isUnread=!e.isRead&&folder==='inbox';
+  const groups=groupEmailsByConversation(emails);
+  let lastGroup='';
+  const rows=groups.map(g=>{
+    const e=g.latest;
+    const threadCount=g.messages.length;
+    const isTracked=g.messages.some(m=>trackedEmailIds.has(m.id)||trackedEmailIds.has(m.conversationId));
+    const isUnread=folder==='inbox'&&g.messages.some(m=>!m.isRead);
     const isHigh=String(e.importance||'normal').toLowerCase()==='high';
-    const hasAtt=!!e.hasAttachments;
+    const hasAtt=g.messages.some(m=>!!m.hasAttachments);
     const safeId=escapeHtml(e.id||'');
     const safeFolder=escapeHtml(folder||'inbox');
     // Sender
@@ -21811,15 +21861,19 @@ function renderEmailRows(folder,emails){
     const now=new Date();
     const isToday=dt.toDateString()===now.toDateString();
     const dateStr=isToday?dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const groupLabel=emailDateGroupLabel(dt);
+    const groupHeader=groupLabel!==lastGroup?`<div class="ol-date-group">${groupLabel}</div>`:'';
+    lastGroup=groupLabel;
     // Badges
     const trackedBadge=isTracked?`<span style="background:#f0fdf4;color:#15803d;font-size:9px;font-weight:700;padding:1px 6px 1px 5px;border-radius:10px;border:1px solid #bbf7d0;white-space:nowrap;flex-shrink:0">✓</span>`:'';
     const highBadge=isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;border:1px solid #fecaca;white-space:nowrap;flex-shrink:0">!</span>`:'';
     const attIcon=hasAtt?`<svg width="10" height="10" fill="none" stroke="#9ca3af" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:'';
     const sumBtn=`<button class="ol-sum-btn" title="AI Summary" onclick="event.stopPropagation();toggleListAISummary(this.closest('.ol-email-item').dataset.emailId,this,'${safeFolder}')" style="width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;background:none;border:1px solid #e9d5ff;border-radius:4px;cursor:pointer;color:#7c3aed;padding:0;flex-shrink:0;transition:all .12s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='none'"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg></button>`;
-    return `<div class="ol-email-item${isUnread?' unread':''}" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readEmail(this.dataset.emailId,'${safeFolder}',this)">
+    const threadBadge=threadCount>1?`<span class="ol-thread-count">${threadCount}</span>`:'';
+    return `${groupHeader}<div class="ol-email-item${isUnread?' unread':''}" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readConversationOrEmail(this.dataset.emailId,'${safeFolder}',this)">
       <div class="ol-email-top">
         <span class="ol-email-sender">${escapeHtml(sender)}</span>
-        <span style="display:flex;align-items:center;gap:3px;flex-shrink:0">${trackedBadge}${highBadge}${attIcon}${sumBtn}<span class="ol-email-date">${dateStr}</span></span>
+        <span style="display:flex;align-items:center;gap:3px;flex-shrink:0">${threadBadge}${trackedBadge}${highBadge}${attIcon}${sumBtn}<span class="ol-email-date">${dateStr}</span></span>
       </div>
       <div class="ol-email-subject">${escapeHtml(e.subject||'(no subject)')}</div>
       <div class="ol-email-preview">${escapeHtml(e.bodyPreview||'')}</div>
@@ -21850,7 +21904,8 @@ async function loadFolder(folder){
   if(folder==='untracked'){await loadUntracked();return;}
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const orderField=folder==='sent'?'sentDateTime':'receivedDateTime';
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag&$orderby=${orderField} desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
@@ -22015,7 +22070,7 @@ async function openTaskThread(taskId){
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:6px">${emailSubject(t)}</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${messages.length} message${messages.length!==1?'s':''} in this thread</div>
       </div>
-      <div class="thread-scroll" style="padding:12px 20px;overflow:visible;flex:0 0 auto;min-height:0">
+      <div class="thread-scroll" style="padding:16px 20px;overflow-y:auto;flex:1;min-height:0;background:#f8fafc">
         ${messages.map(m=>{
           const from=m.from?.emailAddress;
           const to=m.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
@@ -22023,17 +22078,17 @@ async function openTaskThread(taskId){
           const body=m.body?.content||m.bodyPreview||'';
           const isHtml=m.body?.contentType==='html';
           const bIdx=isHtml?(window._emailFrameBodies.push(body)-1):-1;
-          return `<div style="padding:14px 0;border-bottom:1px solid var(--border)">
-            <div style="font-size:13px;font-weight:700;color:var(--body);margin-bottom:5px">${m.subject||'(no subject)'}</div>
-            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${from?.name||from?.address||''}</div>
-            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${to}</div>
+          return `<div style="padding:14px 16px;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+            <div style="font-size:13px;font-weight:700;color:var(--body);margin-bottom:7px">${escapeHtml(m.subject||'(no subject)')}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${escapeHtml(from?.name||from?.address||'')}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${escapeHtml(to)}</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
             ${m.hasAttachments?`<div id="thread-att-${m.id}" style="margin-bottom:10px"></div>`:''}
-            <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?`<iframe data-bidx="${bIdx}" data-msgid="${m.id}" style="width:100%;border:none;display:block;min-height:200px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${body}</pre>`}</div>
+            <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?`<iframe data-bidx="${bIdx}" data-msgid="${m.id}" style="width:100%;border:none;display:block;min-height:200px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(body)}</pre>`}</div>
           </div>`;
         }).join('')}
       </div>`;
-    const scrollToNewest=()=>{readerEl.scrollTop=readerEl.scrollHeight;};
+    const scrollToNewest=()=>{const sc=readerEl.querySelector('.thread-scroll');if(sc)sc.scrollTop=sc.scrollHeight;};
     readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}scrollToNewest();});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
     loadThreadAttachmentChips(messages);
     setTimeout(scrollToNewest,120);
@@ -22102,7 +22157,7 @@ async function viewFullThread(emailId){
           ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
         </div>
       </div>
-      <div class="thread-scroll" style="padding:12px 20px;overflow:visible;flex:0 0 auto;min-height:0">
+      <div class="thread-scroll" style="padding:16px 20px;overflow-y:auto;flex:1;min-height:0;background:#f8fafc">
         ${messages.map(m=>{
           const from=m.from?.emailAddress;
           const to=m.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
@@ -22110,17 +22165,17 @@ async function viewFullThread(emailId){
           const body=m.body?.content||m.bodyPreview||'';
           const isHtml=m.body?.contentType==='html';
           const bIdx=isHtml?(window._emailFrameBodies.push(body)-1):-1;
-          return `<div style="padding:14px 0;border-bottom:1px solid var(--border)">
-            <div style="font-size:13px;font-weight:700;color:var(--body);margin-bottom:5px">${m.subject||'(no subject)'}</div>
-            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${from?.name||from?.address||''}</div>
-            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${to}</div>
+          return `<div style="padding:14px 16px;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+            <div style="font-size:13px;font-weight:700;color:var(--body);margin-bottom:7px">${escapeHtml(m.subject||'(no subject)')}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${escapeHtml(from?.name||from?.address||'')}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${escapeHtml(to)}</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
             ${m.hasAttachments?`<div id="thread-att-${m.id}" style="margin-bottom:10px"></div>`:''}
-            <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?`<iframe data-bidx="${bIdx}" data-msgid="${m.id}" style="width:100%;border:none;display:block;min-height:200px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${body}</pre>`}</div>
+            <div style="font-size:13px;line-height:1.65;color:var(--body)">${isHtml?`<iframe data-bidx="${bIdx}" data-msgid="${m.id}" style="width:100%;border:none;display:block;min-height:200px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:Inter,sans-serif;white-space:pre-wrap;font-size:13px;line-height:1.6">${escapeHtml(body)}</pre>`}</div>
           </div>`;
         }).join('')}
       </div>`;
-    const scrollToNewest=()=>{readerEl.scrollTop=readerEl.scrollHeight;};
+    const scrollToNewest=()=>{const sc=readerEl.querySelector('.thread-scroll');if(sc)sc.scrollTop=sc.scrollHeight;};
     readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,200)+'px';}catch(e){}scrollToNewest();});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
     loadThreadAttachmentChips(messages);
     setTimeout(scrollToNewest,120);
@@ -22820,6 +22875,7 @@ async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipien
 }
 
 async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,body,importance,toAttach=[],composed=null){
+  const prepared=composed||prepareComposedEmail(body);
   const createRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/createReply`,{
     method:'POST',
     headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
@@ -22831,7 +22887,7 @@ async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,b
   }
   const draft=await createRes.json();
   const patch={importance};
-  const replyIntro=body?`<div>${escapeHtml(body).replace(/\r?\n/g,'<br>')}</div>`:'';
+  const replyIntro=prepared.html||'';
   let originalBody=draft.body?.content||'';
   let originalBodyType=(draft.body?.contentType||'html').toLowerCase();
   if(!originalBody){
