@@ -18614,7 +18614,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 .ol-email-item.unread .ol-email-subject{font-weight:700;color:#111}
 .ol-email-item .ol-sum-btn{display:none}
 .ol-email-item:hover .ol-sum-btn{display:inline-flex}
-.ol-date-group{padding:8px 10px 5px;background:#fff;border-bottom:1px solid #f0f0f0;font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.45px;position:sticky;top:0;z-index:1}
+.ol-date-group{padding:8px 10px 5px;background:#f4fbf5;border-bottom:1px solid #d9eadb;font-size:10px;font-weight:700;color:#355e3b;text-transform:uppercase;letter-spacing:.45px;position:sticky;top:0;z-index:1}
 .ol-thread-count{font-size:10px;color:#6b7280;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:10px;padding:1px 6px;white-space:nowrap}
 .ol-email-sender{font-size:12px;font-weight:500;color:#111;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block}
 .ol-email-top{display:flex;align-items:center;gap:4px;margin-bottom:2px;width:100%;box-sizing:border-box}
@@ -20635,6 +20635,22 @@ async function attachFreeThreadSummary(email, opts={}){
   }
   return email;
 }
+
+async function fetchThreadMessagesForSummary(email,limit=15){
+  if(!email?.conversationId)return [email].filter(Boolean);
+  try{
+    const token=await getAccessToken();
+    const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
+    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,flag,importance,hasAttachments';
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=${limit}&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+    if(res.ok){
+      const d=await res.json();
+      if(d.value?.length)return d.value;
+    }
+  }catch{}
+  return [email].filter(Boolean);
+}
+
 function upsertTaskFromEmail(email,person,address,dept,date){
   const conversationId=email.conversationId||"";
   const emailPriority=String(email.importance||"normal").toLowerCase()==="high"||outlookFlagStatus(email)==='flagged'?"High":"Normal";
@@ -20659,6 +20675,35 @@ function upsertTaskFromEmail(email,person,address,dept,date){
   tasks.unshift(task);
   return {task,created:true};
 }
+
+async function refreshTaskFromThreadMessages(messages,subject=''){
+  if(!Array.isArray(messages)||!messages.length)return;
+  const conversationId=messages.find(m=>m.conversationId)?.conversationId;
+  if(!conversationId)return;
+  const t=tasks.find(x=>x.conversationId===conversationId&&nstt(x.status)!=="Done");
+  if(!t)return;
+  const ordered=[...messages].sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime||0)-new Date(b.receivedDateTime||b.sentDateTime||0));
+  const latest=ordered[ordered.length-1];
+  const hasHigh=ordered.some(m=>String(m.importance||"normal").toLowerCase()==="high"||outlookFlagStatus(m)==='flagged');
+  t.lastMessageId=latest.id||t.lastMessageId||t.emailId||"";
+  t.emailId=t.emailId||latest.id||"";
+  t.emailSubject=latest.subject||subject||t.emailSubject||t.title;
+  t.title=t.title||t.emailSubject||"(no subject)";
+  t.replyCount=ordered.length;
+  t.lastReplyAt=latest.receivedDateTime||latest.sentDateTime||t.lastReplyAt;
+  if(hasHigh)t.priority="High";
+  const local=localThreadSummary(ordered);
+  if(local)t.summary=local;
+  try{
+    const ai=await callAISummary(ordered,t.emailSubject||subject||'');
+    if(ai){t.summary=ai;t.threadSummary=ai;t.aiGenerated=true;}
+  }catch{}
+  syncBadges();
+  renderMaster();
+  if(document.querySelector(".page.active")?.id==="page-wednesday")renderWed();
+  await saveTasksToOneDrive();
+}
+
 function sbadge(s) {
   const st=nstt(s);
   const m={Pending:"bp",Done:"bd",Overdue:"bo"};
@@ -20769,7 +20814,7 @@ function weekRange(o){
   const s=new Date(m);s.setDate(m.getDate()+6);
   return `${m.toLocaleDateString("en-US",{month:"short",day:"numeric"})} to ${s.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`;
 }
-function chWeek(d){curWeek=Math.max(0,curWeek-d);document.getElementById("wn-l").textContent=WL[curWeek]||`${curWeek} weeks ago`;document.getElementById("wn-r").textContent=weekRange(curWeek);renderMaster();}
+function chWeek(d){curWeek=Math.max(0,curWeek-d);document.getElementById("wn-l").textContent=WL[curWeek]||`${curWeek} weeks ago`;document.getElementById("wn-r").textContent=weekRange(curWeek);syncBadges();renderMaster();}
 
 // ============================================================
 // ACTION LOG
@@ -20780,15 +20825,34 @@ function taskWeekOffset(t){
   const toMon=x=>{const r=new Date(x);r.setDate(r.getDate()-(r.getDay()||7)+1);r.setHours(0,0,0,0);return r;};
   return Math.max(0,Math.round((toMon(new Date())-toMon(d))/(7*24*60*60*1000)));
 }
+function overdueCarryWeeks(t){
+  return Math.max(1,taskWeekOffset(t));
+}
+function isCarriedOverdue(t){
+  return curWeek===0&&nstt(t.status)==="Overdue"&&taskWeekOffset(t)>0;
+}
+function sortActionTasks(list){
+  return [...list].sort((a,b)=>{
+    const ao=nstt(a.status)==="Overdue"?0:1;
+    const bo=nstt(b.status)==="Overdue"?0:1;
+    if(ao!==bo)return ao-bo;
+    const ap=String(a.priority||"Normal").toLowerCase()==="high"?0:1;
+    const bp=String(b.priority||"Normal").toLowerCase()==="high"?0:1;
+    if(ap!==bp)return ap-bp;
+    return new Date(b.lastReplyAt||b.date||0)-new Date(a.lastReplyAt||a.date||0);
+  });
+}
 function getVis(){
   const sf=document.getElementById("sf-status")?.value||"all";
   const df=document.getElementById("sf-dept")?.value||"all";
   const pf=document.getElementById("sf-priority")?.value||"all";
-  return tasks.filter(t=>{
-    const wm=curSearch?true:(taskWeekOffset(t)===curWeek);
+  return sortActionTasks(tasks.filter(t=>{
+    const createdInWeek=taskWeekOffset(t)===curWeek;
+    const carried=isCarriedOverdue(t);
+    const wm=curSearch?true:(createdInWeek||carried);
     const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
     return wm&&sm&&(sf==="all"||nstt(t.status)===sf)&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
-  });
+  }));
 }
 function renderMaster(){
   const list=getVis(),tb=document.getElementById("master-tbody");
@@ -20796,14 +20860,19 @@ function renderMaster(){
     tb.innerHTML=`<tr><td colspan="9"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
     return;
   }
-  tb.innerHTML=list.map(t=>`
-    <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6':''}">
+  tb.innerHTML=list.map(t=>{
+    const carried=isCarriedOverdue(t);
+    const overdueNote=carried?`<div style="margin-top:4px;padding:4px 7px;background:#fee2e2;border:1px solid #fecaca;border-radius:5px;color:#991b1b;font-size:10.5px;font-weight:600">Pending from ${overdueCarryWeeks(t)} week${overdueCarryWeeks(t)!==1?'s':''} ago</div>`:'';
+    const priorityNote=String(t.priority||"Normal").toLowerCase()==="high"?`<div style="margin-top:4px;color:#b91c1c;font-size:10.5px;font-weight:700">Prioritized from Outlook</div>`:'';
+    return `
+    <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6;':''}${carried?'background:#fff1f2;box-shadow:inset 3px 0 #ef4444;':''}">
       <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 16px">
         <input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)">
       </td>
       <td style="padding:10px 14px">
         <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}</div>
         ${t.replyCount>1?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${t.replyCount} msgs</div>`:""}
+        ${overdueNote}${priorityNote}
       </td>
       <td style="padding:10px 10px">
         <div style="display:flex;align-items:center;gap:6px">${av(t.person,22)}<span style="font-size:12px;color:var(--body);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.person}</span></div>
@@ -20818,7 +20887,7 @@ function renderMaster(){
       <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 4px;text-align:right">
         <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:1px 6px;font-size:11px;min-width:0;opacity:.7" onclick="removeTask(${t.id})" title="Remove">&#10005;</button>
       </td>
-    </tr>`).join("");
+    </tr>`}).join("");
 }
 function selectedVisibleTasks(){
   const visible=new Set(getVis().map(t=>t.id));
@@ -21160,7 +21229,17 @@ async function saveMeeting(){
     tasks:wt.map(t=>({title:t.title,person:t.person,dept:t.dept,status:nstt(t.status),note:t.meetingNote||""})),
     customNotes:customNotes.map(n=>({text:n.text,note:n.meetingNote||""}))
   });
-  tasks.forEach(t=>{t.wednesday=false;delete t.meetingNote;});
+  tasks.forEach(t=>{
+    if(nstt(t.status)==="Overdue"){
+      t.wednesday=false;
+      t.carryForwardFrom=t.carryForwardFrom||new Date().toISOString().split("T")[0];
+      t.followup=t.meetingNote||t.followup||"Pending from Wednesday review.";
+      delete t.meetingNote;
+      return;
+    }
+    t.wednesday=false;
+    delete t.meetingNote;
+  });
   customNotes=[];renderWed();renderArc();syncBadges();
   await saveTasksToOneDrive();
   toast("Saved and archived.");
@@ -21592,11 +21671,12 @@ async function deleteEmail(emailId){
 
 function syncBadges(){
   const open=tasks.filter(t=>nstt(t.status)!=="Done").length;
+  const actionWeekOpen=tasks.filter(t=>nstt(t.status)!=="Done"&&(taskWeekOffset(t)===curWeek||isCarriedOverdue(t))).length;
   const high=tasks.filter(t=>String(t.priority||"Normal").toLowerCase()==="high"&&nstt(t.status)!=="Done").length;
   const wed=tasks.filter(t=>t.wednesday).length+customNotes.length;
   const dn=tasks.filter(t=>nstt(t.status)==="Done").length;
   const pct=tasks.length?Math.round(dn/tasks.length*100):0;
-  document.getElementById("nb-m").textContent=open;
+  document.getElementById("nb-m").textContent=actionWeekOpen;
   document.getElementById("nb-w").textContent=wed;
   document.getElementById("d-tot").textContent=tasks.length;
   document.getElementById("d-high").textContent=high;
@@ -22059,18 +22139,19 @@ async function openTaskThread(taskId){
   try{
     const token=await getAccessToken();
     const filter=encodeURIComponent(`conversationId eq '${t.conversationId.replace(/'/g,"''")}'`);
-    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink,hasAttachments,flag';
+    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,conversationId,webLink,hasAttachments,flag,importance';
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+    refreshTaskFromThreadMessages(messages,emailSubject(t)).catch(()=>{});
     window._emailFrameBodies=[];
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:6px">${emailSubject(t)}</div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${messages.length} message${messages.length!==1?'s':''} in this thread</div>
       </div>
-      <div class="thread-scroll" style="padding:16px 20px;overflow-y:auto;flex:1;min-height:0;background:#f8fafc">
+      <div class="thread-scroll" style="padding:16px 20px;overflow-y:auto;flex:1;min-height:0;background:#f3faf4">
         ${messages.map(m=>{
           const from=m.from?.emailAddress;
           const to=m.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
@@ -22078,7 +22159,7 @@ async function openTaskThread(taskId){
           const body=m.body?.content||m.bodyPreview||'';
           const isHtml=m.body?.contentType==='html';
           const bIdx=isHtml?(window._emailFrameBodies.push(body)-1):-1;
-          return `<div style="padding:14px 16px;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+          return `<div style="padding:14px 16px;margin-bottom:14px;border:1px solid #d6ead8;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)">
             <div style="font-size:13px;font-weight:700;color:var(--body);margin-bottom:7px">${escapeHtml(m.subject||'(no subject)')}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${escapeHtml(from?.name||from?.address||'')}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${escapeHtml(to)}</div>
@@ -22142,11 +22223,12 @@ async function viewFullThread(emailId){
   try{
     const token=await getAccessToken();
     const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
-    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,webLink,hasAttachments,flag';
+    const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,conversationId,webLink,hasAttachments,flag,importance';
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+    refreshTaskFromThreadMessages(messages,email.subject||'(no subject)').catch(()=>{});
     window._emailFrameBodies=[];
     readerEl.innerHTML=`
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f9fafb;flex-shrink:0">
@@ -22157,7 +22239,7 @@ async function viewFullThread(emailId){
           ${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}
         </div>
       </div>
-      <div class="thread-scroll" style="padding:16px 20px;overflow-y:auto;flex:1;min-height:0;background:#f8fafc">
+      <div class="thread-scroll" style="padding:16px 20px;overflow-y:auto;flex:1;min-height:0;background:#f3faf4">
         ${messages.map(m=>{
           const from=m.from?.emailAddress;
           const to=m.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
@@ -22165,7 +22247,7 @@ async function viewFullThread(emailId){
           const body=m.body?.content||m.bodyPreview||'';
           const isHtml=m.body?.contentType==='html';
           const bIdx=isHtml?(window._emailFrameBodies.push(body)-1):-1;
-          return `<div style="padding:14px 16px;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+          return `<div style="padding:14px 16px;margin-bottom:14px;border:1px solid #d6ead8;border-radius:8px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)">
             <div style="font-size:13px;font-weight:700;color:var(--body);margin-bottom:7px">${escapeHtml(m.subject||'(no subject)')}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">From: ${escapeHtml(from?.name||from?.address||'')}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-bottom:2px">To: ${escapeHtml(to)}</div>
@@ -23205,15 +23287,19 @@ async function toggleListAISummary(emailId,btn,folder){
     let email=emailCache[emailId];
     if(!email){
       const token=await getAccessToken();
-      const res=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+emailId+'?=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,conversationId,flag,importance',{headers:{Authorization:'Bearer '+token}});
+      const res=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+emailId+'?$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,conversationId,flag,importance,hasAttachments',{headers:{Authorization:'Bearer '+token}});
       if(!res.ok)throw new Error('fetch failed');
       email=await res.json();
       emailCache[emailId]=email;
     }
-    const atts=email.hasAttachments?(await fetchVisibleAttachments(emailId).catch(()=>[])):[];
+    const messages=await fetchThreadMessagesForSummary(email,15);
+    const atts=[];
+    for(const m of messages){
+      if(m.hasAttachments){try{atts.push(...await fetchVisibleAttachments(m.id));}catch{}}
+    }
     const attachmentNames=atts.map(a=>a.name);
-    const ai=await callAISummary([email],email.subject||'',{attachmentNames});
-    const summary=ai||localThreadSummary([email]);
+    const ai=await callAISummary(messages,email.subject||'',{attachmentNames});
+    const summary=ai||localThreadSummary(messages);
     let html=renderAIBullets(summary);
     if(atts.length){
       html+=`<div style="margin-top:5px;font-size:10px;color:#6b7280"><span style="font-weight:600">${atts.length} attachment${atts.length>1?'s':''}</span>: ${attachmentNames.join(', ')}</div>`;
@@ -23253,13 +23339,7 @@ async function toggleEmailAISummary(emailId){
       panel.dataset.loaded='1';
       return;
     }
-    let messages=[email];
-    if(email.conversationId){
-      const token=await getAccessToken();
-      const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
-      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=15&$select=id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,flag,hasAttachments&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
-      if(res.ok){const d=await res.json();if(d.value?.length)messages=d.value;}
-    }
+    let messages=await fetchThreadMessagesForSummary(email,15);
     // Collect visible attachment names from thread (don't fetch content yet)
     const allAtts=[];
     for(const m of messages){
