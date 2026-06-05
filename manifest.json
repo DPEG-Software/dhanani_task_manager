@@ -4,7 +4,7 @@
   "description": "DPEG Task and Email Management",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#f0fdf4",
+  "background_color": "#ffffff",
   "theme_color": "#15803d",
   "icons": [
     {

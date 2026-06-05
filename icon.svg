@@ -1,5 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="28" fill="#15803d"/>
-  <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="118" fill="white" letter-spacing="-4">D</text>
-  <rect x="28" y="158" width="136" height="8" rx="4" fill="rgba(255,255,255,0.35)"/>
+  <rect width="192" height="192" rx="22" fill="#ffffff"/>
+  <!-- Light green chevron (top) -->
+  <polyline points="18,82 96,20 174,82" fill="none" stroke="#90CE80" stroke-width="24" stroke-linejoin="miter" stroke-linecap="butt"/>
+  <!-- Medium green chevron (middle) -->
+  <polyline points="18,114 96,52 174,114" fill="none" stroke="#4DAA4B" stroke-width="24" stroke-linejoin="miter" stroke-linecap="butt"/>
+  <!-- Dark green chevron (bottom) -->
+  <polyline points="18,146 96,84 174,146" fill="none" stroke="#1F6B2E" stroke-width="24" stroke-linejoin="miter" stroke-linecap="butt"/>
+  <!-- Task Manager label -->
+  <text x="96" y="174" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="700" fill="#374151" letter-spacing="1.2">TASK MANAGER</text>
 </svg>
