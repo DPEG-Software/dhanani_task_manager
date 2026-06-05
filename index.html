@@ -23530,6 +23530,7 @@ async function sendTaskNotification(task){
     const token=await getAccessToken();
     const assignedBy=currentUser?.name||currentUser?.email||'DPEG Manager';
     const dueDate=task.deadline||((task.deadline===undefined)?task.date:'');
+    const sentDate=new Date().toISOString().split('T')[0];
     const summaryClean=(task.summary||'').replace(/[•*▾▲◆]/g,'').trim().slice(0,600);
     const attHtml=Array.isArray(task.attachmentNames)&&task.attachmentNames.length
       ?`<p><strong>Attachments:</strong> ${task.attachmentNames.map(n=>escapeHtml(n)).join(', ')}</p>`:'';
@@ -23538,7 +23539,7 @@ async function sendTaskNotification(task){
       <p><strong>Task:</strong> ${escapeHtml(task.title||'')}</p>
       ${summaryClean?`<p><strong>Summary:</strong> ${escapeHtml(summaryClean)}</p>`:''}
       <p><strong>Assigned by:</strong> ${escapeHtml(assignedBy)}</p>
-      <p><strong>Date:</strong> ${escapeHtml(task.date||'')}</p>
+      <p><strong>Date:</strong> ${escapeHtml(sentDate)}</p>
       ${dueDate?`<p><strong>Deadline:</strong> ${escapeHtml(dueDate)}</p>`:''}
       <p><strong>Priority:</strong> ${escapeHtml(task.priority||'Normal')}</p>
       ${attHtml}
