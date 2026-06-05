@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Dhanani Task Manager v3</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#15803d">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}</script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <!-- Microsoft Authentication Library -->
@@ -18893,6 +18897,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
       <svg width="13" height="13" fill="none" stroke="#9ca3af" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke-width="2"/><path d="M21 21l-4.35-4.35" stroke-width="2" stroke-linecap="round"/></svg>
       <input type="text" placeholder="Search tasks, people..." id="srch" oninput="doSearch(this.value)">
     </div>
+<button id="pwa-install-btn" class="btn btn-ghost" onclick="pwaInstall()" style="display:none;align-items:center;gap:5px;font-size:12px"><svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20h16" stroke-width="2" stroke-linecap="round"/></svg>Install App</button>
 <button class="btn btn-primary" onclick="openAdd()">+ Add Task</button>
   </div>
 
@@ -19236,6 +19241,10 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
           <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           Attach
         </button>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;margin-right:auto;user-select:none" title="When checked, a task is created in the Action Log for each DPEG recipient">
+          <input type="checkbox" id="compose-create-task" checked style="cursor:pointer;accent-color:var(--forest)">
+          Add to Action Log
+        </label>
         <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-compose')">Discard</button>
         <button class="btn btn-primary btn-sm" onclick="sendEmail()" id="compose-send-btn">
           <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -22145,6 +22154,11 @@ async function openTaskEmail(emailId){
 }
 
 
+let _pwaPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();_pwaPrompt=e;const b=document.getElementById('pwa-install-btn');if(b)b.style.display='flex';});
+window.addEventListener('appinstalled',()=>{_pwaPrompt=null;const b=document.getElementById('pwa-install-btn');if(b)b.style.display='none';});
+function pwaInstall(){if(!_pwaPrompt)return;_pwaPrompt.prompt();_pwaPrompt.userChoice.then(()=>{_pwaPrompt=null;const b=document.getElementById('pwa-install-btn');if(b)b.style.display='none';});}
+
 function tvToggle(msgId){
   const body=document.getElementById(msgId+'-body');
   if(!body)return;
@@ -22793,7 +22807,8 @@ async function sendEmail(){
   // Check for open threads with any recipient before sending
   const allRecipients=[...to.split(','),...(cc?cc.split(','):[]),...(bcc?bcc.split(','):[])]
     .map(e=>e.trim().toLowerCase()).filter(Boolean);
-  await showUnreadCheckIfNeeded(allRecipients.join(','), ()=>doSendEmail(to,cc,bcc,subject,body,importance,deadline));
+  const createTask=document.getElementById('compose-create-task')?.checked!==false;
+  await showUnreadCheckIfNeeded(allRecipients.join(','), ()=>doSendEmail(to,cc,bcc,subject,body,importance,deadline,createTask));
 }
 
 async function getForwardAttachmentNames(emailId){
@@ -23019,7 +23034,7 @@ async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,b
   }
 }
 
-async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline=''){
+async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='',createTask=true){
   const btn=document.getElementById('compose-send-btn');
   if(btn){btn.disabled=true;btn.innerHTML='Sending...';}
   try{
@@ -23058,40 +23073,43 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
     }
     closeMo('mo-compose');
     if(btn){btn.disabled=false;btn.innerHTML='<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Send';}
-    // Auto create tasks for all DPEG recipients in To and CC
-    const dpegRecipients=getDpegRecipients(to,cc);
-    if(dpegRecipients.length){
-      let forwardedEmail=null;
-      if(currentComposeType==='Forward'&&currentComposeEmailId){
-        forwardedEmail=emailCache[currentComposeEmailId]||null;
-        if(forwardedEmail){
-          await attachFreeThreadSummary(forwardedEmail).catch(()=>{});
+    if(createTask){
+      const dpegRecipients=getDpegRecipients(to,cc);
+      if(dpegRecipients.length){
+        let forwardedEmail=null;
+        if(currentComposeType==='Forward'&&currentComposeEmailId){
+          forwardedEmail=emailCache[currentComposeEmailId]||null;
+          if(forwardedEmail){
+            await attachFreeThreadSummary(forwardedEmail).catch(()=>{});
+          }
         }
+        for(const email of dpegRecipients){
+          const p=findPersonByEmail(email);
+          const person=p?.name||email.split('@')[0];
+          const newTask={
+            id:Date.now()+Math.random(),
+            title:forwardedEmail?.subject||subject,
+            emailSubject:forwardedEmail?.subject||subject,
+            emailId:forwardedEmail?.id||'',
+            conversationId:forwardedEmail?.conversationId||'',
+            lastMessageId:forwardedEmail?.id||'',
+            summary:[forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body,[...forwardAttachmentNames,...manualAttachmentNames].length?`Attachments: ${[...forwardAttachmentNames,...manualAttachmentNames].join(', ')}`:''].filter(Boolean).join('\n'),
+            threadSummary:forwardedEmail?.threadSummary||'',
+            attachmentNames:[...forwardAttachmentNames,...manualAttachmentNames],
+            aiGenerated:!!forwardedEmail?.aiGenerated,
+            person,email,dept:personDept(email,person),date:deadline||new Date().toISOString().split('T')[0],deadline:deadline||'',status:'Pending',priority:importance==='high'?'High':'Normal',wednesday:false,followup:'',weekOffset:0,
+            replyCount:forwardedEmail?.conversationId?undefined:1
+          };
+          tasks.unshift(newTask);
+          await sendTaskNotification(newTask).catch(err=>console.warn('Task notification failed:',err.message));
+          await createToDoTask(newTask).catch(err=>console.warn('To Do creation failed:',err.message));
+        }
+        await saveTasksToOneDrive();
+        refreshAll();
+        toast(`Email sent. ${dpegRecipients.length} task${dpegRecipients.length!==1?'s':''} created in Action Log.`);
+      }else{
+        toast('Email sent');
       }
-      for(const email of dpegRecipients){
-        const p=findPersonByEmail(email);
-        const person=p?.name||email.split('@')[0];
-        const newTask={
-          id:Date.now()+Math.random(),
-          title:forwardedEmail?.subject||subject,
-          emailSubject:forwardedEmail?.subject||subject,
-          emailId:forwardedEmail?.id||'',
-          conversationId:forwardedEmail?.conversationId||'',
-          lastMessageId:forwardedEmail?.id||'',
-          summary:[forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body,[...forwardAttachmentNames,...manualAttachmentNames].length?`Attachments: ${[...forwardAttachmentNames,...manualAttachmentNames].join(', ')}`:''].filter(Boolean).join('\n'),
-          threadSummary:forwardedEmail?.threadSummary||'',
-          attachmentNames:[...forwardAttachmentNames,...manualAttachmentNames],
-          aiGenerated:!!forwardedEmail?.aiGenerated,
-          person,email,dept:personDept(email,person),date:deadline||new Date().toISOString().split('T')[0],deadline:deadline||'',status:'Pending',priority:importance==='high'?'High':'Normal',wednesday:false,followup:'',weekOffset:0,
-          replyCount:forwardedEmail?.conversationId?undefined:1
-        };
-        tasks.unshift(newTask);
-        await sendTaskNotification(newTask).catch(err=>console.warn('Task notification failed:',err.message));
-        await createToDoTask(newTask).catch(err=>console.warn('To Do creation failed:',err.message));
-      }
-      await saveTasksToOneDrive();
-      refreshAll();
-      toast(`Email sent. ${dpegRecipients.length} task${dpegRecipients.length!==1?'s':''} created in Action Log.`);
     }else{
       toast('Email sent');
     }
