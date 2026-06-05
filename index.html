@@ -22222,7 +22222,7 @@ async function openTaskThread(taskId){
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
     refreshTaskFromThreadMessages(messages,emailSubject(t)).catch(()=>{});
     readerEl.innerHTML=`<div class="tv-hdr"><div class="tv-subject">${emailSubject(t)}</div><div class="tv-count">${messages.length} message${messages.length!==1?'s':''} · newest first</div></div><div class="tv-list">${buildThreadHTML(messages)}</div>`;
-    readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){});});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
+    readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
     loadThreadAttachmentChips(messages);
   }catch(err){
     toast('Could not open email thread');
@@ -22281,7 +22281,7 @@ async function viewFullThread(emailId){
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
     refreshTaskFromThreadMessages(messages,email.subject||'(no subject)').catch(()=>{});
     readerEl.innerHTML=`<div class="tv-hdr"><div class="tv-subject">${email.subject||'(no subject)'}</div><div class="tv-count">${messages.length} message${messages.length!==1?'s':''} · newest first</div><div class="tv-hdr-actions"><button class="btn btn-ghost btn-sm" onclick="readEmail('${emailId}','${currentFolder}')">← Back to Email</button>${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}</div></div><div class="tv-list">${buildThreadHTML(messages)}</div>`;
-    readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){});});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
+    readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
     loadThreadAttachmentChips(messages);
   }catch(err){
     console.error('Thread load error:',err);
