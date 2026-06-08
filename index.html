@@ -18268,6 +18268,40 @@ exports.version = version;
   --sh3:0 16px 48px rgba(0,0,0,.14);
   --r:4px;--rlg:6px;
 }
+[data-theme="dark"]{
+  --ink:#22c55e;--forest:#16a34a;--fern:#15803d;
+  --sage:#1e3a24;--sage2:#162a1c;--sage3:#0f1e14;
+  --body:#e5e7eb;--sub:#9ca3af;--muted:#6b7280;
+  --border:#374151;--bg:#111827;--white:#1f2937;
+  --amber:#fbbf24;--amber-bg:#292001;--amber-bd:#854d0e;
+  --ruby:#f87171;--ruby-bg:#1f0608;--ruby-bd:#9f1239;
+  --sky:#93c5fd;--sky-bg:#0c1631;--sky-bd:#1e3a8a;
+  --leaf:#86efac;--leaf-bg:#0a1f10;--leaf-bd:#14532d;
+  --sh:0 1px 3px rgba(0,0,0,.4),0 1px 8px rgba(0,0,0,.3);
+  --sh2:0 4px 16px rgba(0,0,0,.5);
+  --sh3:0 16px 48px rgba(0,0,0,.7);
+}
+[data-theme="dark"] thead th{background:var(--bg)}
+[data-theme="dark"] tbody tr:hover,[data-theme="dark"] .task-row:hover,[data-theme="dark"] .person-row:hover,[data-theme="dark"] .dept-row:hover{background:var(--bg)}
+[data-theme="dark"] .task-row,[data-theme="dark"] .task-list,[data-theme="dark"] .compose-ac,[data-theme="dark"] .wed-card,[data-theme="dark"] .wed-card-dept,[data-theme="dark"] .email-link-btn,[data-theme="dark"] .ag-ta,[data-theme="dark"] .ag-status-btn,[data-theme="dark"] .mo-foot,[data-theme="dark"] .tv-msg-actions button{background:var(--white);color:var(--body)}
+[data-theme="dark"] .tv-msg-actions button{border-color:var(--border)}
+[data-theme="dark"] .tv-msg-actions button:hover{background:var(--sage3);border-color:var(--sage);color:var(--ink)}
+[data-theme="dark"] .act-item{border-bottom-color:var(--border)}
+[data-theme="dark"] .nb.red{background:#7f1d1d;color:#fca5a5;border-color:#991b1b}
+[data-theme="dark"] .p-high{background:#7f1d1d;color:#fca5a5}
+[data-theme="dark"] .p-low{background:var(--bg);color:var(--muted)}
+[data-theme="dark"] .acct-option.danger:hover{background:#7f1d1d}
+[data-theme="dark"] .mo-x:hover{background:#7f1d1d;color:#fca5a5;border-color:#991b1b}
+[data-theme="dark"] .ai-status-bar.ai-ok{background:#0a1f10;color:#86efac;border-color:#14532d}
+[data-theme="dark"] .ai-status-bar.ai-err{background:#1f0608;color:#f87171;border-color:#9f1239}
+[data-theme="dark"] .ol-folder:hover{background:var(--sage3);color:var(--body)}
+[data-theme="dark"] .ol-folder.active{background:var(--sage2);color:var(--ink)}
+[data-theme="dark"] .ol-email-item.active{background:var(--sage2);border-left-color:var(--ink)}
+[data-theme="dark"] .ol-date-group{background:var(--sage3);border-bottom-color:var(--border);color:var(--sub)}
+[data-theme="dark"] .ol-thread-count{background:var(--bg);border-color:var(--border)}
+[data-theme="dark"] .ol-divider-btn{background:var(--white);border-right-color:var(--border)}
+[data-theme="dark"] .ol-divider-btn:hover{background:var(--bg)}
+[data-theme="dark"] input,[data-theme="dark"] textarea,[data-theme="dark"] select{color-scheme:dark}
 html{font-size:13px}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);display:flex;min-height:100vh;-webkit-font-smoothing:antialiased}
 
@@ -18351,7 +18385,18 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);displ
 
 /* DASHBOARD */
 .dash-row{display:grid;grid-template-columns:1fr 290px;gap:8px;margin-bottom:8px}
-.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.chart-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.pulse-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.pulse-card{background:var(--white);border-radius:var(--rlg);padding:10px 14px 9px;border:1px solid var(--border);transition:all .15s}
+.pulse-card[onclick]{cursor:pointer}.pulse-card[onclick]:hover{box-shadow:var(--sh2);border-color:#9ca3af}
+.pulse-num{font-size:20px;font-weight:700;color:var(--body);line-height:1;margin-bottom:2px;letter-spacing:-.5px}
+.pulse-num.red{color:#dc2626}
+.pulse-lbl{font-size:10.5px;font-weight:600;color:var(--muted)}
+.pulse-hint{font-size:10px;color:var(--fern);font-weight:600;margin-top:3px;opacity:0;transition:opacity .15s}
+.pulse-card[onclick]:hover .pulse-hint{opacity:1}
+.tab-btn{padding:3px 8px;border-radius:4px;border:1px solid transparent;font-family:'Inter',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer;background:none;color:var(--muted);transition:all .12s}
+.tab-btn.active{background:var(--sage2);color:var(--ink);border-color:var(--sage)}
+.tab-btn:hover:not(.active){background:var(--sage3)}
 .ch-card{background:var(--white);border-radius:var(--rlg);border:1px solid var(--border);padding:11px 14px 10px;transition:all .18s;cursor:pointer}
 .ch-card:hover{box-shadow:var(--sh2);border-color:#9ca3af}
 .ch-ttl{font-size:13px;font-weight:700;color:var(--body)}
@@ -18640,8 +18685,14 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 .ol-email-item.unread{border-left:2px solid #0E3416;padding-left:8px}
 .ol-email-item.unread .ol-email-sender{font-weight:700}
 .ol-email-item.unread .ol-email-subject{font-weight:700;color:#111}
+.ol-email-item.pinned{background:#f7fbf8}
+.ol-email-item.flagged .ol-email-actions,.ol-email-item.pinned .ol-email-actions,.ol-email-item:hover .ol-email-actions{display:inline-flex}
 .ol-email-item .ol-sum-btn{display:none}
 .ol-email-item:hover .ol-sum-btn{display:inline-flex}
+.ol-email-actions{display:none;align-items:center;gap:3px;flex-shrink:0}
+.ol-email-action-btn{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid #e5e7eb;border-radius:4px;color:#6b7280;padding:0;cursor:pointer;transition:all .12s}
+.ol-email-action-btn:hover{background:#f9fafb;color:#111827;border-color:#cbd5e1}
+.ol-email-action-btn.on{background:#ecfdf3;color:#0E3416;border-color:#9fd3a5}
 .ol-date-group{padding:8px 10px 5px;background:#f4fbf5;border-bottom:1px solid #d9eadb;font-size:10px;font-weight:700;color:#355e3b;text-transform:uppercase;letter-spacing:.45px;position:sticky;top:0;z-index:1}
 .ol-thread-count{font-size:10px;color:#6b7280;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:10px;padding:1px 6px;white-space:nowrap}
 .ol-email-sender{font-size:12px;font-weight:500;color:#111;flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block}
@@ -18901,6 +18952,10 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
       <input type="text" placeholder="Search tasks, people..." id="srch" oninput="doSearch(this.value)">
     </div>
 <button id="pwa-install-btn" class="btn btn-ghost" onclick="pwaInstall()" style="display:none;align-items:center;gap:5px;font-size:12px"><svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20h16" stroke-width="2" stroke-linecap="round"/></svg>Install App</button>
+<button class="btn btn-ghost" id="theme-toggle-btn" onclick="toggleDarkMode()" title="Toggle dark mode" style="padding:5px 7px">
+  <svg id="theme-icon-moon" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <svg id="theme-icon-sun" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display:none"><circle cx="12" cy="12" r="5" stroke-width="2"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke-width="2" stroke-linecap="round"/></svg>
+</button>
 <button class="btn btn-primary" onclick="openAdd()">+ Add Task</button>
   </div>
 
@@ -18914,18 +18969,20 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
       <div class="sc c-amber" onclick="nav('wednesday')"><div class="sc-num" id="d-wed">0</div><div class="sc-lbl" id="d-wed-lbl">Wednesday Queue</div><div class="sc-sub">Flagged for meeting</div><div class="sc-hint">Open Review</div></div>
       <div class="sc c-leaf"><div class="sc-num" id="d-rate">0%</div><div class="sc-lbl">Completion Rate</div><div class="sc-sub" id="d-rate-sub">Tasks completed</div></div>
     </div>
-    <div class="card" style="margin-bottom:14px;display:none">
-      <div class="card-hdr">
-        <div><div class="card-ttl">Overall Completion</div><div class="card-sub">Across all active tasks</div></div>
-        <span style="font-size:18px;font-weight:700;color:var(--body)" id="d-pct-l">0%</span>
+    <span id="d-pct-l" style="display:none">0%</span><span id="d-pbar" style="display:none"></span>
+    <div class="pulse-grid">
+      <div class="pulse-card">
+        <div class="pulse-num" id="p-added">0</div>
+        <div class="pulse-lbl">Added This Week</div>
       </div>
-      <div class="card-bdy" style="padding-top:6px;padding-bottom:14px">
-        <div class="prog-track"><div class="prog-fill" id="d-pbar" style="width:0%"></div></div>
-        <div style="display:flex;gap:16px;margin-top:10px">
-          <span style="font-size:11px;color:var(--sub);display:flex;align-items:center;gap:4px;font-weight:500"><span style="width:7px;height:7px;border-radius:50%;background:#15803d;display:inline-block"></span>Done</span>
-          <span style="font-size:11px;color:var(--sub);display:flex;align-items:center;gap:4px;font-weight:500"><span style="width:7px;height:7px;border-radius:50%;background:#b45309;display:inline-block"></span>Pending</span>
-          <span style="font-size:11px;color:var(--sub);display:flex;align-items:center;gap:4px;font-weight:500"><span style="width:7px;height:7px;border-radius:50%;background:#b91c1c;display:inline-block"></span>Overdue</span>
-        </div>
+      <div class="pulse-card">
+        <div class="pulse-num" id="p-closed">0</div>
+        <div class="pulse-lbl">Completed This Week</div>
+      </div>
+      <div class="pulse-card" onclick="drillStat('overdue')">
+        <div class="pulse-num red" id="p-overdue">0</div>
+        <div class="pulse-lbl">Overdue Tasks</div>
+        <div class="pulse-hint">Click to view &rarr;</div>
       </div>
     </div>
     <div class="dash-row">
@@ -18934,13 +18991,20 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
         <div class="card-bdy" style="padding-bottom:14px"><div class="ch-wrap" style="height:196px"><canvas id="ch-dept"></canvas></div></div>
       </div>
       <div class="card">
-        <div class="card-hdr"><div><div class="card-ttl">Recent Activity</div><div class="card-sub">Latest updates</div></div></div>
+        <div class="card-hdr">
+          <div><div class="card-ttl">Activity</div></div>
+          <div style="display:flex;gap:3px">
+            <button class="tab-btn active" id="act-tab-recent" onclick="setActTab('recent')">Recent</button>
+            <button class="tab-btn" id="act-tab-overdue" onclick="setActTab('overdue')">Overdue</button>
+          </div>
+        </div>
         <div class="card-bdy" style="padding-top:2px;padding-bottom:2px;max-height:270px;overflow-y:auto" id="activity-list"></div>
       </div>
     </div>
     <div class="chart-grid">
-      <div class="ch-card" onclick="nav('people')"><div class="ch-ttl">Open Workload</div><div class="ch-sub">People with the most open tasks. Click to view People.</div><div class="ch-wrap"><canvas id="ch-person"></canvas></div></div>
+      <div class="ch-card"><div class="ch-ttl">Open Workload</div><div class="ch-sub">People with open tasks. Click a bar to view their tasks.</div><div class="ch-wrap" style="height:170px"><canvas id="ch-person"></canvas></div></div>
       <div class="ch-card"><div class="ch-ttl">Status Breakdown</div><div class="ch-sub">Current distribution. Click a segment to filter.</div><div class="ch-wrap"><canvas id="ch-status"></canvas></div></div>
+      <div class="ch-card"><div class="ch-ttl">Priority by Department</div><div class="ch-sub">Open tasks only. Click a bar to filter.</div><div class="ch-wrap" style="height:170px"><canvas id="ch-priority"></canvas></div></div>
     </div>
   </div>
 
@@ -21068,14 +21132,26 @@ function selectDept(dept){
 // ============================================================
 // ACTIVITY
 // ============================================================
+let curActTab='recent';
+function setActTab(tab){
+  curActTab=tab;
+  document.getElementById('act-tab-recent')?.classList.toggle('active',tab==='recent');
+  document.getElementById('act-tab-overdue')?.classList.toggle('active',tab==='overdue');
+  renderActivity();
+}
 function renderActivity(){
-  const recent=[...tasks].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,8);
   const el=document.getElementById("activity-list");
-  if(!recent.length){el.innerHTML=`<div style="padding:20px;text-align:center;font-size:12px;color:var(--muted)">No activity yet</div>`;return;}
-  el.innerHTML=recent.map(t=>{
+  let list;
+  if(curActTab==='overdue'){
+    list=tasks.filter(t=>nstt(t.status)==="Overdue").sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,12);
+  } else {
+    list=[...tasks].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,10);
+  }
+  if(!list.length){el.innerHTML=`<div style="padding:20px;text-align:center;font-size:12px;color:var(--muted)">${curActTab==='overdue'?'No overdue tasks ✔':'No activity yet'}</div>`;return;}
+  el.innerHTML=list.map(t=>{
     const dc=nstt(t.status)==="Done"?"done":nstt(t.status)==="Overdue"?"overdue":"";
-    const emailDateLine=t.emailDate&&t.emailDate!==t.date?`<div class="act-meta" style="margin-top:1px;font-size:10.5px;color:#9ca3af">Email sent: ${fmtD(t.emailDate)}</div>`:'';
-    return `<div class="act-item"><div class="act-dot ${dc}"></div><div><div class="act-title">${t.title}</div><div class="act-meta">${t.dept} &bull; ${t.person} &bull; Task added: ${fmtD(t.date)}</div>${emailDateLine}</div></div>`;
+    const dateLbl=curActTab==='overdue'?`Added: ${fmtD(t.date)}`:`Added: ${fmtD(t.date)}`;
+    return `<div class="act-item" style="cursor:pointer" onclick="openDetail(${t.id})"><div class="act-dot ${dc}"></div><div><div class="act-title">${t.title}</div><div class="act-meta">${t.dept} &bull; ${t.person} &bull; ${dateLbl}</div></div></div>`;
   }).join("");
 }
 
@@ -21471,6 +21547,7 @@ async function addTask(){
 function drillStat(type){
   let list,title,sub;
   if(type==="high"){list=tasks.filter(t=>String(t.priority||"Normal").toLowerCase()==="high"&&nstt(t.status)!=="Done");title="High Priority Tasks";sub=`${list.length} tasks needing immediate attention`;}
+  if(type==="overdue"){list=tasks.filter(t=>nstt(t.status)==="Overdue").sort((a,b)=>new Date(a.date)-new Date(b.date));title="Overdue Tasks";sub=`${list.length} tasks past their deadline`;}
   if(!list||!list.length){toast("No tasks in this category");return;}
   document.getElementById("drill-title").textContent=title;document.getElementById("drill-sub").textContent=sub;
   document.getElementById("drill-tbody").innerHTML=list.map(t=>`
@@ -21512,18 +21589,60 @@ function mkChart(id,type,labels,datasets,opts={}){
   }});
 }
 function renderCharts(){
-  const dp={};tasks.forEach(t=>{if(!dp[t.dept])dp[t.dept]={tot:0,dn:0};dp[t.dept].tot++;if(nstt(t.status)==="Done")dp[t.dept].dn++;});
-  DEPARTMENTS.forEach(d=>{if(!dp[d])dp[d]={tot:0,dn:0};});
-  const pp={};tasks.forEach(t=>{if(!pp[t.person])pp[t.person]={tot:0,dn:0,open:0};pp[t.person].tot++;if(nstt(t.status)==="Done")pp[t.person].dn++;else pp[t.person].open++;});
+  // Dept chart — stacked: overdue / pending / done
+  const dp={};
+  tasks.forEach(t=>{
+    if(!dp[t.dept])dp[t.dept]={tot:0,dn:0,ov:0};
+    dp[t.dept].tot++;
+    if(nstt(t.status)==="Done")dp[t.dept].dn++;
+    else if(nstt(t.status)==="Overdue")dp[t.dept].ov++;
+  });
+  DEPARTMENTS.forEach(d=>{if(!dp[d])dp[d]={tot:0,dn:0,ov:0};});
   const dk=DEPARTMENTS.filter(d=>dp[d].tot>0);
-  const pk=Object.keys(pp).sort((a,b)=>pp[b].open-pp[a].open||pp[b].tot-pp[a].tot||a.localeCompare(b)).slice(0,7);
   mkChart("ch-dept","bar",dk,[
-    {label:"Pending",data:dk.map(d=>dp[d].tot-dp[d].dn),backgroundColor:"#CBD5E1",borderRadius:4,borderSkipped:false,maxBarThickness:22},
-    {label:"Completed",data:dk.map(d=>dp[d].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:22},
-  ],{legend:true,onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
-  if(pk.length){mkChart("ch-person","bar",pk,[{label:"Open",data:pk.map(p=>pp[p].open),backgroundColor:"#F2B879",borderRadius:4,borderSkipped:false,maxBarThickness:18},{label:"Done",data:pk.map(p=>pp[p].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:18}],{legend:true,tooltipCallbacks:{title:items=>items.length?[items[0].label]:[],label:item=>`${item.dataset.label}: ${item.parsed.x}`},onClick:(evt,elements)=>{if(elements.length){const person=pk[elements[0].index];nav('people');setTimeout(()=>{curPplFilter=person.toLowerCase();filterPpl(person);selectPpl(person);},150);}},extra:{indexAxis:"y",interaction:{mode:'index',axis:'y',intersect:false},scales:{x:{grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#374151"},border:{display:false}}}}});}
-  const sc={"Pending":0,"Done":0,"Overdue":0};tasks.forEach(t=>sc[nstt(t.status)]=(sc[nstt(t.status)]||0)+1);
+    {label:"Overdue",data:dk.map(d=>dp[d].ov),backgroundColor:"#F08B8B",borderRadius:4,borderSkipped:false,maxBarThickness:22},
+    {label:"Pending",data:dk.map(d=>dp[d].tot-dp[d].dn-dp[d].ov),backgroundColor:"#CBD5E1",borderRadius:4,borderSkipped:false,maxBarThickness:22},
+    {label:"Done",data:dk.map(d=>dp[d].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:22},
+  ],{legend:true,extra:{scales:{x:{stacked:true,grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#6b7280"},border:{display:false}},y:{stacked:true,grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280"},beginAtZero:true,border:{display:false}}}},onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
+
+  // Open workload — normalise by staffKey so the same person doesn't split across entries
+  const pp={};
+  tasks.forEach(t=>{
+    const key=staffKey(t.email,t.person);
+    if(!pp[key])pp[key]={name:staffConfig[key]?.name||t.person,tot:0,dn:0,open:0,ov:0};
+    pp[key].tot++;
+    if(nstt(t.status)==="Done")pp[key].dn++;
+    else{pp[key].open++;if(nstt(t.status)==="Overdue")pp[key].ov++;}
+  });
+  const pk=Object.keys(pp).filter(k=>pp[k].open>0).sort((a,b)=>pp[b].open-pp[a].open||pp[b].tot-pp[a].tot).slice(0,8);
+  if(pk.length){
+    const pLabels=pk.map(k=>{const n=(pp[k].name||k).trim();const pts=n.split(/\s+/);return pts.length>1?pts[0]+' '+pts[pts.length-1][0]+'.':n;});
+    mkChart("ch-person","bar",pLabels,[
+      {label:"Overdue",data:pk.map(k=>pp[k].ov),backgroundColor:"#F08B8B",borderRadius:4,borderSkipped:false,maxBarThickness:14},
+      {label:"Open",data:pk.map(k=>pp[k].open-pp[k].ov),backgroundColor:"#F2B879",borderRadius:4,borderSkipped:false,maxBarThickness:14},
+      {label:"Done",data:pk.map(k=>pp[k].dn),backgroundColor:"#86C59B",borderRadius:4,borderSkipped:false,maxBarThickness:14},
+    ],{legend:true,tooltipCallbacks:{title:items=>items.length?[pp[pk[items[0].dataIndex]].name||pLabels[items[0].dataIndex]]:[],label:item=>`${item.dataset.label}: ${item.parsed.x}`},onClick:(evt,elements)=>{if(elements.length){const person=pp[pk[elements[0].dataIndex]].name;nav('people');setTimeout(()=>{curPplFilter=person.toLowerCase();filterPpl(person);selectPpl(person);},150);}},extra:{indexAxis:"y",interaction:{mode:'index',axis:'y',intersect:false},scales:{x:{stacked:true,grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:11,weight:"600"},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:"#374151"},border:{display:false}}}}});
+  }
+
+  // Status doughnut
+  const sc={"Pending":0,"Done":0,"Overdue":0};
+  tasks.forEach(t=>sc[nstt(t.status)]=(sc[nstt(t.status)]||0)+1);
   mkChart("ch-status","doughnut",Object.keys(sc),[{data:Object.values(sc),backgroundColor:["#F2B879","#86C59B","#F08B8B"],hoverBackgroundColor:["#E9A35F","#6FB783","#E87575"],borderWidth:3,borderColor:"#fff",hoverOffset:8}],{legend:true,extra:{cutout:"58%"},onClick:(evt,elements)=>{if(elements.length){const s=Object.keys(sc)[elements[0].index];document.getElementById("sf-status").value=s;nav("master");}}});
+
+  // Priority breakdown by dept (open tasks only)
+  const pdp={};
+  tasks.filter(t=>nstt(t.status)!=="Done").forEach(t=>{
+    const d=t.dept||"Unknown";
+    if(!pdp[d])pdp[d]={high:0,norm:0};
+    if(String(t.priority||"Normal").toLowerCase()==="high")pdp[d].high++;else pdp[d].norm++;
+  });
+  const pdk=Object.keys(pdp).sort((a,b)=>(pdp[b].high+pdp[b].norm)-(pdp[a].high+pdp[a].norm)).slice(0,8);
+  if(pdk.length){
+    mkChart("ch-priority","bar",pdk,[
+      {label:"High",data:pdk.map(d=>pdp[d].high),backgroundColor:"#F08B8B",borderRadius:4,borderSkipped:false,maxBarThickness:12},
+      {label:"Normal",data:pdk.map(d=>pdp[d].norm),backgroundColor:"#93C5FD",borderRadius:4,borderSkipped:false,maxBarThickness:12},
+    ],{legend:true,extra:{indexAxis:"y",interaction:{mode:'index',axis:'y',intersect:false},scales:{x:{stacked:true,grid:{color:"#f3f4f6"},ticks:{font:{family:"Inter",size:10},color:"#6b7280",precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:9,weight:"600"},color:"#374151"},border:{display:false}}}},onClick:(evt,elements)=>{if(elements.length){const dept=pdk[elements[0].dataIndex];const isHigh=elements[0].datasetIndex===0;document.getElementById("sf-dept").value=dept;document.getElementById("sf-priority").value=isHigh?"High":"Normal";document.getElementById("sf-status").value="all";nav("master");}}});
+  }
 }
 
 // ============================================================
@@ -21548,7 +21667,7 @@ function nav(name,mode){
   if(name==="people"){directoryMode=mode||"people";setDirectoryMode(directoryMode);if(directoryMode==="people"){renderPplList();curPplSel=null;document.getElementById("ppl-srch").value="";curPplFilter="";}if(directoryMode==="departments"){renderDeptList();curDeptSel=null;}}
   if(name==="wednesday")renderWed();
   if(name==="archive")renderArc();
-  if(name==="dashboard"){renderCharts();renderActivity();}
+  if(name==="dashboard"){syncPulse();renderCharts();renderActivity();}
   if(name==="summary")renderSum();
   if(name==="outlook"){initOlPanels();fetchOutlookContacts();loadFolder("inbox");}
   if(name==="notifications"){renderNotifications();}
@@ -21702,6 +21821,17 @@ async function deleteEmail(emailId){
   }catch(err){toast('Could not delete email: '+err.message);}
 }
 
+function syncPulse(){
+  const now=new Date();
+  const wStart=new Date(now);wStart.setDate(now.getDate()-now.getDay());wStart.setHours(0,0,0,0);
+  const wEnd=new Date(wStart);wEnd.setDate(wStart.getDate()+7);
+  const added=tasks.filter(t=>{const d=new Date(t.date);return d>=wStart&&d<wEnd;}).length;
+  const closed=tasks.filter(t=>{const d=new Date(t.date);return nstt(t.status)==="Done"&&d>=wStart&&d<wEnd;}).length;
+  const overdue=tasks.filter(t=>nstt(t.status)==="Overdue").length;
+  const el1=document.getElementById("p-added");if(el1)el1.textContent=added;
+  const el2=document.getElementById("p-closed");if(el2)el2.textContent=closed;
+  const el3=document.getElementById("p-overdue");if(el3)el3.textContent=overdue;
+}
 function syncBadges(){
   const open=tasks.filter(t=>nstt(t.status)!=="Done").length;
   const actionWeekOpen=tasks.filter(t=>nstt(t.status)!=="Done"&&(taskWeekOffset(t)===curWeek||isCarriedOverdue(t))).length;
@@ -21716,8 +21846,8 @@ function syncBadges(){
   document.getElementById("d-wed").textContent=wed;
   document.getElementById("d-rate").textContent=pct+"%";
   document.getElementById("d-rate-sub").textContent=`${dn} of ${tasks.length} tasks completed`;
-  document.getElementById("d-pct-l").textContent=pct+"%";
-  document.getElementById("d-pbar").style.width=pct+"%";
+  const pctL=document.getElementById("d-pct-l");if(pctL)pctL.textContent=pct+"%";
+  syncPulse();
 }
 function refreshAll(){
   syncBadges();
@@ -21772,6 +21902,7 @@ let trackedEmailIds = new Set();
 let outlookFolderEmails = {};
 let outlookNextLinks = {};
 let deletedFolderID = null;
+let pinnedEmailIds = new Set(JSON.parse(localStorage.getItem('dpeg_pinned_email_ids')||'[]'));
 
 const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts',deleted:'deleteditems',deleteditems:'deleteditems'};
 const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',untracked:'Untracked Emails',deleted:'Deleted Items',deleteditems:'Deleted Items',calendar:'Calendar'};
@@ -21911,6 +22042,29 @@ function emailTimestamp(e){
   return Number.isFinite(t)?t:0;
 }
 
+function isEmailPinned(email){
+  if(!email)return false;
+  return pinnedEmailIds.has(email.id)||pinnedEmailIds.has(email.conversationId);
+}
+
+function savePinnedEmails(){
+  localStorage.setItem('dpeg_pinned_email_ids',JSON.stringify([...pinnedEmailIds]));
+}
+
+function outlookHoverActionsHTML(email){
+  const flagOn=outlookFlagStatus(email)==='flagged';
+  const pinOn=isEmailPinned(email);
+  return `<span class="ol-email-actions">
+    <button class="ol-email-action-btn${flagOn?' on':''}" title="${flagOn?'Remove flag':'Flag'}" onclick="event.stopPropagation();toggleOutlookFlag(this.closest('.ol-email-item').dataset.emailId,event)"><svg width="11" height="11" viewBox="0 0 24 24" fill="${flagOn?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4"/><path d="M4 4h12l-1.5 5L16 14H4"/></svg></button>
+    <button class="ol-email-action-btn${pinOn?' on':''}" title="${pinOn?'Unpin':'Pin'}" onclick="event.stopPropagation();toggleEmailPin(this.closest('.ol-email-item').dataset.emailId,event)"><svg width="11" height="11" viewBox="0 0 24 24" fill="${pinOn?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M8 3h8"/><path d="M9 3l1 8-3 4h10l-3-4 1-8"/></svg></button>
+  </span>`;
+}
+
+function listAISummaryButtonHTML(folder){
+  const safeFolder=escapeHtml(folder||'inbox');
+  return `<button class="ol-sum-btn" title="AI Summary" onclick="event.stopPropagation();toggleListAISummary(this.closest('.ol-email-item').dataset.emailId,this,'${safeFolder}')" style="width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;background:none;border:1px solid #e9d5ff;border-radius:4px;cursor:pointer;color:#7c3aed;padding:0;flex-shrink:0;transition:all .12s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='none'"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg></button>`;
+}
+
 function emailDateGroupLabel(dt){
   const d=new Date(dt);
   if(isNaN(d))return 'Older';
@@ -21931,7 +22085,12 @@ function groupEmailsByConversation(emails){
     g.messages.push(e);
     if(emailTimestamp(e)>emailTimestamp(g.latest))g.latest=e;
   });
-  return Array.from(groups.values()).sort((a,b)=>emailTimestamp(b.latest)-emailTimestamp(a.latest));
+  return Array.from(groups.values()).sort((a,b)=>{
+    const ap=a.messages.some(isEmailPinned)?0:1;
+    const bp=b.messages.some(isEmailPinned)?0:1;
+    if(ap!==bp)return ap-bp;
+    return emailTimestamp(b.latest)-emailTimestamp(a.latest);
+  });
 }
 
 async function readConversationOrEmail(emailId,folder,el){
@@ -21966,6 +22125,8 @@ function renderEmailRows(folder,emails){
     const isTracked=g.messages.some(m=>trackedEmailIds.has(m.id)||trackedEmailIds.has(m.conversationId));
     const isUnread=folder==='inbox'&&g.messages.some(m=>!m.isRead);
     const isHigh=String(e.importance||'normal').toLowerCase()==='high';
+    const isFlagged=g.messages.some(m=>outlookFlagStatus(m)==='flagged');
+    const isPinned=g.messages.some(isEmailPinned);
     const hasAtt=g.messages.some(m=>!!m.hasAttachments);
     const safeId=escapeHtml(e.id||'');
     const safeFolder=escapeHtml(folder||'inbox');
@@ -21985,12 +22146,13 @@ function renderEmailRows(folder,emails){
     const trackedBadge=isTracked?`<span style="background:#f0fdf4;color:#15803d;font-size:9px;font-weight:700;padding:1px 6px 1px 5px;border-radius:10px;border:1px solid #bbf7d0;white-space:nowrap;flex-shrink:0">✓</span>`:'';
     const highBadge=isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;border:1px solid #fecaca;white-space:nowrap;flex-shrink:0">!</span>`:'';
     const attIcon=hasAtt?`<svg width="10" height="10" fill="none" stroke="#9ca3af" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`:'';
-    const sumBtn=`<button class="ol-sum-btn" title="AI Summary" onclick="event.stopPropagation();toggleListAISummary(this.closest('.ol-email-item').dataset.emailId,this,'${safeFolder}')" style="width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;background:none;border:1px solid #e9d5ff;border-radius:4px;cursor:pointer;color:#7c3aed;padding:0;flex-shrink:0;transition:all .12s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='none'"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg></button>`;
+    const sumBtn=listAISummaryButtonHTML(safeFolder);
+    const hoverActions=outlookHoverActionsHTML(e);
     const threadBadge=threadCount>1?`<span class="ol-thread-count">${threadCount}</span>`:'';
-    return `${groupHeader}<div class="ol-email-item${isUnread?' unread':''}" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readConversationOrEmail(this.dataset.emailId,'${safeFolder}',this)">
+    return `${groupHeader}<div class="ol-email-item${isUnread?' unread':''}${isFlagged?' flagged':''}${isPinned?' pinned':''}" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readConversationOrEmail(this.dataset.emailId,'${safeFolder}',this)">
       <div class="ol-email-top">
         <span class="ol-email-sender">${escapeHtml(sender)}</span>
-        <span style="display:flex;align-items:center;gap:3px;flex-shrink:0">${threadBadge}${trackedBadge}${highBadge}${attIcon}${sumBtn}<span class="ol-email-date">${dateStr}</span></span>
+        <span style="display:flex;align-items:center;gap:3px;flex-shrink:0">${threadBadge}${trackedBadge}${highBadge}${attIcon}${sumBtn}${hoverActions}<span class="ol-email-date">${dateStr}</span></span>
       </div>
       <div class="ol-email-subject">${escapeHtml(e.subject||'(no subject)')}</div>
       <div class="ol-email-preview">${escapeHtml(e.bodyPreview||'')}</div>
@@ -22096,7 +22258,13 @@ async function loadUntracked(){
       const isDpeg=e.toRecipients?.some(r=>r.emailAddress?.address?.toLowerCase().includes('@dhananipeg.com'));
       const isTracked=trackedEmailIds.has(e.id)||trackedEmailIds.has(e.conversationId);
       return isDpeg&&!isTracked;
+    }).sort((a,b)=>{
+      const ap=isEmailPinned(a)?0:1;
+      const bp=isEmailPinned(b)?0:1;
+      if(ap!==bp)return ap-bp;
+      return emailTimestamp(b)-emailTimestamp(a);
     });
+    outlookFolderEmails.untracked=untracked;
     const untrackedCount=untracked.length;
     const uc=document.getElementById('ol-untracked-count');
     if(uc){uc.textContent=untrackedCount>0?untrackedCount:'';uc.style.display=untrackedCount>0?'':'none';}
@@ -22107,14 +22275,19 @@ async function loadUntracked(){
       const dt=new Date(e.sentDateTime);
       const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
       const isHigh=String(e.importance||'normal').toLowerCase()==='high';
+      const isFlagged=outlookFlagStatus(e)==='flagged';
+      const isPinned=isEmailPinned(e);
       const hasAtt=!!e.hasAttachments;
       const safeId=escapeHtml(e.id||'');
-      return `<div class="ol-email-item" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readEmail(this.dataset.emailId,'sent',this)" style="display:flex;align-items:flex-start;gap:8px">
+      const sumBtn=listAISummaryButtonHTML('sent');
+      const hoverActions=outlookHoverActionsHTML(e);
+      return `<div class="ol-email-item${isFlagged?' flagged':''}${isPinned?' pinned':''}" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readEmail(this.dataset.emailId,'sent',this)" style="display:flex;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
-          <div class="ol-email-top"><div class="ol-email-sender">To: ${escapeHtml(to)}</div><div class="ol-email-date">${dateStr}</div></div>
-          <div class="ol-email-subject">${flagBadge(e,true)} ${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid #fecaca;margin-right:5px;vertical-align:middle">High</span>`:''}${escapeHtml(e.subject||'(no subject)')}</div>
+          <div class="ol-email-top"><div class="ol-email-sender">To: ${escapeHtml(to)}</div><span style="display:flex;align-items:center;gap:3px;flex-shrink:0">${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;border:1px solid #fecaca;white-space:nowrap;flex-shrink:0">!</span>`:''}${sumBtn}${hoverActions}<div class="ol-email-date">${dateStr}</div></span></div>
+          <div class="ol-email-subject">${escapeHtml(e.subject||'(no subject)')}</div>
           <div class="ol-email-preview">${escapeHtml(e.bodyPreview||'')}</div>
           ${hasAtt?`<div class="ol-email-attachments"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attachment</span></div>`:''}
+          <div id="list-ai-sum-${safeId}" style="display:none;margin-top:5px;padding:6px 9px;background:#faf8ff;border-left:2px solid #7c3aed;border-radius:0 4px 4px 0;font-size:11px;color:#4b5563;line-height:1.5"></div>
         </div>
         <button onclick="event.stopPropagation();quickAddTask(this.closest('.ol-email-item').dataset.emailId)" style="flex-shrink:0;margin-top:8px;padding:4px 8px;background:var(--ink);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add</button>
       </div>`;
@@ -22185,8 +22358,8 @@ function buildThreadHTML(messages){
 	    if(m?.id)emailCache[m.id]=m;
 	    const from=m.from?.emailAddress;
     const fromName=from?.name||from?.address||'Unknown';
-    const to=(m.toRecipients||[]).map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
-    const cc=(m.ccRecipients||[]).map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
+    const to=renderExpandablePeople(m.toRecipients||[],`thread-to-${m.id}`,2);
+    const cc=(m.ccRecipients||[]).length?renderExpandablePeople(m.ccRecipients||[],`thread-cc-${m.id}`,2):'';
     const dt=new Date(m.receivedDateTime||m.sentDateTime);
     const body=m.body?.content||m.bodyPreview||'';
     const isHtml=m.body?.contentType==='html';
@@ -22199,7 +22372,7 @@ function buildThreadHTML(messages){
         <div class="tv-avatar" style="background:${avColor(fromName)}">${avInit(fromName,from?.address)}</div>
         <div class="tv-msg-meta">
           <div class="tv-from">${escapeHtml(fromName)}${isLatest?'<span class="tv-badge-latest">Latest</span>':''}</div>
-          <div class="tv-to">To: ${escapeHtml(to||'—')}${cc?` · CC: ${escapeHtml(cc)}`:''}</div>
+          <div class="tv-to">To: ${to||'—'}${cc?` · CC: ${cc}`:''}</div>
 	        </div>
 	        <div class="tv-date">${fmtDt(dt)}</div>
 	      </div>
@@ -22397,11 +22570,13 @@ function parseICalData(raw){
     const mail=l.match(/mailto:([^\r\n\s;]+)/i);
     return cn?cn[1].trim():(mail?mail[1].trim():'');
   }).filter(Boolean);
+  const desc=get('DESCRIPTION');
   return{
     summary:get('SUMMARY'),location:get('LOCATION'),description:get('DESCRIPTION'),
     organizer:cnM?cnM[1].trim():(mailM?mailM[1].trim():''),
     dtstart:dtParse(get('DTSTART')),dtend:dtParse(get('DTEND')),
     status:get('STATUS')||get('METHOD'),attendees,
+    joinUrl:extractMeetingJoinLink(desc),
   };
 }
 function renderMeetingCard(d,emailSubjectHint){
@@ -22424,9 +22599,10 @@ function renderMeetingCard(d,emailSubjectHint){
     rows.push(`<span style="color:#6b7280;font-weight:600">Date</span><span>${escapeHtml(fmt(d.dtstart))}</span>`);
     rows.push(`<span style="color:#6b7280;font-weight:600">Time</span><span>${timeStr}${dur?` <span style="color:#9ca3af">(${Math.floor(dur/60)}h${dur%60?` ${dur%60}m`:''})</span>`:''}</span>`);
   }
-  rows.push(`<span style="color:#6b7280;font-weight:600">Location</span><span>${d.location?escapeHtml(d.location):'<span style="color:#9ca3af">No location specified</span>'}</span>`);
+  rows.push(`<span style="color:#6b7280;font-weight:600">Room / Location</span><span>${d.location?escapeHtml(d.location):'<span style="color:#9ca3af">No location specified</span>'}</span>`);
+  if(d.joinUrl)rows.push(`<span style="color:#6b7280;font-weight:600">Teams Link</span><span><a href="${escapeHtml(d.joinUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700">Join Teams Meeting</a></span>`);
   if(d.organizer)rows.push(`<span style="color:#6b7280;font-weight:600">Organiser</span><span>${escapeHtml(d.organizer)}</span>`);
-  if(d.attendees.length)rows.push(`<span style="color:#6b7280;font-weight:600">Attendees</span><span style="line-height:1.6">${d.attendees.map(a=>escapeHtml(a)).join('<br>')}</span>`);
+  if(d.attendees.length)rows.push(`<span style="color:#6b7280;font-weight:600">Attendees</span><span style="line-height:1.6">${renderExpandablePeople(d.attendees,'meet-att-'+Math.random().toString(36).slice(2),4)}</span>`);
   return`<div style="padding:20px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#0E3416" stroke-width="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-size:11px;font-weight:700;color:#0E3416;text-transform:uppercase;letter-spacing:.5px">Meeting Request</span>${statusBadge?` ${statusBadge}`:''}</div><div style="background:#f8fdf9;border:1px solid #d1e9d4;border-radius:6px;padding:14px">${d.summary?`<div style="font-size:14px;font-weight:700;color:#111;margin-bottom:12px">${escapeHtml(d.summary)}</div>`:''}<div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px">${rows.join('')}</div>${d.description&&d.description.trim()?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6;white-space:pre-wrap">${escapeHtml(d.description.trim().slice(0,800))}</div>`:''}</div></div>`;
 }
 function buildMeetingDataFromGraph(email){
@@ -22451,6 +22627,7 @@ function buildMeetingDataFromGraph(email){
     dtend:parseGDate(email.endDateTime),
     status,
     attendees,
+    joinUrl:email.onlineMeeting?.joinUrl||email.onlineMeetingUrl||extractMeetingJoinLink(email.body?.content||email.bodyPreview||''),
   };
 }
 function icalToReadableText(bodyText){
@@ -22469,6 +22646,47 @@ function icalToReadableText(bodyText){
   return parts.length?parts.join('\n'):null;
 }
 
+function safeDomId(s){
+  return String(s||'x').replace(/[^a-zA-Z0-9_-]/g,'_');
+}
+
+function togglePeopleList(id){
+  const el=document.getElementById(id);
+  const btn=document.getElementById(id+'-btn');
+  if(!el)return;
+  const open=el.style.display!=='none';
+  el.style.display=open?'none':'block';
+  if(btn)btn.textContent=open?btn.dataset.closed:'Show less';
+}
+
+function renderExpandablePeople(items,id,limit=2){
+  const people=(items||[]).map(x=>{
+    if(typeof x==='string')return x;
+    return x?.emailAddress?.name||x?.emailAddress?.address||x?.name||x?.address||'';
+  }).filter(Boolean);
+  if(!people.length)return '—';
+  const shown=people.slice(0,limit).map(escapeHtml).join(', ');
+  if(people.length<=limit)return shown;
+  const hidden=people.slice(limit).map(p=>`<div style="padding:2px 0">${escapeHtml(p)}</div>`).join('');
+  const safe=safeDomId(id);
+  const closed=`+${people.length-limit} others`;
+  return `${shown} <button id="${safe}-btn" data-closed="${closed}" onclick="event.stopPropagation();togglePeopleList('${safe}')" style="border:none;background:none;color:#0E3416;font-size:11.5px;font-weight:700;cursor:pointer;padding:0 2px">${closed}</button><div id="${safe}" style="display:none;margin-top:4px;padding:6px 8px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:5px;line-height:1.5">${hidden}</div>`;
+}
+
+function extractMeetingJoinLink(raw){
+  const text=String(raw||'');
+  if(!text)return '';
+  try{
+    const wrap=document.createElement('div');
+    wrap.innerHTML=text;
+    const anchors=[...wrap.querySelectorAll('a[href]')];
+    const hit=anchors.find(a=>/teams\.microsoft\.com|meetup-join|join/i.test(a.href||a.textContent||''));
+    if(hit?.href)return hit.href;
+  }catch{}
+  const m=text.match(/https?:\/\/[^\s"'<>]*(?:teams\.microsoft\.com|meetup-join|join\.microsoft\.com)[^\s"'<>]*/i);
+  return m?m[0].replace(/&amp;/g,'&'):'';
+}
+
 async function readEmail(emailId,folder,el){
   currentEmailId=emailId;
   if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
@@ -22484,16 +22702,10 @@ async function readEmail(emailId,folder,el){
     const email=await res.json();
     emailCache[emailId]=email;
     const sender=email.from?.emailAddress;
-    // To: show first 2, then +X others
     const toAll=email.toRecipients||[];
-    const toDisplay=toAll.slice(0,2).map(r=>r.emailAddress?.name||r.emailAddress?.address||'').filter(Boolean);
-    const toExtra=toAll.length>2?` <span style="color:#9ca3af">+${toAll.length-2} others</span>`:'';
-    const toStr=toDisplay.length?escapeHtml(toDisplay.join(', '))+toExtra:'—';
-    // CC
+    const toStr=renderExpandablePeople(toAll,`email-to-${emailId}`,2);
     const ccAll=email.ccRecipients||[];
-    const ccDisplay=ccAll.slice(0,2).map(r=>r.emailAddress?.name||r.emailAddress?.address||'').filter(Boolean);
-    const ccExtra=ccAll.length>2?` <span style="color:#9ca3af">+${ccAll.length-2} others</span>`:'';
-    const ccStr=ccDisplay.length?escapeHtml(ccDisplay.join(', '))+ccExtra:'';
+    const ccStr=ccAll.length?renderExpandablePeople(ccAll,`email-cc-${emailId}`,2):'';
     const dt=new Date(email.receivedDateTime||email.sentDateTime);
     const dateStr=dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
     const bodyContent=email.body?.content||email.bodyPreview||'';
@@ -22502,15 +22714,27 @@ async function readEmail(emailId,folder,el){
     const isEventMsg=String(email['@odata.type']||'').toLowerCase().includes('eventmessage');
     const rawBodyForIcal=isHtml?(()=>{const d=document.createElement('div');d.innerHTML=bodyContent;return d.textContent||'';})():bodyContent;
     const icalText=extractICalText(rawBodyForIcal);
-    const isMeeting=isEventMsg||!!icalText;
-    // For EventMessage without body iCal, fetch the EventMessage-specific fields
-    let meetingData=icalText?parseICalData(icalText):null;
-    if(isEventMsg&&!meetingData){
+    const teamsJoinUrl=extractMeetingJoinLink(bodyContent);
+    const isMeeting=isEventMsg||!!icalText||!!teamsJoinUrl;
+    let meetingData=icalText?parseICalData(icalText):(teamsJoinUrl?{
+      summary:email.subject||'Teams meeting',
+      location:'',
+      description:email.bodyPreview||'',
+      organizer:sender?.name||sender?.address||'',
+      dtstart:null,
+      dtend:null,
+      status:'',
+      attendees:[...toAll,...ccAll].map(r=>r.emailAddress?.name||r.emailAddress?.address||'').filter(Boolean),
+      joinUrl:teamsJoinUrl
+    }:null);
+    // For EventMessage, fetch the EventMessage-specific fields such as time/location/attendees.
+    if(isEventMsg){
       try{
         const emRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=meetingRequestType,startDateTime,endDateTime,location,attendees`,{headers:{Authorization:`Bearer ${token}`}});
         if(emRes.ok){const emData=await emRes.json();Object.assign(email,emData);emailCache[emailId]=email;}
       }catch{}
-      meetingData=buildMeetingDataFromGraph(email);
+      const graphMeeting=buildMeetingDataFromGraph(email);
+      meetingData={...graphMeeting,joinUrl:graphMeeting.joinUrl||meetingData?.joinUrl||teamsJoinUrl,description:graphMeeting.description||meetingData?.description||''};
     }
     const isTracked=trackedEmailIds.has(emailId)||trackedEmailIds.has(email.conversationId);
     // Helper: small pill button
@@ -22642,12 +22866,30 @@ async function toggleOutlookFlag(emailId,ev){
     if(emailCache[emailId])emailCache[emailId].flag=email.flag;
     const cached=(outlookFolderEmails[currentFolder]||[]).find(e=>e.id===emailId);
     if(cached)cached.flag=email.flag;
-    renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
-    if(currentEmailId===emailId)readEmail(emailId,currentFolder);
+    if(currentFolder==='untracked')loadUntracked();
+    else renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
+    if(currentEmailId===emailId)readEmail(emailId,currentFolder==='untracked'?'sent':currentFolder);
     toast(next==='flagged'?'Flagged in Outlook':'Flag removed');
   }catch(err){
     toast('Could not update Outlook flag');
   }
+}
+
+function toggleEmailPin(emailId,ev){
+  ev?.stopPropagation();
+  if(!emailId)return;
+  const email=emailCache[emailId]||(outlookFolderEmails[currentFolder]||[]).find(e=>e.id===emailId)||{id:emailId};
+  const keys=[email.id||emailId,email.conversationId].filter(Boolean);
+  const pinned=keys.some(k=>pinnedEmailIds.has(k));
+  if(pinned){
+    keys.forEach(k=>pinnedEmailIds.delete(k));
+  }else{
+    keys.forEach(k=>pinnedEmailIds.add(k));
+  }
+  savePinnedEmails();
+  if(currentFolder==='untracked')loadUntracked();
+  else renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
+  toast(pinned?'Unpinned':'Pinned');
 }
 
 function openCompose(to,subject,body,type,emailId){
@@ -23676,7 +23918,7 @@ async function loadCalendar(){
     const calToken=await getAccessToken();
     const today=new Date();today.setHours(0,0,0,0);
     const end=new Date(today);end.setDate(end.getDate()+30);
-    const url=`https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${today.toISOString()}&endDateTime=${end.toISOString()}&$select=id,subject,start,end,location,organizer,attendees,bodyPreview&$top=50&$orderby=start/dateTime`;
+    const url=`https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${today.toISOString()}&endDateTime=${end.toISOString()}&$select=id,subject,start,end,location,organizer,attendees,body,bodyPreview&$top=50&$orderby=start/dateTime`;
     const res=await fetch(url,{headers:{Authorization:`Bearer ${calToken}`}});
     if(!res.ok)throw new Error('Calendar fetch failed');
     const data=await res.json();
@@ -23733,7 +23975,9 @@ function readCalendarEvent(eventId){
   const dur=start&&end&&!isNaN(start)&&!isNaN(end)?Math.round((end-start)/60000):0;
   const durStr=dur?`(${Math.floor(dur/60)}h${dur%60?` ${dur%60}m`:''})`:'';
   const org=ev.organizer?.emailAddress?.name||ev.organizer?.emailAddress?.address||'';
-  const attendees=(ev.attendees||[]).map(a=>escapeHtml(a.emailAddress?.name||a.emailAddress?.address||''));
+  const attendees=ev.attendees||[];
+  const joinUrl=ev.onlineMeeting?.joinUrl||ev.onlineMeetingUrl||extractMeetingJoinLink(ev.body?.content||ev.bodyPreview||'');
+  const location=ev.location?.displayName||ev.location?.address?.street||'';
   const pBtn=(label,icon,onclick)=>`<button onclick="${onclick}" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">${icon?`<svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">${icon}</svg>`:''}${label}</button>`;
   readerEl.innerHTML=`
     <div style="padding:12px 16px 10px;border-bottom:1px solid #e5e7eb;flex-shrink:0;background:#fff">
@@ -23747,11 +23991,12 @@ function readCalendarEvent(eventId){
         <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:12px">
           ${start?`<span style="color:#6b7280;font-weight:600">Date</span><span>${escapeHtml(fmt(start))}</span>`:''}
           ${start?`<span style="color:#6b7280;font-weight:600">Time</span><span>${fmtT(start)}${end?` — ${fmtT(end)}`:''} <span style="color:#9ca3af">${durStr}</span></span>`:''}
-          <span style="color:#6b7280;font-weight:600">Location</span><span>${ev.location?.displayName?escapeHtml(ev.location.displayName):'<span style="color:#9ca3af">No location specified</span>'}</span>
+          <span style="color:#6b7280;font-weight:600">Room / Location</span><span>${location?escapeHtml(location):'<span style="color:#9ca3af">No location specified</span>'}</span>
+          ${joinUrl?`<span style="color:#6b7280;font-weight:600">Teams Link</span><span><a href="${escapeHtml(joinUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700">Join Teams Meeting</a></span>`:''}
           ${org?`<span style="color:#6b7280;font-weight:600">Organiser</span><span>${escapeHtml(org)}</span>`:''}
-          ${attendees.length?`<span style="color:#6b7280;font-weight:600">Attendees</span><span style="line-height:1.8">${attendees.join('<br>')}</span>`:''}
+          ${attendees.length?`<span style="color:#6b7280;font-weight:600">Attendees</span><span style="line-height:1.8">${renderExpandablePeople(attendees,`cal-att-${eventId}`,4)}</span>`:''}
         </div>
-        ${ev.bodyPreview?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6">${escapeHtml(ev.bodyPreview.slice(0,500))}</div>`:'' }
+        ${ev.bodyPreview?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6">${escapeHtml(ev.bodyPreview.slice(0,700))}</div>`:'' }
       </div>
     </div>`;
 }
@@ -24040,8 +24285,31 @@ function refreshFolder(){loadFolder(currentFolder);}
 
 
 // ============================================================
+// DARK MODE
+// ============================================================
+function applyDark(on){
+  document.documentElement.setAttribute('data-theme',on?'dark':'light');
+  const moon=document.getElementById('theme-icon-moon');
+  const sun=document.getElementById('theme-icon-sun');
+  if(moon)moon.style.display=on?'none':'';
+  if(sun)sun.style.display=on?'':'none';
+}
+function toggleDarkMode(){
+  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  applyDark(!isDark);
+  localStorage.setItem('dpeg_theme',isDark?'light':'dark');
+}
+function initDarkMode(){
+  const saved=localStorage.getItem('dpeg_theme');
+  if(saved==='dark'||(!saved&&window.matchMedia('(prefers-color-scheme:dark)').matches)){
+    applyDark(true);
+  }
+}
+
+// ============================================================
 // INIT
 // ============================================================
+initDarkMode();
 initSelects();
 chWeek(0);
 syncBadges();
