@@ -18301,39 +18301,6 @@ exports.version = version;
 [data-theme="dark"] .ol-thread-count{background:var(--bg);border-color:var(--border)}
 [data-theme="dark"] .ol-divider-btn{background:var(--white);border-right-color:var(--border)}
 [data-theme="dark"] .ol-divider-btn:hover{background:var(--bg)}
-/* OUTLOOK DARK MODE */
-[data-theme="dark"] #ol-layout{background:var(--bg)!important;border-top-color:var(--border)!important}
-[data-theme="dark"] #ol-left-panel{background:var(--sage3)!important}
-[data-theme="dark"] #ol-left-panel>div:first-child{border-bottom-color:var(--border)!important}
-[data-theme="dark"] #ol-left-panel>div:first-child>div:first-child{background:var(--bg)!important;border-color:var(--border)!important}
-[data-theme="dark"] #ol-mid-panel>div:first-child{background:var(--white)!important;border-bottom-color:var(--border)!important}
-[data-theme="dark"] #ol-folder-title{color:var(--body)!important}
-[data-theme="dark"] .ol-email-item{background:var(--white)!important;border-bottom-color:var(--border)!important}
-[data-theme="dark"] .ol-email-item:hover{background:var(--sage3)!important}
-[data-theme="dark"] .ol-email-sender{color:var(--body)!important}
-[data-theme="dark"] .ol-email-subject{color:var(--sub)!important}
-[data-theme="dark"] .ol-email-preview{color:var(--muted)!important}
-[data-theme="dark"] .ol-email-action-btn{background:var(--bg)!important;border-color:var(--border)!important;color:var(--muted)!important}
-[data-theme="dark"] .ol-email-action-btn:hover{background:var(--sage3)!important;color:var(--body)!important}
-[data-theme="dark"] .tv-hdr{background:var(--white)!important;border-bottom-color:var(--border)!important}
-[data-theme="dark"] .tv-subject{color:var(--body)!important}
-[data-theme="dark"] .tv-count{color:var(--muted)!important}
-[data-theme="dark"] .tv-list{background:var(--bg)!important}
-[data-theme="dark"] .tv-msg{background:var(--white)!important;border-color:var(--border)!important}
-[data-theme="dark"] .tv-msg--latest{border-color:#1d6ec9!important;box-shadow:0 1px 6px rgba(0,120,212,.2)!important}
-[data-theme="dark"] .tv-msg-hdr:hover{background:var(--sage3)!important}
-[data-theme="dark"] .tv-from{color:var(--body)!important}
-[data-theme="dark"] .tv-to{color:var(--muted)!important}
-[data-theme="dark"] .tv-date{color:var(--muted)!important}
-[data-theme="dark"] .ol-folder{color:var(--sub)!important}
-[data-theme="dark"] .tv-history-toggle{background:var(--white)!important;border-color:var(--border)!important;color:var(--ink)!important}
-[data-theme="dark"] .tv-history-toggle:hover{background:var(--sage3)!important}
-[data-theme="dark"] .tv-latest-hdr{background:var(--white)!important;border-bottom-color:var(--border)!important}
-[data-theme="dark"] .tv-preview{background:var(--sage3)!important;border-top-color:var(--border)!important;color:var(--muted)!important}
-[data-theme="dark"] .tv-att{background:var(--sage3)!important;border-bottom-color:var(--border)!important}
-[data-theme="dark"] .tv-body-inner{background:var(--white)}
-/* OUTLOOK PANEL CONTRAST (light mode) */
-#ol-left-panel{background:#f4f7f4!important}
 [data-theme="dark"] input,[data-theme="dark"] textarea,[data-theme="dark"] select{color-scheme:dark}
 html{font-size:13px}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);display:flex;min-height:100vh;-webkit-font-smoothing:antialiased}
@@ -18673,12 +18640,6 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 .tv-preview{padding:5px 11px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--sage);background:var(--sage3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tv-att{padding:6px 11px 7px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--sage3)}
 .tv-body-inner{padding:10px 11px 12px}
-.tv-history-toggle{display:flex;align-items:center;gap:6px;padding:7px 11px;font-size:11.5px;font-weight:600;color:var(--ink);cursor:pointer;border-radius:var(--r);margin-bottom:6px;border:1px solid var(--border);background:var(--white);user-select:none;transition:background .12s}
-.tv-history-toggle:hover{background:var(--sage3)}
-.tv-history-toggle svg{flex-shrink:0;transition:transform .15s}
-.tv-history-toggle.open svg{transform:rotate(90deg)}
-.tv-history{margin-bottom:4px}
-.tv-latest-hdr{padding:10px 11px 8px;border-bottom:1px solid var(--border);background:var(--white)}
 .form-grp{margin-bottom:13px}
 .form-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--sub);margin-bottom:4px;display:block}
 .form-in,.form-sel,.form-ta{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:13px;color:var(--body);outline:none;transition:border .15s;background:var(--white)}
@@ -22137,12 +22098,19 @@ async function readConversationOrEmail(emailId,folder,el){
     await readEmail(emailId,folder,el);
     return;
   }
-  if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
-  if(el){el.classList.add('active');_activeEmailEl=el;}
-  currentEmailId=emailId;
   const email=(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId)||emailCache[emailId];
-  if(email)emailCache[emailId]=email;
-  await viewFullThread(emailId);
+  const sameThread=email?.conversationId
+    ?(outlookFolderEmails[folder]||[]).filter(e=>e.conversationId===email.conversationId)
+    :[];
+  if(email?.conversationId&&sameThread.length>1){
+    currentEmailId=emailId;
+    if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
+    if(el){el.classList.add('active');_activeEmailEl=el;}
+    emailCache[emailId]=email;
+    await viewFullThread(emailId);
+    return;
+  }
+  await readEmail(emailId,folder,el);
 }
 
 function renderEmailRows(folder,emails){
@@ -22378,95 +22346,48 @@ function tvToggle(msgId){
   body.classList.toggle('tv-body--collapsed');
   if(wasHidden){body.querySelectorAll('iframe').forEach(fr=>{try{if(fr.contentDocument?.body)fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});}
 }
-function tvToggleHistory(){
-  const hist=document.getElementById('tv-history-msgs');
-  const toggle=document.getElementById('tv-history-toggle');
-  if(!hist||!toggle)return;
-  const isHidden=hist.style.display==='none';
-  hist.style.display=isHidden?'block':'none';
-  toggle.classList.toggle('open',isHidden);
-}
 
 function buildThreadHTML(messages){
-  const sorted=[...messages].sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+  const sorted=[...messages].sort((a,b)=>new Date(b.receivedDateTime||b.sentDateTime)-new Date(a.receivedDateTime||a.sentDateTime));
   window._emailFrameBodies=[];
   const avColors=['#0078d4','#107c41','#b91c1c','#7c3aed','#b45309','#0f766e','#c2185b','#455a64'];
   const avColor=name=>{const h=Array.from(name||'?').reduce((s,c)=>s+c.charCodeAt(0),0);return avColors[h%avColors.length];};
   const avInit=(name,addr)=>{if(name&&name.trim().length>1)return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();return((addr||name||'?')[0]||'?').toUpperCase();};
   const fmtDt=dt=>dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  const nameOnly=ppl=>(ppl||[]).slice(0,3).map(r=>{const n=r?.emailAddress?.name;const a=r?.emailAddress?.address||'';return escapeHtml(n&&n.trim()&&n!==a?n.trim():a.split('@')[0]);}).join(', ')+((ppl||[]).length>3?` +${(ppl||[]).length-3} more`:'');
-
-  const latest=sorted[sorted.length-1];
-  const older=sorted.slice(0,sorted.length-1);
-
-  // Build older message blocks (all collapsed, user can expand individually)
-  const olderHTML=older.map(m=>{
-    if(m?.id)emailCache[m.id]=m;
-    const from=m.from?.emailAddress;
+	  return sorted.map((m,i)=>{
+	    if(m?.id)emailCache[m.id]=m;
+	    const from=m.from?.emailAddress;
     const fromName=from?.name||from?.address||'Unknown';
-    const toStr=nameOnly(m.toRecipients||[])||'—';
-    const ccPpl=m.ccRecipients||[];
-    const ccStr=ccPpl.length?` · CC: ${nameOnly(ccPpl)}`:'';
+    const to=renderExpandablePeople(m.toRecipients||[],`thread-to-${m.id}`,2);
+    const cc=(m.ccRecipients||[]).length?renderExpandablePeople(m.ccRecipients||[],`thread-cc-${m.id}`,2):'';
     const dt=new Date(m.receivedDateTime||m.sentDateTime);
     const body=m.body?.content||m.bodyPreview||'';
     const isHtml=m.body?.contentType==='html';
     const bIdx=isHtml?(window._emailFrameBodies.push(body)-1):-1;
+    const isLatest=i===0;
     const preview=escapeHtml((m.bodyPreview||'').slice(0,140).replace(/\s+/g,' '));
     const msgId=`tv-${m.id.replace(/[^a-zA-Z0-9]/g,'_')}`;
-    return `<div class="tv-msg" id="${msgId}">
+    return `<div class="tv-msg${isLatest?' tv-msg--latest':''}" id="${msgId}">
       <div class="tv-msg-hdr" onclick="tvToggle('${msgId}')">
         <div class="tv-avatar" style="background:${avColor(fromName)}">${avInit(fromName,from?.address)}</div>
         <div class="tv-msg-meta">
-          <div class="tv-from">${escapeHtml(fromName)}</div>
-          <div class="tv-to">To: ${toStr}${ccStr}</div>
-        </div>
-        <div class="tv-date">${fmtDt(dt)}</div>
-      </div>
-      ${preview?`<div class="tv-preview">${preview}…</div>`:''}
-      <div class="tv-body tv-body--collapsed" id="${msgId}-body">
+          <div class="tv-from">${escapeHtml(fromName)}${isLatest?'<span class="tv-badge-latest">Latest</span>':''}</div>
+          <div class="tv-to">To: ${to||'—'}${cc?` · CC: ${cc}`:''}</div>
+	        </div>
+	        <div class="tv-date">${fmtDt(dt)}</div>
+	      </div>
+	      <div class="tv-msg-actions" onclick="event.stopPropagation()">
+	        <button onclick="replyEmail('${m.id}')">Reply</button>
+	        <button onclick="replyAllEmail('${m.id}')">Reply All</button>
+	        <button onclick="forwardEmail('${m.id}')">Forward</button>
+	      </div>
+	      ${!isLatest&&preview?`<div class="tv-preview">${preview}…</div>`:''}
+      <div class="tv-body${isLatest?'':' tv-body--collapsed'}" id="${msgId}-body">
         ${m.hasAttachments?`<div class="tv-att" id="thread-att-${m.id}"></div>`:''}
         <div class="tv-body-inner">${isHtml?`<iframe data-bidx="${bIdx}" data-msgid="${m.id}" style="width:100%;border:none;display:block;min-height:160px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:inherit;white-space:pre-wrap;font-size:13px;line-height:1.6;margin:0">${escapeHtml(body)}</pre>`}</div>
-        <div class="tv-msg-actions" onclick="event.stopPropagation()"><button onclick="replyEmail('${m.id}')">Reply</button><button onclick="replyAllEmail('${m.id}')">Reply All</button><button onclick="forwardEmail('${m.id}')">Forward</button></div>
       </div>
     </div>`;
   }).join('');
-
-  // Build latest email (always expanded, full view)
-  if(latest?.id)emailCache[latest.id]=latest;
-  const lFrom=latest.from?.emailAddress;
-  const lFromName=lFrom?.name||lFrom?.address||'Unknown';
-  const lToStr=nameOnly(latest.toRecipients||[])||'—';
-  const lCcPpl=latest.ccRecipients||[];
-  const lCcStr=lCcPpl.length?` · CC: ${nameOnly(lCcPpl)}`:'';
-  const lDt=new Date(latest.receivedDateTime||latest.sentDateTime);
-  const lBody=latest.body?.content||latest.bodyPreview||'';
-  const lIsHtml=latest.body?.contentType==='html';
-  const lBIdx=lIsHtml?(window._emailFrameBodies.push(lBody)-1):-1;
-  const lMsgId=`tv-${latest.id.replace(/[^a-zA-Z0-9]/g,'_')}`;
-
-  const historyToggle=older.length?`<div class="tv-history-toggle" id="tv-history-toggle" onclick="tvToggleHistory()">
-    <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="tv-hist-icon"><path d="M9 18l6-6-6-6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    ${older.length} earlier message${older.length!==1?'s':''}
-  </div>`:'';
-  const historySection=older.length?`<div class="tv-history" id="tv-history-msgs" style="display:none">${olderHTML}</div>`:'';
-
-  return `${historyToggle}${historySection}<div class="tv-msg tv-msg--latest" id="${lMsgId}">
-    <div class="tv-latest-hdr">
-      <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
-        <div class="tv-avatar" style="background:${avColor(lFromName)};flex-shrink:0">${avInit(lFromName,lFrom?.address)}</div>
-        <div style="flex:1;min-width:0">
-          <div class="tv-from">${escapeHtml(lFromName)}</div>
-          <div class="tv-to">To: ${lToStr}${lCcStr}</div>
-        </div>
-        <div class="tv-date" style="flex-shrink:0">${fmtDt(lDt)}</div>
-      </div>
-      <div class="tv-msg-actions" style="padding:0 0 0 36px" onclick="event.stopPropagation()"><button onclick="replyEmail('${latest.id}')">Reply</button><button onclick="replyAllEmail('${latest.id}')">Reply All</button><button onclick="forwardEmail('${latest.id}')">Forward</button></div>
-    </div>
-    <div class="tv-body" id="${lMsgId}-body">
-      ${latest.hasAttachments?`<div class="tv-att" id="thread-att-${latest.id}"></div>`:''}
-      <div class="tv-body-inner">${lIsHtml?`<iframe data-bidx="${lBIdx}" data-msgid="${latest.id}" style="width:100%;border:none;display:block;min-height:160px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:inherit;white-space:pre-wrap;font-size:13px;line-height:1.6;margin:0">${escapeHtml(lBody)}</pre>`}</div>
-    </div>
-  </div>`;
 }
 
 async function openTaskThread(taskId){
@@ -22491,7 +22412,7 @@ async function openTaskThread(taskId){
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
     refreshTaskFromThreadMessages(messages,emailSubject(t)).catch(()=>{});
-    readerEl.innerHTML=`<div class="tv-hdr"><div class="tv-subject">${emailSubject(t)}</div><div class="tv-count">${messages.length} message${messages.length!==1?'s':''}</div></div><div class="tv-list">${buildThreadHTML(messages)}</div>`;
+    readerEl.innerHTML=`<div class="tv-hdr"><div class="tv-subject">${emailSubject(t)}</div><div class="tv-count">${messages.length} message${messages.length!==1?'s':''} · newest first</div></div><div class="tv-list">${buildThreadHTML(messages)}</div>`;
     readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
     loadThreadAttachmentChips(messages);
   }catch(err){
@@ -22537,10 +22458,7 @@ async function loadThreadAttachmentChips(messages){
 
 async function viewFullThread(emailId){
   const email=emailCache[emailId];
-  if(!email?.conversationId){
-    await readEmail(emailId,currentFolder);
-    return;
-  }
+  if(!email?.conversationId){toast('Full thread is not available for this email');return;}
   const readerEl=document.getElementById('ol-email-reader');
   if(!readerEl)return;
   readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading thread...</div></div>';
@@ -22553,7 +22471,7 @@ async function viewFullThread(emailId){
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
     refreshTaskFromThreadMessages(messages,email.subject||'(no subject)').catch(()=>{});
-    readerEl.innerHTML=`<div class="tv-hdr"><div class="tv-subject">${email.subject||'(no subject)'}</div><div class="tv-count">${messages.length} message${messages.length!==1?'s':''}</div><div class="tv-hdr-actions">${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook ↗</button>`:''}</div></div><div class="tv-list">${buildThreadHTML(messages)}</div>`;
+    readerEl.innerHTML=`<div class="tv-hdr"><div class="tv-subject">${email.subject||'(no subject)'}</div><div class="tv-count">${messages.length} message${messages.length!==1?'s':''} · newest first</div><div class="tv-hdr-actions"><button class="btn btn-ghost btn-sm" onclick="readEmail('${emailId}','${currentFolder}')">← Back to Email</button>${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}</div></div><div class="tv-list">${buildThreadHTML(messages)}</div>`;
     readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
     loadThreadAttachmentChips(messages);
   }catch(err){
