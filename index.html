@@ -22277,13 +22277,11 @@ async function readConversationOrEmail(emailId,folder,el){
   if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
   if(el){el.classList.add('active');_activeEmailEl=el;}
   currentEmailId=emailId;
-  const email=emailCache[emailId]||(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId);
-  if(email){emailCache[emailId]=email;}
-  if(email?.conversationId){
-    await viewFullThread(emailId);
-  } else {
-    await readEmail(emailId,folder,el);
+  if(!emailCache[emailId]){
+    const folderEmail=(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId);
+    if(folderEmail)emailCache[emailId]=folderEmail;
   }
+  await viewFullThread(emailId);
 }
 
 function renderEmailRows(folder,emails){
@@ -22715,26 +22713,33 @@ async function loadThreadAttachmentChips(messages){
 }
 
 async function viewFullThread(emailId){
-  const email=emailCache[emailId];
-  if(!email?.conversationId){toast('Full thread is not available for this email');return;}
   const readerEl=document.getElementById('ol-email-reader');
   if(!readerEl)return;
-  readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading thread...</div></div>';
+  readerEl.innerHTML='<div class="empty-state"><div class="es-text">Loading...</div></div>';
   try{
     const token=await getAccessToken();
-    const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
     const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,conversationId,webLink,hasAttachments,flag,importance';
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
-    if(!res.ok)throw new Error('Failed');
-    const data=await res.json();
-    const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+    // Ensure we have full email data (conversationId may not be set in folder cache)
+    let email=emailCache[emailId];
+    if(!email?.conversationId||!email?.body){
+      const r=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=${select}`,{headers:{Authorization:`Bearer ${token}`}});
+      if(r.ok){email=await r.json();emailCache[emailId]=email;}
+    }
+    if(!email)throw new Error('Email not found');
+    let messages;
+    if(email.conversationId){
+      const filter=encodeURIComponent(`conversationId eq '${email.conversationId.replace(/'/g,"''")}'`);
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
+      if(res.ok){const data=await res.json();messages=data.value||[];}
+    }
+    if(!messages||!messages.length)messages=[email];
+    messages.forEach(m=>{if(m?.id)emailCache[m.id]=m;});
     refreshTaskFromThreadMessages(messages,email.subject||'(no subject)').catch(()=>{});
-    threadViewState={subject:email.subject||'(no subject)',messages,backEmailId:emailId,backFolder:currentFolder,webLink:email.webLink||'',showBack:true,actionsHTML:''};
+    threadViewState={subject:email.subject||'(no subject)',messages,backEmailId:emailId,backFolder:currentFolder,webLink:email.webLink||'',showBack:false,actionsHTML:''};
     await renderStoredThread(token);
   }catch(err){
     console.error('Thread load error:',err);
-    toast('Could not load the full thread');
-    readEmail(emailId,currentFolder);
+    toast('Could not load email');
   }
 }
 
