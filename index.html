@@ -18302,6 +18302,9 @@ exports.version = version;
 [data-theme="dark"] .ol-divider-btn{background:var(--white);border-right-color:var(--border)}
 [data-theme="dark"] .ol-divider-btn:hover{background:var(--bg)}
 [data-theme="dark"] .card,[data-theme="dark"] .ch-card,[data-theme="dark"] .pulse-card,[data-theme="dark"] .sc,[data-theme="dark"] .mo-box,[data-theme="dark"] .drill-box{background:var(--white);border-color:var(--border);color:var(--body)}
+[data-theme="dark"] .exec-item{background:var(--white);border-color:var(--border)}
+[data-theme="dark"] .exec-item:hover{background:var(--sage3);border-color:var(--sage)}
+[data-theme="dark"] .exec-rank{background:var(--sage2);color:var(--ink)}
 [data-theme="dark"] .card-hdr,[data-theme="dark"] .mo-hdr,[data-theme="dark"] .mo-foot,[data-theme="dark"] .drill-hdr{border-color:var(--border)}
 [data-theme="dark"] .card-sub,[data-theme="dark"] .ch-sub,[data-theme="dark"] .pulse-lbl,[data-theme="dark"] .mo-sub,[data-theme="dark"] .es-sub,[data-theme="dark"] .d-lbl{color:var(--sub)}
 [data-theme="dark"] .card-ttl,[data-theme="dark"] .ch-ttl,[data-theme="dark"] .pulse-num,[data-theme="dark"] .sec-title,[data-theme="dark"] .es-text,[data-theme="dark"] .d-val{color:var(--body)}
@@ -18417,6 +18420,17 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);displ
 .ch-ttl{font-size:13px;font-weight:700;color:var(--body)}
 .ch-sub{font-size:11px;color:var(--muted);margin-top:1px}
 .ch-wrap{position:relative;height:148px;margin-top:8px}
+.exec-list{display:flex;flex-direction:column;gap:7px;margin-top:10px;max-height:242px;overflow-y:auto;padding-right:2px}
+.exec-item{border:1px solid var(--border);border-radius:6px;background:var(--white);padding:8px 10px;cursor:pointer;transition:all .14s}
+.exec-item:hover{box-shadow:var(--sh);border-color:#a7c8ad;transform:translateY(-1px)}
+.exec-top{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.exec-rank{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--sage2);color:var(--ink);font-size:10px;font-weight:800;flex-shrink:0}
+.exec-title{font-size:12.3px;font-weight:700;color:var(--body);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.exec-reason{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.35px;border-radius:12px;padding:1px 6px;white-space:nowrap;margin-left:auto}
+.exec-reason.hot{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca}
+.exec-reason.warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.exec-reason.info{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe}
+.exec-meta{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;flex-wrap:wrap;line-height:1.35}
 
 /* ACTIVITY */
 .act-item{display:flex;align-items:flex-start;gap:7px;padding:6px 0;border-bottom:1px solid #f3f4f6}
@@ -19020,7 +19034,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
     <div class="chart-grid">
       <div class="ch-card"><div class="ch-ttl">Open Workload</div><div class="ch-sub">People with open tasks. Click a bar to view their tasks.</div><div class="ch-wrap" style="height:170px"><canvas id="ch-person"></canvas></div></div>
       <div class="ch-card"><div class="ch-ttl">Status Breakdown</div><div class="ch-sub">Current distribution. Click a segment to filter.</div><div class="ch-wrap" style="height:242px;margin-top:16px"><canvas id="ch-status"></canvas></div></div>
-      <div class="ch-card"><div class="ch-ttl">Priority by Department</div><div class="ch-sub">Open tasks only. Click a bar to filter.</div><div class="ch-wrap" style="height:170px"><canvas id="ch-priority"></canvas></div></div>
+      <div class="ch-card"><div class="ch-ttl">Executive Attention</div><div class="ch-sub">Ranked items that need a manager's eye.</div><div class="exec-list" id="exec-attention-list"></div></div>
     </div>
   </div>
 
@@ -21618,6 +21632,65 @@ function mkChart(id,type,labels,datasets,opts={}){
     }:{},animation:{duration:650,easing:"easeOutQuart"},events:["mousemove","mouseout","click","touchstart","touchmove"],onHover:(evt,elements)=>{ctx.style.cursor=elements.length?"pointer":"default";},onClick:opts.onClick||null,...opts.extra
   }});
 }
+
+function daysSince(date){
+  const t=new Date(date||0).getTime();
+  if(!Number.isFinite(t)||!t)return 0;
+  return Math.max(0,Math.floor((Date.now()-t)/(24*60*60*1000)));
+}
+
+function executiveAttentionItems(){
+  return tasks.filter(t=>nstt(t.status)!=="Done").map(t=>{
+    const overdue=nstt(t.status)==="Overdue";
+    const high=String(t.priority||"Normal").toLowerCase()==="high";
+    const carry=!!t.carryForwardFrom;
+    const replied=!!t.lastReplyAt&&daysSince(t.lastReplyAt)<=3;
+    const age=daysSince(t.date);
+    let score=0;
+    if(overdue)score+=70+Math.min(age,21);
+    if(high)score+=42;
+    if(carry)score+=28+Math.min(daysSince(t.carryForwardFrom),21);
+    if(replied)score+=18;
+    if(age>=7)score+=8;
+    if(score<18)return null;
+    let reason='Watch';
+    let tone='info';
+    if(overdue){reason=age>7?`${Math.max(1,Math.floor(age/7))} wk late`:'Overdue';tone='hot';}
+    else if(high){reason='High';tone='hot';}
+    else if(carry){reason='Carryover';tone='warn';}
+    else if(replied){reason='New reply';tone='info';}
+    else if(age>=7){reason='Stale';tone='warn';}
+    return {task:t,score,reason,tone,age};
+  }).filter(Boolean).sort((a,b)=>b.score-a.score||new Date(b.task.date)-new Date(a.task.date)).slice(0,7);
+}
+
+function renderExecutiveAttention(){
+  const el=document.getElementById('exec-attention-list');
+  if(!el)return;
+  const items=executiveAttentionItems();
+  if(!items.length){
+    el.innerHTML=`<div style="padding:28px 10px;text-align:center;color:var(--muted);font-size:12px">No executive attention items right now.</div>`;
+    return;
+  }
+  el.innerHTML=items.map((x,i)=>{
+    const t=x.task;
+    const meta=[
+      escapeHtml(t.dept||'No department'),
+      escapeHtml(t.person||'Unassigned'),
+      nstt(t.status),
+      String(t.priority||'Normal').toLowerCase()==='high'?'High priority':'Normal'
+    ].filter(Boolean);
+    return `<div class="exec-item" onclick="openDetail(${t.id})">
+      <div class="exec-top">
+        <div class="exec-rank">${i+1}</div>
+        <div class="exec-title">${escapeHtml(emailSubject(t))}</div>
+        <div class="exec-reason ${x.tone}">${escapeHtml(x.reason)}</div>
+      </div>
+      <div class="exec-meta">${meta.join(' <span style="color:var(--border)">•</span> ')}</div>
+    </div>`;
+  }).join('');
+}
+
 function renderCharts(){
   const th=chartTheme();
   // Dept chart — grouped bars: overdue / pending / done
@@ -21674,28 +21747,7 @@ function renderCharts(){
   tasks.forEach(t=>sc[nstt(t.status)]=(sc[nstt(t.status)]||0)+1);
   mkChart("ch-status","doughnut",Object.keys(sc),[{data:Object.values(sc),backgroundColor:["#f2c17c","#8ecaa0","#ef9a9a"],hoverBackgroundColor:["#e9a85f","#6fb783","#e57373"],borderWidth:3,borderColor:th.surface,hoverOffset:8}],{legend:true,extra:{cutout:"58%"},onClick:(evt,elements)=>{if(elements.length){const s=Object.keys(sc)[elements[0].index];document.getElementById("sf-status").value=s;nav("master");}}});
 
-  // Priority breakdown by dept (open tasks only)
-  const pdp={};
-  tasks.filter(t=>nstt(t.status)!=="Done").forEach(t=>{
-    const d=t.dept||"Unknown";
-    if(!pdp[d])pdp[d]={high:0,norm:0};
-    if(String(t.priority||"Normal").toLowerCase()==="high")pdp[d].high++;else pdp[d].norm++;
-  });
-  const pdk=Object.keys(pdp).sort((a,b)=>(pdp[b].high+pdp[b].norm)-(pdp[a].high+pdp[a].norm)).slice(0,8);
-  if(pdk.length){
-    const priHost=document.getElementById('ch-priority')?.parentElement;
-    if(priHost)priHost.style.height='242px';
-    const pLabels=pdk.map(d=>{
-      const words=String(d||'').split(/\s+/).filter(Boolean);
-      if(d.length<=12)return d;
-      if(words.length>1)return words.map(w=>w[0]).join('').slice(0,5).toUpperCase();
-      return d.slice(0,10);
-    });
-    mkChart("ch-priority","bar",pLabels,[
-      {label:"High",data:pdk.map(d=>pdp[d].high),backgroundColor:"#ef9a9a",hoverBackgroundColor:"#e57373",borderRadius:5,borderSkipped:false,maxBarThickness:18,barPercentage:.78,categoryPercentage:.7},
-      {label:"Normal",data:pdk.map(d=>pdp[d].norm),backgroundColor:"#93c5fd",hoverBackgroundColor:"#60a5fa",borderRadius:5,borderSkipped:false,maxBarThickness:18,barPercentage:.78,categoryPercentage:.7},
-    ],{legend:true,interaction:{mode:'index',axis:'x',intersect:false},tooltipCallbacks:{title:items=>items.length?[pdk[items[0].dataIndex]]:[],label:item=>`${item.dataset.label}: ${item.parsed.y}`},extra:{scales:{x:{grid:{display:false},ticks:{font:{family:"Inter",size:9,weight:"700"},color:th.text,maxRotation:0,autoSkip:false},border:{display:false}},y:{grid:{color:th.grid},ticks:{font:{family:"Inter",size:10},color:th.muted,precision:0},beginAtZero:true,border:{display:false}}}},onClick:(evt,elements)=>{if(elements.length){const dept=pdk[elements[0].dataIndex];const isHigh=elements[0].datasetIndex===0;document.getElementById("sf-dept").value=dept;document.getElementById("sf-priority").value=isHigh?"High":"Normal";document.getElementById("sf-status").value="all";nav("master");}}});
-  }
+  renderExecutiveAttention();
 }
 
 // ============================================================
