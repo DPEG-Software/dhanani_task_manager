@@ -22767,6 +22767,9 @@ async function viewFullThread(emailId){
         updateUnreadBadges(-markedCount);
       }
     }
+    // Process meeting/Teams invite emails so they render as cards
+    messages=await Promise.all(messages.map(m=>processMeetingMsg(m,token)));
+    messages.forEach(m=>{if(m?.id)emailCache[m.id]=m;});
     // Latest = first after newest-first sort; use its id for reply actions
     const latestMsg=[...messages].sort((a,b)=>new Date(b.receivedDateTime||b.sentDateTime)-new Date(a.receivedDateTime||a.sentDateTime))[0];
     const latestId=latestMsg?.id||emailId;
@@ -22882,6 +22885,35 @@ function centralDate(dt,opts){
 function centralTime(dt,opts){
   return (!dt||isNaN(dt))?'':dt.toLocaleTimeString('en-US',{timeZone:CENTRAL_TZ,...opts});
 }
+async function processMeetingMsg(m,token){
+  const bodyContent=m.body?.content||m.bodyPreview||'';
+  const isHtml=m.body?.contentType==='html';
+  const isEventMsg=String(m['@odata.type']||'').toLowerCase().includes('eventmessage');
+  const rawBody=isHtml?(()=>{try{const d=document.createElement('div');d.innerHTML=bodyContent;return d.textContent||'';}catch{return bodyContent;}})():bodyContent;
+  const icalText=extractICalText(rawBody);
+  const teamsJoinUrl=extractMeetingJoinLink(bodyContent);
+  if(!isEventMsg&&!icalText&&!teamsJoinUrl)return m;
+  const toAll=m.toRecipients||[];
+  const ccAll=m.ccRecipients||[];
+  let meetingData=icalText?parseICalData(icalText):(teamsJoinUrl?{
+    summary:m.subject||'Teams meeting',location:'',description:m.bodyPreview||'',
+    organizer:m.from?.emailAddress?.name||m.from?.emailAddress?.address||'',
+    dtstart:null,dtend:null,status:'',
+    attendees:[...toAll,...ccAll].map(r=>r.emailAddress?.name||r.emailAddress?.address||'').filter(Boolean),
+    joinUrl:teamsJoinUrl
+  }:null);
+  if(isEventMsg&&m.id){
+    try{
+      const r=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+m.id+'?$select=meetingRequestType,startDateTime,endDateTime,location,attendees',{headers:{Authorization:'Bearer '+token}});
+      if(r.ok){const d=await r.json();Object.assign(m,d);if(m.id)emailCache[m.id]=m;}
+    }catch{}
+    const gm=buildMeetingDataFromGraph(m);
+    meetingData={...gm,joinUrl:gm.joinUrl||meetingData?.joinUrl||teamsJoinUrl,description:gm.description||meetingData?.description||''};
+  }
+  if(meetingData)return{...m,body:{contentType:'html',content:renderMeetingCard(meetingData,m.subject)},bodyPreview:m.bodyPreview||meetingData.description||''};
+  return m;
+}
+
 function extractICalText(str){
   const m=String(str||'').match(/BEGIN:VCALENDAR[\s\S]*?END:VCALENDAR/i);
   return m?m[0]:'';
