@@ -18421,12 +18421,12 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);displ
 .ch-ttl{font-size:13px;font-weight:700;color:var(--body)}
 .ch-sub{font-size:11px;color:var(--muted);margin-top:1px}
 .ch-wrap{position:relative;height:148px;margin-top:8px}
-.exec-list{display:flex;flex-direction:column;gap:7px;margin-top:10px;max-height:242px;overflow-y:auto;padding-right:2px}
-.exec-item{border:1px solid var(--border);border-radius:6px;background:var(--white);padding:8px 10px;cursor:pointer;transition:all .14s}
+.exec-list{display:flex;flex-direction:column;gap:6px;margin-top:10px;min-height:242px;overflow:hidden;padding-right:2px}
+.exec-item{border:1px solid var(--border);border-radius:6px;background:var(--white);padding:7px 10px;cursor:pointer;transition:all .14s}
 .exec-item:hover{box-shadow:var(--sh);border-color:#a7c8ad;transform:translateY(-1px)}
 .exec-top{display:flex;align-items:center;gap:7px;margin-bottom:4px}
 .exec-rank{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--sage2);color:var(--ink);font-size:10px;font-weight:800;flex-shrink:0}
-.exec-title{font-size:12.3px;font-weight:700;color:var(--body);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.exec-title{font-size:12px;font-weight:700;color:var(--body);line-height:1.22;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .exec-reason{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.35px;border-radius:12px;padding:1px 6px;white-space:nowrap;margin-left:auto}
 .exec-reason.hot{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca}
 .exec-reason.warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
@@ -21661,7 +21661,8 @@ function daysSince(date){
 }
 
 function executiveAttentionItems(){
-  return tasks.filter(t=>nstt(t.status)!=="Done").map(t=>{
+  const open=tasks.filter(t=>nstt(t.status)!=="Done");
+  const ranked=open.map(t=>{
     const overdue=nstt(t.status)==="Overdue";
     const high=String(t.priority||"Normal").toLowerCase()==="high";
     const carry=!!t.carryForwardFrom;
@@ -21682,7 +21683,15 @@ function executiveAttentionItems(){
     else if(replied){reason='New reply';tone='info';}
     else if(age>=7){reason='Stale';tone='warn';}
     return {task:t,score,reason,tone,age};
-  }).filter(Boolean).sort((a,b)=>b.score-a.score||new Date(b.task.date)-new Date(a.task.date)).slice(0,7);
+  }).filter(Boolean).sort((a,b)=>b.score-a.score||new Date(b.task.date)-new Date(a.task.date));
+  if(ranked.length>=5)return ranked.slice(0,5);
+  const used=new Set(ranked.map(x=>x.task.id));
+  const fillers=open
+    .filter(t=>!used.has(t.id))
+    .sort((a,b)=>new Date(b.lastReplyAt||b.date||0)-new Date(a.lastReplyAt||a.date||0))
+    .slice(0,5-ranked.length)
+    .map(t=>({task:t,score:0,reason:'Open',tone:'info',age:daysSince(t.date)}));
+  return [...ranked,...fillers].slice(0,5);
 }
 
 function renderExecutiveAttention(){
