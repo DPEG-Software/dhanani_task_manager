@@ -19019,7 +19019,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
     </div>
     <div class="chart-grid">
       <div class="ch-card"><div class="ch-ttl">Open Workload</div><div class="ch-sub">People with open tasks. Click a bar to view their tasks.</div><div class="ch-wrap" style="height:170px"><canvas id="ch-person"></canvas></div></div>
-      <div class="ch-card"><div class="ch-ttl">Status Breakdown</div><div class="ch-sub">Current distribution. Click a segment to filter.</div><div class="ch-wrap"><canvas id="ch-status"></canvas></div></div>
+      <div class="ch-card"><div class="ch-ttl">Status Breakdown</div><div class="ch-sub">Current distribution. Click a segment to filter.</div><div class="ch-wrap" style="height:230px"><canvas id="ch-status"></canvas></div></div>
       <div class="ch-card"><div class="ch-ttl">Priority by Department</div><div class="ch-sub">Open tasks only. Click a bar to filter.</div><div class="ch-wrap" style="height:170px"><canvas id="ch-priority"></canvas></div></div>
     </div>
   </div>
@@ -21620,7 +21620,7 @@ function mkChart(id,type,labels,datasets,opts={}){
 }
 function renderCharts(){
   const th=chartTheme();
-  // Dept chart — stacked: overdue / pending / done
+  // Dept chart — grouped bars: overdue / pending / done
   const dp={};
   tasks.forEach(t=>{
     if(!dp[t.dept])dp[t.dept]={tot:0,dn:0,ov:0};
@@ -21631,12 +21631,12 @@ function renderCharts(){
   DEPARTMENTS.forEach(d=>{if(!dp[d])dp[d]={tot:0,dn:0,ov:0};});
   const dk=DEPARTMENTS.filter(d=>dp[d].tot>0);
   const deptHost=document.getElementById('ch-dept')?.parentElement;
-  if(deptHost)deptHost.style.height=Math.max(220,dk.length*30+76)+'px';
+  if(deptHost)deptHost.style.height='250px';
   mkChart("ch-dept","bar",dk,[
-    {label:"Overdue",stack:"dept",data:dk.map(d=>dp[d].ov),backgroundColor:"#ef9a9a",hoverBackgroundColor:"#e57373",borderRadius:5,borderSkipped:false,maxBarThickness:14},
-    {label:"Pending",stack:"dept",data:dk.map(d=>dp[d].tot-dp[d].dn-dp[d].ov),backgroundColor:th.dark?"#64748b":"#d7dee8",hoverBackgroundColor:th.dark?"#94a3b8":"#c3ccd8",borderRadius:5,borderSkipped:false,maxBarThickness:14},
-    {label:"Done",stack:"dept",data:dk.map(d=>dp[d].dn),backgroundColor:"#8ecaa0",hoverBackgroundColor:"#6fb783",borderRadius:5,borderSkipped:false,maxBarThickness:14},
-  ],{legend:true,interaction:{mode:"index",axis:"y",intersect:false},tooltipCallbacks:{title:items=>items.length?[dk[items[0].dataIndex]]:[],label:item=>`${item.dataset.label}: ${item.parsed.x}`},extra:{indexAxis:"y",scales:{x:{stacked:true,grid:{color:th.grid},ticks:{font:{family:"Inter",size:11,weight:"600"},color:th.muted,precision:0},beginAtZero:true,border:{display:false}},y:{stacked:true,grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:th.text,autoSkip:false},border:{display:false}}}},onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
+    {label:"Overdue",data:dk.map(d=>dp[d].ov),backgroundColor:"#ef9a9a",hoverBackgroundColor:"#e57373",borderRadius:5,borderSkipped:false,maxBarThickness:18,barPercentage:.8,categoryPercentage:.72},
+    {label:"Pending",data:dk.map(d=>dp[d].tot-dp[d].dn-dp[d].ov),backgroundColor:th.dark?"#64748b":"#d7dee8",hoverBackgroundColor:th.dark?"#94a3b8":"#c3ccd8",borderRadius:5,borderSkipped:false,maxBarThickness:18,barPercentage:.8,categoryPercentage:.72},
+    {label:"Done",data:dk.map(d=>dp[d].dn),backgroundColor:"#8ecaa0",hoverBackgroundColor:"#6fb783",borderRadius:5,borderSkipped:false,maxBarThickness:18,barPercentage:.8,categoryPercentage:.72},
+  ],{legend:true,interaction:{mode:"index",axis:"x",intersect:false},tooltipCallbacks:{title:items=>items.length?[dk[items[0].dataIndex]]:[],label:item=>`${item.dataset.label}: ${item.parsed.y}`},extra:{scales:{x:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:th.text,maxRotation:0,autoSkip:false},border:{display:false}},y:{grid:{color:th.grid},ticks:{font:{family:"Inter",size:11,weight:"600"},color:th.muted,precision:0},beginAtZero:true,border:{display:false}}}},onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
 
   // Open workload — normalise by staffKey so the same person doesn't split across entries
   const pp={};
@@ -21683,10 +21683,12 @@ function renderCharts(){
   });
   const pdk=Object.keys(pdp).sort((a,b)=>(pdp[b].high+pdp[b].norm)-(pdp[a].high+pdp[a].norm)).slice(0,8);
   if(pdk.length){
+    const priHost=document.getElementById('ch-priority')?.parentElement;
+    if(priHost)priHost.style.height=Math.max(220,pdk.length*30+70)+'px';
     mkChart("ch-priority","bar",pdk,[
       {label:"High",data:pdk.map(d=>pdp[d].high),backgroundColor:"#ef9a9a",hoverBackgroundColor:"#e57373",borderRadius:5,borderSkipped:false,maxBarThickness:12},
       {label:"Normal",data:pdk.map(d=>pdp[d].norm),backgroundColor:"#93c5fd",hoverBackgroundColor:"#60a5fa",borderRadius:5,borderSkipped:false,maxBarThickness:12},
-    ],{legend:true,interaction:{mode:'index',axis:'y',intersect:false},extra:{indexAxis:"y",scales:{x:{stacked:true,grid:{color:th.grid},ticks:{font:{family:"Inter",size:10},color:th.muted,precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:9,weight:"600"},color:th.text},border:{display:false}}}},onClick:(evt,elements)=>{if(elements.length){const dept=pdk[elements[0].dataIndex];const isHigh=elements[0].datasetIndex===0;document.getElementById("sf-dept").value=dept;document.getElementById("sf-priority").value=isHigh?"High":"Normal";document.getElementById("sf-status").value="all";nav("master");}}});
+    ],{legend:true,interaction:{mode:'index',axis:'y',intersect:false},extra:{indexAxis:"y",scales:{x:{stacked:true,grid:{color:th.grid},ticks:{font:{family:"Inter",size:10},color:th.muted,precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:9,weight:"600"},color:th.text,autoSkip:false},border:{display:false}}}},onClick:(evt,elements)=>{if(elements.length){const dept=pdk[elements[0].dataIndex];const isHigh=elements[0].datasetIndex===0;document.getElementById("sf-dept").value=dept;document.getElementById("sf-priority").value=isHigh?"High":"Normal";document.getElementById("sf-status").value="all";nav("master");}}});
   }
 }
 
