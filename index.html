@@ -22571,14 +22571,28 @@ function threadMessageBody(m,isHtml){
 function threadHeaderHTML(){
   const s=threadViewState;
   const count=s.messages.length;
+  const latest=[...s.messages].sort((a,b)=>new Date(b.receivedDateTime||b.sentDateTime)-new Date(a.receivedDateTime||a.sentDateTime))[0];
+  const sender=latest?.from?.emailAddress;
+  const toAll=latest?.toRecipients||[];
+  const ccAll=latest?.ccRecipients||[];
+  const dt=latest?new Date(latest.receivedDateTime||latest.sentDateTime):null;
+  const dateStr=dt?centralDate(dt,{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  const toStr=toAll.length?renderExpandablePeople(toAll,'thread-hdr-to',2):'—';
+  const ccStr=ccAll.length?renderExpandablePeople(ccAll,'thread-hdr-cc',2):'';
   return `<div class="tv-hdr">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:${s.actionsHTML?'6px':'0'}">
+    <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">
       <div style="flex:1;min-width:0">
         <div class="tv-subject">${escapeHtml(s.subject||'(no subject)')}</div>
         <div class="tv-count">${count} message${count!==1?'s':''}</div>
       </div>
-      ${s.showBack&&s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="readEmail('${s.backEmailId}','${s.backFolder||'inbox'}')">← Back</button>`:''}
+      ${s.showBack&&s.backEmailId?`<button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="readEmail('${s.backEmailId}','${s.backFolder||'inbox'}')">← Back</button>`:''}
     </div>
+    ${latest?`<div style="margin-bottom:7px">
+      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0">From</span><span style="font-size:12px;color:var(--body)">${escapeHtml(sender?.name||'')}${sender?.address?' <span style="color:var(--muted);font-size:11px">&lt;'+escapeHtml(sender.address)+'&gt;</span>':''}</span></div>
+      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0">To</span><span style="font-size:12px;color:var(--body)">${toStr}</span></div>
+      ${ccStr?`<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0">CC</span><span style="font-size:12px;color:var(--body)">${ccStr}</span></div>`:''}
+      <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0">Date</span><span style="font-size:11px;color:var(--muted)">${dateStr}</span></div>
+    </div>`:''}
     ${s.actionsHTML?`<div style="display:flex;gap:5px;flex-wrap:wrap">${s.actionsHTML}</div>`:''}
   </div>`;
 }
@@ -22738,6 +22752,21 @@ async function viewFullThread(emailId){
     if(!messages||!messages.length)messages=[email];
     messages.forEach(m=>{if(m?.id)emailCache[m.id]=m;});
     refreshTaskFromThreadMessages(messages,email.subject||'(no subject)').catch(()=>{});
+    // Mark unread messages as read
+    if(currentFolder==='inbox'){
+      const unread=messages.filter(m=>!m.isRead);
+      let markedCount=0;
+      for(const m of unread){
+        try{
+          const r=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+m.id,{method:'PATCH',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{"isRead":true}'});
+          if(r.ok){m.isRead=true;const fc=(outlookFolderEmails[currentFolder]||[]).find(e=>e.id===m.id);if(fc)fc.isRead=true;markedCount++;}
+        }catch{}
+      }
+      if(markedCount){
+        document.getElementById('email-item-'+emailId)?.classList.remove('unread');
+        updateUnreadBadges(-markedCount);
+      }
+    }
     // Latest = first after newest-first sort; use its id for reply actions
     const latestMsg=[...messages].sort((a,b)=>new Date(b.receivedDateTime||b.sentDateTime)-new Date(a.receivedDateTime||a.sentDateTime))[0];
     const latestId=latestMsg?.id||emailId;
@@ -23052,7 +23081,7 @@ async function readEmail(emailId,folder,el){
       ${pBtn('Reply','<path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`replyEmail('${emailId}')`)}
       ${pBtn('Reply All','<path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6M7 6h8a7 7 0 017 7" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`replyAllEmail('${emailId}')`)}
       ${pBtn('Forward','<path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`forwardEmail('${emailId}')`)}
-      ${pBtn('Thread','<path d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`viewFullThread('${emailId}')`)}
+
       <button onclick="toggleEmailAISummary('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e9d5ff;background:#fff;color:#7c3aed;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='#fff'"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarize</button>
       ${isTracked
         ?`<span style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500">✓ In Tasks</span><button onclick="removeTaskByEmail('${emailId}')" style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">Remove</button>`
