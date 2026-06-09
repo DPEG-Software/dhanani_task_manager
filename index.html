@@ -21251,17 +21251,9 @@ function renderActivity(){
 // ============================================================
 // WEDNESDAY / DISCUSSION NOTES
 // ============================================================
-function compactSummaryLines(summary){
+function allSummaryBullets(summary){
   if(!summary)return[];
-  const lines=summary.split('\n').map(l=>l.replace(/^[•*▾▲◆]\s*/,'').trim()).filter(Boolean);
-  const order=['about:','latest:','action needed:','action:'];
-  const picked=[];
-  for(const key of order){
-    const m=lines.find(l=>l.toLowerCase().startsWith(key));
-    if(m&&picked.length<2)picked.push(m);
-  }
-  if(!picked.length)picked.push(...lines.slice(0,2));
-  return picked.slice(0,2);
+  return summary.split('\n').map(l=>l.replace(/^[•*▾▲◆-]\s*/,'').trim()).filter(Boolean);
 }
 function summaryFieldMap(summary){
   const map={};
@@ -21283,29 +21275,6 @@ function firstSummaryField(fields,names){
     if(hit&&fields[hit])return fields[hit];
   }
   return '';
-}
-function discussionBriefHTML(t){
-  const fields=summaryFieldMap(t.summary||'');
-  const about=firstSummaryField(fields,['about','context','topic'])||fields.note||emailSubject(t);
-  const latest=firstSummaryField(fields,['latest','latest update'])||'No latest update captured yet.';
-  const action=firstSummaryField(fields,['action needed','action','needed']);
-  const involved=firstSummaryField(fields,['dpeg involved','people involved','involved'])||[t.person,t.dept].filter(Boolean).join(' · ');
-  const purpose=action
-    ?`This item is on the agenda because ${action.replace(/\.$/,'')}.`
-    :`This item is on the agenda so ${t.person||'the owner'} can clarify the status or decision needed for ${emailSubject(t)}.`;
-  const question=action
-    ?`What should DPEG confirm, approve, or ask ${t.person||'the owner'} to handle based on this request?`
-    :`What does Nikhil need to clarify, decide, or delegate for this item?`;
-  const rows=[
-    ['Purpose',purpose],
-    ['Latest Update',latest],
-    ['Discussion Question',question],
-    ['People Involved',involved||'Not captured']
-  ];
-  return `<div class="sum-rows">${rows.map(([lbl,val])=>`
-    <div class="sum-row${lbl==='Discussion Question'?' s-action':lbl==='People Involved'?' s-involved':''}">
-      <span class="lbl">${lbl}</span><span class="val">${escapeHtml(val)}</span>
-    </div>`).join('')}</div>`;
 }
 function renderWed(){
   const wt=tasks.filter(t=>t.wednesday);
@@ -21385,13 +21354,11 @@ function renderWed(){
               ${pBadge(t.priority||'Normal')}
               ${t.replyCount>1?`<span style="font-size:11px;color:var(--muted)">&bull; ${t.replyCount} msgs</span>`:''}
             </div>
-            ${(()=>{const lines=compactSummaryLines(t.summary);return lines.length?`<div style="margin-bottom:7px">${lines.map(l=>`<div style="font-size:12px;color:var(--sub);line-height:1.5;padding:1px 0">${l}</div>`).join('')}</div>`:''})()}
+            ${(()=>{const lines=allSummaryBullets(t.summary);return lines.length?`<ul style="margin:0 0 7px;padding-left:14px">${lines.map(l=>`<li style="font-size:12px;color:var(--sub);line-height:1.6;padding:1px 0">${escapeHtml(l)}</li>`).join('')}</ul>`:''})()}
             ${t.followup?`<div style="font-size:11.5px;color:var(--forest);font-weight:500;margin-bottom:7px;padding:5px 9px;background:var(--sage3);border-radius:5px">Note: ${t.followup}</div>`:''}
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:7px">
               ${taskEmailId(t)?`<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();openTaskThread(${t.id})" style="font-size:10.5px;padding:3px 9px;display:flex;align-items:center;gap:4px"><svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="2" stroke-linecap="round"/></svg>Open Thread</button>`:''}
-              ${t.summary?`<button class="btn btn-ghost btn-xs" id="wexp-${t.id}" onclick="toggleWedSum(${t.id})" style="font-size:10.5px;padding:3px 9px">Discussion brief &#9662;</button>`:''}
             </div>
-            ${t.summary?`<div id="wsum-${t.id}" style="display:none;margin-bottom:7px"><div class="wed-card-summary">${discussionBriefHTML(t)}</div></div>`:''}
             <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="1" style="min-height:32px">${t.meetingNote||''}</textarea>
             <div class="ag-foot" style="margin-top:6px">
               ${['Pending','Done','Overdue'].map(s=>`<button class="ag-status-btn ${s.toLowerCase()}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
@@ -21430,14 +21397,6 @@ function renderWed(){
 }
 
 
-function toggleWedSum(id){
-  const clip=document.getElementById(`wsum-${id}`);
-  const btn=document.getElementById(`wexp-${id}`);
-  if(!clip||!btn)return;
-  const hidden=clip.style.display==='none'||clip.style.display==='';
-  clip.style.display=hidden?'block':'none';
-  btn.innerHTML=hidden?'Hide brief &#9650;':'Discussion brief &#9662;';
-}
 
 async function addCN(){const v=document.getElementById("cn-in").value.trim();if(!v)return;customNotes.unshift({text:v,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),meetingNote:""});document.getElementById("cn-in").value="";renderWed();syncBadges();toast("Note added");await saveTasksToOneDrive();}
 async function removeCN(i){const el=document.getElementById("cn-note-"+i);if(el)customNotes[i].meetingNote=el.value;customNotes.splice(i,1);renderWed();syncBadges();await saveTasksToOneDrive();}
@@ -22552,7 +22511,6 @@ function tvToggle(msgId){
   if(wasHidden){body.querySelectorAll('iframe').forEach(fr=>{try{if(fr.contentDocument?.body)fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});}
 }
 
-let threadShowFullHistory=false;
 let threadViewState={subject:'',messages:[],backEmailId:'',backFolder:'inbox',webLink:'',showBack:false,actionsHTML:''};
 
 function stripQuotedPlainText(text){
@@ -22600,20 +22558,17 @@ function stripQuotedHTML(html){
 
 function threadMessageBody(m,isHtml){
   const body=m.body?.content||m.bodyPreview||'';
-  if(threadShowFullHistory)return body;
   return isHtml?stripQuotedHTML(body):stripQuotedPlainText(body);
 }
 
 function threadHeaderHTML(){
   const s=threadViewState;
-  const historyLabel=threadShowFullHistory?'Hide full message history':'Show full message history';
+  const count=s.messages.length;
   return `<div class="tv-hdr">
     <div class="tv-subject">${escapeHtml(s.subject||'(no subject)')}</div>
-    <div class="tv-count">${s.messages.length} message${s.messages.length!==1?'s':''} · newest first</div>
+    <div class="tv-count">${count} message${count!==1?'s':''}</div>
     <div class="tv-hdr-actions">
-      ${s.showBack&&s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="readEmail('${s.backEmailId}','${s.backFolder||'inbox'}')">← Back to Email</button>`:''}
-      <button class="btn btn-ghost btn-sm" onclick="toggleThreadHistory()">${historyLabel}</button>
-      ${s.webLink&&s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${s.backEmailId}')">Open in Outlook</button>`:''}
+      ${s.webLink&&s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${s.backEmailId}')">Open in Outlook ↗</button>`:''}
       ${s.actionsHTML||''}
     </div>
   </div>`;
@@ -22638,33 +22593,29 @@ async function renderStoredThread(token){
   if(!readerEl)return;
   readerEl.innerHTML=threadHeaderHTML()+`<div class="tv-list">${buildThreadHTML(threadViewState.messages)}</div>`;
   await hydrateThreadFramesAndAttachments(token);
-}
-
-async function toggleThreadHistory(){
-  threadShowFullHistory=!threadShowFullHistory;
-  await renderStoredThread();
+  // Scroll latest (bottom) message into view
+  setTimeout(()=>{const tvList=readerEl.querySelector('.tv-list');const latest=readerEl.querySelector('.tv-msg--latest');if(tvList&&latest)tvList.scrollTop=Math.max(0,latest.offsetTop-16);},120);
 }
 
 function buildThreadHTML(messages){
-  const sorted=[...messages].sort((a,b)=>new Date(b.receivedDateTime||b.sentDateTime)-new Date(a.receivedDateTime||a.sentDateTime));
+  // Oldest first — latest lands at the bottom, matching Outlook desktop layout
+  const sorted=[...messages].sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
   window._emailFrameBodies=[];
   const avColors=['#0078d4','#107c41','#b91c1c','#7c3aed','#b45309','#0f766e','#c2185b','#455a64'];
   const avColor=name=>{const h=Array.from(name||'?').reduce((s,c)=>s+c.charCodeAt(0),0);return avColors[h%avColors.length];};
   const avInit=(name,addr)=>{if(name&&name.trim().length>1)return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();return((addr||name||'?')[0]||'?').toUpperCase();};
   const fmtDt=dt=>centralDate(dt,{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
-	  return sorted.map((m,i)=>{
-	    if(m?.id)emailCache[m.id]=m;
-	    const from=m.from?.emailAddress;
+  return sorted.map((m,i)=>{
+    if(m?.id)emailCache[m.id]=m;
+    const from=m.from?.emailAddress;
     const fromName=from?.name||from?.address||'Unknown';
     const to=renderExpandablePeople(m.toRecipients||[],`thread-to-${m.id}`,2);
     const cc=(m.ccRecipients||[]).length?renderExpandablePeople(m.ccRecipients||[],`thread-cc-${m.id}`,2):'';
     const dt=new Date(m.receivedDateTime||m.sentDateTime);
     const isHtml=m.body?.contentType==='html';
     const displayBody=threadMessageBody(m,isHtml);
-    const fullBody=m.body?.content||m.bodyPreview||'';
-    const wasTrimmed=!threadShowFullHistory&&String(displayBody||'').trim()!==String(fullBody||'').trim();
     const bIdx=isHtml?(window._emailFrameBodies.push(displayBody)-1):-1;
-    const isLatest=i===0;
+    const isLatest=i===sorted.length-1;
     const preview=escapeHtml((m.bodyPreview||'').slice(0,140).replace(/\s+/g,' '));
     const msgId=`tv-${m.id.replace(/[^a-zA-Z0-9]/g,'_')}`;
     return `<div class="tv-msg${isLatest?' tv-msg--latest':''}" id="${msgId}">
@@ -22673,18 +22624,17 @@ function buildThreadHTML(messages){
         <div class="tv-msg-meta">
           <div class="tv-from">${escapeHtml(fromName)}${isLatest?'<span class="tv-badge-latest">Latest</span>':''}</div>
           <div class="tv-to">To: ${to||'—'}${cc?` · CC: ${cc}`:''}</div>
-	        </div>
-	        <div class="tv-date">${fmtDt(dt)}</div>
-	      </div>
-	      <div class="tv-msg-actions" onclick="event.stopPropagation()">
-	        <button onclick="replyEmail('${m.id}')">Reply</button>
-	        <button onclick="replyAllEmail('${m.id}')">Reply All</button>
-	        <button onclick="forwardEmail('${m.id}')">Forward</button>
-	      </div>
-	      ${!isLatest&&preview?`<div class="tv-preview">${preview}…</div>`:''}
+        </div>
+        <div class="tv-date">${fmtDt(dt)}</div>
+      </div>
+      <div class="tv-msg-actions" onclick="event.stopPropagation()">
+        <button onclick="replyEmail('${m.id}')">Reply</button>
+        <button onclick="replyAllEmail('${m.id}')">Reply All</button>
+        <button onclick="forwardEmail('${m.id}')">Forward</button>
+      </div>
+      ${!isLatest&&preview?`<div class="tv-preview">${preview}…</div>`:''}
       <div class="tv-body${isLatest?'':' tv-body--collapsed'}" id="${msgId}-body">
         ${m.hasAttachments?`<div class="tv-att" id="thread-att-${m.id}"></div>`:''}
-        ${wasTrimmed?`<div class="tv-history-note">Quoted earlier messages are hidden here. Use "Show full message history" above to see the complete original body.</div>`:''}
         <div class="tv-body-inner">${isHtml?`<iframe data-bidx="${bIdx}" data-msgid="${m.id}" style="width:100%;border:none;display:block;min-height:160px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:inherit;white-space:pre-wrap;font-size:13px;line-height:1.6;margin:0">${escapeHtml(displayBody)}</pre>`}</div>
       </div>
     </div>`;
@@ -22713,7 +22663,6 @@ async function openTaskThread(taskId){
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
     refreshTaskFromThreadMessages(messages,emailSubject(t)).catch(()=>{});
-    threadShowFullHistory=false;
     threadViewState={subject:emailSubject(t),messages,backEmailId:taskEmailId(t)||'',backFolder:'inbox',webLink:'',showBack:true,actionsHTML:''};
     await renderStoredThread(token);
   }catch(err){
@@ -22772,7 +22721,6 @@ async function viewFullThread(emailId){
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
     refreshTaskFromThreadMessages(messages,email.subject||'(no subject)').catch(()=>{});
-    threadShowFullHistory=false;
     threadViewState={subject:email.subject||'(no subject)',messages,backEmailId:emailId,backFolder:currentFolder,webLink:email.webLink||'',showBack:true,actionsHTML:''};
     await renderStoredThread(token);
   }catch(err){
@@ -23081,7 +23029,6 @@ async function readEmail(emailId,folder,el){
     const displayEmail=isMeeting
       ?{...email,body:{contentType:'html',content:renderMeetingCard(meetingData,email.subject)},bodyPreview:email.bodyPreview||meetingData?.description||''}
       :email;
-    threadShowFullHistory=false;
     threadViewState={subject:email.subject||'(no subject)',messages:[displayEmail],backEmailId:emailId,backFolder:folder||currentFolder,webLink:email.webLink||'',showBack:false,actionsHTML};
     readerEl.innerHTML=threadHeaderHTML()+`
       <div id="email-ai-summary-panel" style="display:none;padding:10px 16px;background:#f5f3ff;border-bottom:1px solid #ddd6fe;flex-shrink:0">
