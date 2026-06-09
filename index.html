@@ -18320,8 +18320,8 @@ exports.version = version;
 [data-theme="dark"] .btn-ghost:hover{background:var(--sage3);color:var(--ink)}
 [data-theme="dark"] .form-in,[data-theme="dark"] .form-sel,[data-theme="dark"] .form-ta,[data-theme="dark"] input,[data-theme="dark"] textarea,[data-theme="dark"] select{background:var(--bg);color:var(--body);border-color:var(--border)}
 [data-theme="dark"] input,[data-theme="dark"] textarea,[data-theme="dark"] select{color-scheme:dark}
-html{font-size:13px}
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);display:flex;min-height:100vh;-webkit-font-smoothing:antialiased}
+html{font-size:13px;max-width:100%;overflow-x:hidden}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);display:flex;min-height:100vh;-webkit-font-smoothing:antialiased;max-width:100%;overflow-x:hidden}
 
 /* SIDEBAR */
 .sb{width:190px;min-height:100vh;background:var(--white);border-right:1px solid var(--border);position:fixed;left:0;top:0;z-index:100;display:flex;flex-direction:column;box-shadow:1px 0 0 var(--border)}
@@ -18353,7 +18353,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);displ
 .acct-option.danger:hover{background:#fff1f2}
 
 /* MAIN */
-.main{margin-left:190px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+.main{margin-left:190px;flex:1;display:flex;flex-direction:column;min-height:100vh;min-width:0;max-width:calc(100vw - 190px);overflow-x:hidden}
 .topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 16px;height:46px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:50}
 .tb-left{flex:1}
 .tb-title{font-size:14px;font-weight:700;color:var(--body);letter-spacing:-.2px}
@@ -18371,13 +18371,13 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);displ
 .btn-xs{padding:4px 8px;font-size:11px;border-radius:6px}
 
 /* CONTENT */
-.content{padding:12px 16px;flex:1}
-.page{display:none}
+.content{padding:12px 16px;flex:1;min-width:0;max-width:100%;overflow-x:hidden}
+.page{display:none;min-width:0;max-width:100%;overflow-x:hidden}
 .page.active{display:block;animation:pgIn .18s ease}
 @keyframes pgIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
 /* STAT CARDS */
-.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.stats-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}
 .sc{background:var(--white);border-radius:var(--rlg);padding:12px 14px 10px;border:1px solid var(--border);transition:all .18s;cursor:pointer;position:relative;overflow:hidden}
 .sc:hover{box-shadow:var(--sh2);transform:translateY(-2px);border-color:#9ca3af}
 .sc::after{content:'';position:absolute;top:0;left:0;width:100%;height:3px;border-radius:var(--rlg) var(--rlg) 0 0}
@@ -18402,9 +18402,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);displ
 .card-bdy{padding:10px 14px}
 
 /* DASHBOARD */
-.dash-row{display:grid;grid-template-columns:1fr 290px;gap:8px;margin-bottom:8px}
-.chart-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
-.pulse-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.dash-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,290px);gap:8px;margin-bottom:8px}
+.chart-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:8px}
+.pulse-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
 .pulse-card{background:var(--white);border-radius:var(--rlg);padding:10px 14px 9px;border:1px solid var(--border);transition:all .15s}
 .pulse-card[onclick]{cursor:pointer}.pulse-card[onclick]:hover{box-shadow:var(--sh2);border-color:#9ca3af}
 .pulse-num{font-size:20px;font-weight:700;color:var(--body);line-height:1;margin-bottom:2px;letter-spacing:-.5px}
@@ -18415,7 +18415,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);displ
 .tab-btn{padding:3px 8px;border-radius:4px;border:1px solid transparent;font-family:'Inter',sans-serif;font-size:10.5px;font-weight:600;cursor:pointer;background:none;color:var(--muted);transition:all .12s}
 .tab-btn.active{background:var(--sage2);color:var(--ink);border-color:var(--sage)}
 .tab-btn:hover:not(.active){background:var(--sage3)}
-.ch-card{background:var(--white);border-radius:var(--rlg);border:1px solid var(--border);padding:11px 14px 10px;transition:all .18s;cursor:pointer}
+.card,.ch-card,.pulse-card,.sc{min-width:0}
+.ch-card{background:var(--white);border-radius:var(--rlg);border:1px solid var(--border);padding:11px 14px 10px;transition:all .18s;cursor:pointer;min-width:0;overflow:hidden}
 .ch-card:hover{box-shadow:var(--sh2);border-color:#9ca3af}
 .ch-ttl{font-size:13px;font-weight:700;color:var(--body)}
 .ch-sub{font-size:11px;color:var(--muted);margin-top:1px}
@@ -18441,15 +18442,17 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--body);displ
 .act-meta{font-size:11px;color:var(--muted)}
 
 /* TABLE */
-.tbl-wrap{background:var(--white);border-radius:var(--rlg);border:1px solid var(--border);overflow:hidden}
+.tbl-wrap{background:var(--white);border-radius:var(--rlg);border:1px solid var(--border);overflow:hidden;max-width:100%}
 .tbl-hdr{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tbl-title{font-size:12.5px;font-weight:700;color:var(--body);flex:1}
-table{width:100%;border-collapse:collapse}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
 thead th{padding:7px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:#f9fafb;border-bottom:1px solid var(--border)}
 tbody tr{border-bottom:1px solid #f3f4f6;transition:background .1s;cursor:pointer}
 tbody tr:hover{background:#f9fafb}
 tbody tr:last-child{border-bottom:none}
-td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
+td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywhere;word-break:break-word}
+.tbl-wrap th,.tbl-wrap td{min-width:0}
+.tbl-wrap .btn{white-space:normal}
 .chk{width:15px;height:15px;border-radius:4px;border:1.5px solid #d1d5db;appearance:none;cursor:pointer;transition:all .15s;display:block}
 .chk:checked{background:var(--ink);border-color:var(--ink)}
 .dept-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:var(--sage2);color:var(--ink);border:1px solid var(--sage)}
@@ -18741,6 +18744,24 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 #page-outlook ::-webkit-scrollbar-track{background:transparent}
 #page-outlook ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
 #page-outlook ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
+
+@media (max-width:1180px){
+  .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dash-row{grid-template-columns:minmax(0,1fr)}
+  .chart-grid{grid-template-columns:minmax(0,1fr)}
+  .split-layout{grid-template-columns:minmax(0,1fr)}
+  .topbar{height:auto;min-height:46px;flex-wrap:wrap;padding:8px 16px}
+  .search-box{width:min(100%,240px)}
+}
+@media (max-width:760px){
+  .sb{position:relative;width:100%;min-height:auto}
+  .main{margin-left:0;max-width:100vw}
+  body{display:block}
+  .content{padding:10px}
+  .stats-grid,.pulse-grid{grid-template-columns:minmax(0,1fr)}
+  .form-row,.sum-row{grid-template-columns:minmax(0,1fr)}
+  .btn{white-space:normal}
+}
 
 /* ONEDRIVE SYNC INDICATOR */
 .sync-bar{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);padding:4px 0}
@@ -19053,7 +19074,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
         <select class="sel-f" id="sf-dept" onchange="renderMaster()"><option value="all">All Departments</option></select>
         <select class="sel-f" id="sf-priority" onchange="renderMaster()"><option value="all">All Priorities</option><option>High</option><option>Normal</option></select>
       </div>
-      <div style="overflow-x:auto">
+      <div style="overflow-x:hidden;max-width:100%">
         <table>
           <thead>
             <tr>
@@ -19149,7 +19170,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
     </div>
     <div class="tbl-wrap">
       <div class="tbl-hdr"><div class="tbl-title">Task Summary</div></div>
-      <div style="overflow-x:auto"><table>
+      <div style="overflow-x:hidden;max-width:100%"><table>
         <thead><tr><th>#</th><th>Task</th><th>Assigned To</th><th>Department</th><th>Status</th><th>Priority</th><th>Date</th><th>Notes</th></tr></thead>
         <tbody id="sum-tbody"></tbody>
       </table></div>
@@ -19171,8 +19192,8 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
   </div>
 
   <!-- OUTLOOK -->
-  <div class="page" id="page-outlook" style="padding:0;margin:-12px -16px;height:calc(100vh - 46px)">
-    <div id="ol-layout" style="display:flex;height:100%;overflow:hidden;background:#fff;border-top:1px solid #e5e7eb">
+  <div class="page" id="page-outlook" style="padding:0;margin:-12px -16px;height:calc(100vh - 46px);overflow:hidden;max-width:calc(100% + 32px)">
+    <div id="ol-layout" style="display:flex;height:100%;overflow:hidden;background:#fff;border-top:1px solid #e5e7eb;min-width:0;max-width:100%">
 
       <!-- LEFT: Folder Panel -->
       <div id="ol-left-panel" style="width:0;min-width:0;flex-shrink:0;overflow:hidden;background:#fafafa;display:flex;flex-direction:column;height:100%;transition:width .18s ease">
@@ -19569,7 +19590,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 <div class="drill-overlay" id="mo-drill">
   <div class="drill-box">
     <div class="drill-hdr"><div><div class="drill-hdr-title" id="drill-title"></div><div class="drill-hdr-sub" id="drill-sub"></div></div><button class="mo-x" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" onclick="closeMo('mo-drill')">&#10005;</button></div>
-    <div style="overflow-x:auto"><table><thead><tr><th>Task</th><th>Assigned To</th><th>Department</th><th>Status</th><th>Priority</th><th>Date</th></tr></thead><tbody id="drill-tbody"></tbody></table></div>
+    <div style="overflow-x:hidden;max-width:100%"><table><thead><tr><th>Task</th><th>Assigned To</th><th>Department</th><th>Status</th><th>Priority</th><th>Date</th></tr></thead><tbody id="drill-tbody"></tbody></table></div>
   </div>
 </div>
 
