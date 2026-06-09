@@ -22572,13 +22572,14 @@ function threadHeaderHTML(){
   const s=threadViewState;
   const count=s.messages.length;
   return `<div class="tv-hdr">
-    <div class="tv-subject">${escapeHtml(s.subject||'(no subject)')}</div>
-    <div class="tv-count">${count} message${count!==1?'s':''}</div>
-    <div class="tv-hdr-actions">
-      ${s.showBack&&s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="readEmail('${s.backEmailId}','${s.backFolder||'inbox'}')">← Back to Email</button>`:''}
-      ${s.webLink&&s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${s.backEmailId}')">Open in Outlook ↗</button>`:''}
-      ${s.actionsHTML||''}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:${s.actionsHTML?'6px':'0'}">
+      <div style="flex:1;min-width:0">
+        <div class="tv-subject">${escapeHtml(s.subject||'(no subject)')}</div>
+        <div class="tv-count">${count} message${count!==1?'s':''}</div>
+      </div>
+      ${s.showBack&&s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="readEmail('${s.backEmailId}','${s.backFolder||'inbox'}')">← Back</button>`:''}
     </div>
+    ${s.actionsHTML?`<div style="display:flex;gap:5px;flex-wrap:wrap">${s.actionsHTML}</div>`:''}
   </div>`;
 }
 
@@ -22599,7 +22600,9 @@ async function hydrateThreadFramesAndAttachments(token){
 async function renderStoredThread(token){
   const readerEl=document.getElementById('ol-email-reader');
   if(!readerEl)return;
-  readerEl.innerHTML=threadHeaderHTML()+`<div class="tv-list">${buildThreadHTML(threadViewState.messages)}</div>`;
+  readerEl.innerHTML=threadHeaderHTML()+
+    `<div id="email-ai-summary-panel" style="display:none;padding:10px 16px;background:#f5f3ff;border-bottom:1px solid #ddd6fe;flex-shrink:0"><div style="font-size:10px;font-weight:700;color:#7c3aed;margin-bottom:5px;letter-spacing:.04em">✦ AI SUMMARY</div><div id="email-ai-summary-content" style="font-size:12.5px;line-height:1.6;color:#111"></div></div>`+
+    `<div class="tv-list">${buildThreadHTML(threadViewState.messages)}</div>`;
   await hydrateThreadFramesAndAttachments(token);
 }
 
@@ -22735,7 +22738,27 @@ async function viewFullThread(emailId){
     if(!messages||!messages.length)messages=[email];
     messages.forEach(m=>{if(m?.id)emailCache[m.id]=m;});
     refreshTaskFromThreadMessages(messages,email.subject||'(no subject)').catch(()=>{});
-    threadViewState={subject:email.subject||'(no subject)',messages,backEmailId:emailId,backFolder:currentFolder,webLink:email.webLink||'',showBack:false,actionsHTML:''};
+    // Latest = first after newest-first sort; use its id for reply actions
+    const latestMsg=[...messages].sort((a,b)=>new Date(b.receivedDateTime||b.sentDateTime)-new Date(a.receivedDateTime||a.sentDateTime))[0];
+    const latestId=latestMsg?.id||emailId;
+    const isTracked=trackedEmailIds.has(emailId)||(email.conversationId&&trackedEmailIds.has(email.conversationId));
+    const isDeleted=currentFolder==='deleted'||currentFolder==='deleteditems';
+    const pBtn=(label,icon,oc,extra)=>'<button onclick="'+oc+'" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e5e7eb;background:#fff;color:#374151;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;white-space:nowrap'+(extra?';'+extra:'')+'" onmouseover="this.style.background=\'#f5f5f5\'" onmouseout="this.style.background=\'#fff\'">'+(icon?'<svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">'+icon+'</svg>':'')+label+'</button>';
+    const aBtns=[
+      pBtn('Reply','<path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','replyEmail(\''+latestId+'\')'),
+      pBtn('Reply All','<path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6M7 6h8a7 7 0 017 7" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','replyAllEmail(\''+latestId+'\')'),
+      pBtn('Forward','<path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','forwardEmail(\''+latestId+'\')'),
+      email.webLink?pBtn('Outlook','<path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','openEmailInOutlook(\''+latestId+'\')',''):'',
+      '<button onclick="toggleEmailAISummary(\''+latestId+'\')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e9d5ff;background:#fff;color:#7c3aed;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background=\'#f5f3ff\'" onmouseout="this.style.background=\'#fff\'"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarize</button>',
+      isTracked
+        ?'<span style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500">✓ In Tasks</span><button onclick="removeTaskByEmail(\''+emailId+'\')" style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer" onmouseover="this.style.background=\'#fff1f2\'" onmouseout="this.style.background=\'#fff\'">Remove</button>'
+        :'<button onclick="addTaskFromEmail(\''+emailId+'\')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:none;background:#0E3416;color:#fff;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer" onmouseover="this.style.background=\'#1A5C2A\'" onmouseout="this.style.background=\'#0E3416\'">+ Add to Tasks</button>',
+      isDeleted
+        ?'<button onclick="restoreEmail(\''+emailId+'\')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #86efac;background:#f0fdf4;color:#166534;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer">Restore</button><button onclick="permanentDeleteEmail(\''+emailId+'\')" style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer" onmouseover="this.style.background=\'#fff1f2\'" onmouseout="this.style.background=\'#fff\'">Delete Permanently</button>'
+        :'<button onclick="deleteEmailItem(\''+emailId+'\')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer" onmouseover="this.style.background=\'#fff1f2\'" onmouseout="this.style.background=\'#fff\'"><svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Delete</button>'
+    ];
+    const actionsHTML=aBtns.filter(Boolean).join('');
+    threadViewState={subject:email.subject||'(no subject)',messages,backEmailId:emailId,backFolder:currentFolder,webLink:email.webLink||'',showBack:false,actionsHTML};
     await renderStoredThread(token);
   }catch(err){
     console.error('Thread load error:',err);
