@@ -18457,8 +18457,9 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
 .chk:checked{background:var(--ink);border-color:var(--ink)}
 .dept-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:var(--sage2);color:var(--ink);border:1px solid var(--sage)}
 .dept-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
-.p-high{background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:4px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
-.p-low{background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:4px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.p-high,.p-low{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;word-break:normal;overflow-wrap:normal;line-height:1;padding:3px 8px;border-radius:4px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.25px;min-width:48px}
+.p-high{background:#fee2e2;color:#b91c1c}
+.p-low{background:#f3f4f6;color:#6b7280}
 .wed-btn{width:28px;height:28px;border-radius:var(--r);border:1px solid var(--border);background:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;color:var(--muted);font-size:11px;font-weight:600}
 .wed-btn:hover{border-color:#9ca3af;color:var(--body)}
 .wed-btn.on{background:var(--sage2);border-color:var(--sage);color:var(--ink);font-weight:700}
@@ -19475,6 +19476,10 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
       <!-- Dept assignments tab -->
       <div id="admin-depts-pane" style="padding:18px;display:none">
         <div style="font-size:13px;color:var(--body);margin-bottom:12px">Drag or select a department for each person. Changes save immediately to your task data.</div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:14px;padding:10px;background:var(--sage3);border:1px solid var(--sage);border-radius:var(--r)">
+          <input class="form-in" id="admin-new-dept" placeholder="Create custom department..." onkeydown="if(event.key==='Enter')createAdminDepartment()" style="padding:7px 10px;font-size:12.5px;background:var(--white)">
+          <button class="btn btn-primary btn-sm" onclick="createAdminDepartment()">Add Department</button>
+        </div>
         <div id="admin-dept-editor"></div>
       </div>
     </div>
@@ -19666,6 +19671,7 @@ let tasks = [];
 let archives = [];
 let staffConfig = {};
 let userContacts = {};
+let customDepartments = [];
 let customNotes = [];
 let sharedDataActive = false;
 let selectedTaskIds = new Set();
@@ -19885,7 +19891,7 @@ async function loadTasksFromOneDrive() {
   try {
     sharedDataActive=false;
     if(!await loadLegacyOneDriveData()){
-      tasks=[];archives=[];staffConfig={};customNotes=[];notifications=[];
+      tasks=[];archives=[];staffConfig={};customDepartments=[];customNotes=[];notifications=[];
       await saveTasksToOneDrive();
     }
     setSyncStatus("synced", "Synced with OneDrive");
@@ -19943,7 +19949,7 @@ function finishDataLoad(){
 }
 
 function companyDataIsEmpty(){
-  return !tasks.length && !archives.length && !Object.keys(staffConfig||{}).length && !customNotes.length;
+  return !tasks.length && !archives.length && !Object.keys(staffConfig||{}).length && !(customDepartments||[]).length && !customNotes.length;
 }
 
 async function migrateLegacyOneDriveToShared(){
@@ -19962,7 +19968,7 @@ async function saveTasksToOneDrive() {
     const token = await getAccessToken();
     await ensureLegacyOneDriveFolder(token);
     const path = `/me/drive/root:/${ONEDRIVE_FOLDER}/${currentUser.folder}/tasks.json:/content`;
-    const payload = JSON.stringify({tasks,archives,staffConfig,customNotes,notifications}, null, 2);
+    const payload = JSON.stringify({tasks,archives,staffConfig,customDepartments,customNotes,notifications}, null, 2);
     const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -19979,17 +19985,18 @@ async function saveTasksToOneDrive() {
 
 function applyLoadedData(data){
   if(Array.isArray(data)){
-    tasks=data;archives=[];staffConfig={};customNotes=[];
+    tasks=data;archives=[];staffConfig={};customDepartments=[];customNotes=[];
   }else if(data?.tasks){
     tasks=data.tasks||[];
     archives=data.archives||[];
     staffConfig=data.staffConfig||{};
+    customDepartments=Array.isArray(data.customDepartments)?data.customDepartments.filter(Boolean):[];
     customNotes=data.customNotes||[];
     notifications=Array.isArray(data.notifications)?data.notifications:notifications||[];
   }else if(data?.id){
-    tasks=[data];archives=[];staffConfig={};customNotes=[];
+    tasks=[data];archives=[];staffConfig={};customDepartments=[];customNotes=[];
   }else{
-    tasks=[];archives=[];staffConfig={};customNotes=[];
+    tasks=[];archives=[];staffConfig={};customDepartments=[];customNotes=[];
   }
 }
 
@@ -20016,7 +20023,7 @@ async function saveSharedCompanyData(){
   if(!base)return false;
   try{
     const token=await getAccessToken();
-    const payload=JSON.stringify({tasks,archives,staffConfig,customNotes,notifications});
+    const payload=JSON.stringify({tasks,archives,staffConfig,customDepartments,customNotes,notifications});
     const res=await fetch(`${base}/data`,{method:"PUT",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:payload});
     if(!res.ok)return false;
     sharedDataActive=true;
@@ -20033,6 +20040,26 @@ async function saveSharedCompanyData(){
 // ============================================================
 function avc(name) { return DEPT_COLORS[findPersonByName(name)?.dept] || "#374151"; }
 function dcolor(dept) { return DEPT_COLORS[dept] || "#374151"; }
+function allDepartments(){
+  const seen=new Set();
+  const list=[];
+  [...DEPARTMENTS,...(customDepartments||[])].forEach(d=>{
+    const name=String(d||'').trim();
+    const key=name.toLowerCase();
+    if(name&&!seen.has(key)){seen.add(key);list.push(name);}
+  });
+  Object.values(staffConfig||{}).forEach(p=>{
+    const name=String(p?.dept||'').trim();
+    const key=name.toLowerCase();
+    if(name&&!seen.has(key)){seen.add(key);list.push(name);}
+  });
+  tasks.forEach(t=>{
+    const name=String(t?.dept||'').trim();
+    const key=name.toLowerCase();
+    if(name&&!seen.has(key)){seen.add(key);list.push(name);}
+  });
+  return list;
+}
 function ini(n) { return n.split(" ").map(x=>x[0]).join("").toUpperCase().slice(0,2); }
 function fmtD(d) { return new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
 function nstt(s) { return s==="In Progress"?"Pending":(s||"Pending"); }
@@ -20063,7 +20090,8 @@ function personDept(email,name) {
   return p?.dept || "Needs Department";
 }
 function deptOptions(selected) {
-  const list = DEPARTMENTS.includes(selected) || !selected ? DEPARTMENTS : [selected,...DEPARTMENTS];
+  const base=allDepartments();
+  const list = base.some(d=>d===selected) || !selected ? base : [selected,...base];
   return list.map(d=>`<option${d===selected?" selected":""}>${d}</option>`).join("");
 }
 function saveStaffDeptForTask(t,dept) {
@@ -20471,8 +20499,8 @@ function renderAdminPeopleList(){
     people.map((p,i)=>`
     <div class="admin-person-row" id="apr-${i}">
       <div>${av(p.name||'?',26)} <div style="display:inline-block;vertical-align:middle;margin-left:6px"><div style="display:flex;align-items:center;gap:4px"><span style="font-size:12.5px;font-weight:600;color:var(--body)">${p.name||'Unknown'}</span><button title="Edit name" onclick="renameAdminPerson('${(p.email||'').replace(/'/g,"\\'")}','${(p.name||'').replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer;padding:1px 3px;color:var(--muted);font-size:11px;line-height:1" onmouseover="this.style.color='var(--body)'" onmouseout="this.style.color='var(--muted)'">&#9998;</button></div><div style="font-size:11px;color:var(--muted)">${p.email||''}</div></div></div>
-      <select class="form-sel" style="font-size:11.5px;padding:3px 6px" onchange="updatePersonDept('${(p.email||'').replace(/'/g,"\\'")}','${(p.name||'').replace(/'/g,"\\'")}',this.value)">
-        ${DEPARTMENTS.map(d=>`<option${d===p.dept?' selected':''}>${d}</option>`).join('')}
+      <select class="form-sel" style="font-size:11.5px;padding:3px 6px" onchange="updateAdminPersonDept('${(p.email||'').replace(/'/g,"\\'")}','${(p.name||'').replace(/'/g,"\\'")}',this.value)">
+        ${allDepartments().map(d=>`<option${d===p.dept?' selected':''}>${d}</option>`).join('')}
         <option${p.dept==='Needs Department'?' selected':''}>Needs Department</option>
       </select>
       <div style="font-size:11.5px;color:var(--muted)">${p.role||''}</div>
@@ -20483,6 +20511,7 @@ function renderAdminDeptEditor(){
   const people=filterAdminPeople(allKnownPeople());
   const el=document.getElementById('admin-dept-editor');if(!el)return;
   const byDept={};
+  allDepartments().forEach(d=>{if(!byDept[d])byDept[d]=[];});
   people.forEach(p=>{const d=p.dept||'Needs Department';if(!byDept[d])byDept[d]=[];byDept[d].push(p);});
   el.innerHTML=Object.entries(byDept).sort(([a],[b])=>a.localeCompare(b)).map(([dept,pp])=>`
     <div style="margin-bottom:14px">
@@ -20494,9 +20523,22 @@ function renderAdminDeptEditor(){
       <div style="padding-left:18px">${pp.map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px">${av(p.name||'?',22)}<span>${p.name}</span><span style="color:var(--muted);font-size:11px">${p.email||''}</span></div>`).join('')}</div>
     </div>`).join('');
 }
-function updatePersonDept(email,name,dept){
+function updateAdminPersonDept(email,name,dept){
   const key=staffKey(email,name);
   staffConfig[key]={...(staffConfig[key]||{}),name,email,dept};
+  renderAdminDeptEditor();
+}
+function createAdminDepartment(){
+  const input=document.getElementById('admin-new-dept');
+  const name=String(input?.value||'').trim().replace(/\s+/g,' ');
+  if(!name){toast('Enter a department name');return;}
+  if(allDepartments().some(d=>d.toLowerCase()===name.toLowerCase())){toast('Department already exists');if(input)input.value='';return;}
+  customDepartments=[...(customDepartments||[]),name].sort((a,b)=>a.localeCompare(b));
+  if(input)input.value='';
+  initSelects();
+  renderAdminPeopleList();
+  renderAdminDeptEditor();
+  toast(`${name} department added`);
 }
 function removeAdminPerson(email){
   const key=Object.keys(staffConfig).find(k=>normEmail(staffConfig[k]?.email||'')=== normEmail(email));
@@ -20616,7 +20658,7 @@ async function syncContacts(){
       });
     }
     // Fetch People (colleagues)
-    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=100&$select=displayName,emailAddresses,scoredEmailAddresses,department,jobTitle,userPrincipalName',{headers:{Authorization:`Bearer ${token}`}});
+    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=100&$select=displayName,emailAddresses,scoredEmailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
     if(pRes.ok){
       const pd=await pRes.json();
       (pd.value||[]).forEach(p=>{
@@ -20659,7 +20701,7 @@ async function autoSyncContacts(){
       token=r.accessToken;
     }catch{return;}
     let changed=false;
-    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=150&$select=displayName,emailAddresses,scoredEmailAddresses,department,jobTitle,userPrincipalName',{headers:{Authorization:`Bearer ${token}`}});
+    const pRes=await fetch('https://graph.microsoft.com/v1.0/me/people?$top=150&$select=displayName,emailAddresses,scoredEmailAddresses,department,jobTitle',{headers:{Authorization:`Bearer ${token}`}});
     if(pRes.ok){
       const pd=await pRes.json();
       (pd.value||[]).forEach(p=>{if(upsertSyncedContact(p))changed=true;});
@@ -20949,10 +20991,10 @@ function setDeadlineBtn(btn,days){
 }
 function initSelects() {
   ["sf-dept","sum-d"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<option value="all">All Departments</option>';});
-  DEPARTMENTS.forEach(d=>{
+  allDepartments().forEach(d=>{
     ["sf-dept","sum-d"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML+=`<option>${d}</option>`;});
   });
-  document.getElementById("nt-dept").innerHTML=DEPARTMENTS.map(d=>`<option>${d}</option>`).join("");
+  document.getElementById("nt-dept").innerHTML=allDepartments().map(d=>`<option>${d}</option>`).join("");
 }
 
 const WL=["This Week","Last Week","2 Weeks Ago","3 Weeks Ago","4 Weeks Ago"];
@@ -21153,7 +21195,7 @@ async function updatePersonDept(name,dept){
   await saveTasksToOneDrive();
 }
 function renderDeptList(){
-  const dp={};DEPARTMENTS.forEach(d=>dp[d]=[]);
+  const dp={};allDepartments().forEach(d=>dp[d]=[]);
   tasks.forEach(t=>{if(dp[t.dept])dp[t.dept].push(t);else dp[t.dept]=[t];});
   document.getElementById("dept-list").innerHTML=Object.entries(dp).map(([d,dt])=>{
     const dn=dt.filter(t=>nstt(t.status)==="Done").length;
@@ -21731,8 +21773,8 @@ function renderCharts(){
     if(nstt(t.status)==="Done")dp[t.dept].dn++;
     else if(nstt(t.status)==="Overdue")dp[t.dept].ov++;
   });
-  DEPARTMENTS.forEach(d=>{if(!dp[d])dp[d]={tot:0,dn:0,ov:0};});
-  const dk=DEPARTMENTS.filter(d=>dp[d].tot>0);
+  allDepartments().forEach(d=>{if(!dp[d])dp[d]={tot:0,dn:0,ov:0};});
+  const dk=allDepartments().filter(d=>dp[d].tot>0);
   const deptHost=document.getElementById('ch-dept')?.parentElement;
   if(deptHost)deptHost.style.height='250px';
   mkChart("ch-dept","bar",dk,[

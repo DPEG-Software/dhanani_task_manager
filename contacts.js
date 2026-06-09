@@ -82,7 +82,7 @@
   async function syncPeopleSuggestions(token) {
     let changed = 0;
     const people = await graphGetAll(
-      "https://graph.microsoft.com/v1.0/me/people?$top=999&$select=displayName,emailAddresses,scoredEmailAddresses,department,jobTitle,userPrincipalName",
+      "https://graph.microsoft.com/v1.0/me/people?$top=999&$select=displayName,emailAddresses,scoredEmailAddresses,department,jobTitle",
       token,
       25
     );
