@@ -22274,7 +22274,16 @@ function groupEmailsByConversation(emails){
 }
 
 async function readConversationOrEmail(emailId,folder,el){
-  await readEmail(emailId,folder,el);
+  if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
+  if(el){el.classList.add('active');_activeEmailEl=el;}
+  currentEmailId=emailId;
+  const email=emailCache[emailId]||(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId);
+  if(email){emailCache[emailId]=email;}
+  if(email?.conversationId){
+    await viewFullThread(emailId);
+  } else {
+    await readEmail(emailId,folder,el);
+  }
 }
 
 function renderEmailRows(folder,emails){
@@ -22568,6 +22577,7 @@ function threadHeaderHTML(){
     <div class="tv-subject">${escapeHtml(s.subject||'(no subject)')}</div>
     <div class="tv-count">${count} message${count!==1?'s':''}</div>
     <div class="tv-hdr-actions">
+      ${s.showBack&&s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="readEmail('${s.backEmailId}','${s.backFolder||'inbox'}')">← Back to Email</button>`:''}
       ${s.webLink&&s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${s.backEmailId}')">Open in Outlook ↗</button>`:''}
       ${s.actionsHTML||''}
     </div>
@@ -22593,13 +22603,11 @@ async function renderStoredThread(token){
   if(!readerEl)return;
   readerEl.innerHTML=threadHeaderHTML()+`<div class="tv-list">${buildThreadHTML(threadViewState.messages)}</div>`;
   await hydrateThreadFramesAndAttachments(token);
-  // Scroll latest (bottom) message into view
-  setTimeout(()=>{const tvList=readerEl.querySelector('.tv-list');const latest=readerEl.querySelector('.tv-msg--latest');if(tvList&&latest)tvList.scrollTop=Math.max(0,latest.offsetTop-16);},120);
 }
 
 function buildThreadHTML(messages){
-  // Oldest first — latest lands at the bottom, matching Outlook desktop layout
-  const sorted=[...messages].sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
+  // Newest first — latest lands at the top, history collapses below
+  const sorted=[...messages].sort((a,b)=>new Date(b.receivedDateTime||b.sentDateTime)-new Date(a.receivedDateTime||a.sentDateTime));
   window._emailFrameBodies=[];
   const avColors=['#0078d4','#107c41','#b91c1c','#7c3aed','#b45309','#0f766e','#c2185b','#455a64'];
   const avColor=name=>{const h=Array.from(name||'?').reduce((s,c)=>s+c.charCodeAt(0),0);return avColors[h%avColors.length];};
@@ -22615,7 +22623,7 @@ function buildThreadHTML(messages){
     const isHtml=m.body?.contentType==='html';
     const displayBody=threadMessageBody(m,isHtml);
     const bIdx=isHtml?(window._emailFrameBodies.push(displayBody)-1):-1;
-    const isLatest=i===sorted.length-1;
+    const isLatest=i===0;
     const preview=escapeHtml((m.bodyPreview||'').slice(0,140).replace(/\s+/g,' '));
     const msgId=`tv-${m.id.replace(/[^a-zA-Z0-9]/g,'_')}`;
     return `<div class="tv-msg${isLatest?' tv-msg--latest':''}" id="${msgId}">
