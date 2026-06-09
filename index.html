@@ -18617,29 +18617,30 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle}
 .unread-thread-meta{display:flex;gap:10px;padding:7px 12px;font-size:11.5px;border-bottom:1px solid var(--border);background:var(--white)}
 .unread-thread-summary{padding:10px 12px;background:var(--white)}
 /* Thread conversation view */
-.tv-hdr{padding:10px 14px;border-bottom:1px solid var(--border);background:var(--white);flex-shrink:0}
-.tv-subject{font-size:14px;font-weight:700;color:var(--body);margin-bottom:2px;line-height:1.3}
-.tv-count{font-size:11px;color:var(--muted);margin-bottom:7px}
-.tv-hdr-actions{display:flex;gap:6px;flex-wrap:wrap}
-.tv-list{overflow-y:auto;flex:1;min-height:0;padding:10px 12px;background:var(--bg)}
-.tv-msg{border:1px solid var(--border);border-radius:var(--r);background:var(--white);overflow:hidden;margin-bottom:6px}
-.tv-msg--latest{border-color:#0078d4;box-shadow:0 1px 6px rgba(0,120,212,.12)}
-.tv-msg-hdr{display:flex;align-items:center;gap:9px;padding:8px 11px;cursor:pointer;user-select:none}
+.tv-hdr{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--white);flex-shrink:0}
+.tv-subject{font-size:15px;font-weight:700;color:var(--body);margin-bottom:3px;line-height:1.3}
+.tv-count{font-size:11.5px;color:var(--muted);margin-bottom:8px}
+.tv-hdr-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tv-list{overflow-y:auto;flex:1;min-height:0;padding:12px 14px;background:#f3f4f6}
+.tv-msg{border:1px solid #d7dce2;border-radius:6px;background:var(--white);overflow:hidden;margin-bottom:12px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.tv-msg--latest{border-color:#7db5de;box-shadow:0 2px 8px rgba(0,120,212,.12)}
+.tv-msg-hdr{display:flex;align-items:center;gap:10px;padding:12px 13px 9px;cursor:pointer;user-select:none;background:var(--white)}
 .tv-msg-hdr:hover{background:var(--sage3)}
-.tv-avatar{width:27px;height:27px;border-radius:50%;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tv-avatar{width:32px;height:32px;border-radius:50%;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .tv-msg-meta{flex:1;min-width:0}
-.tv-from{font-size:12.5px;font-weight:600;color:var(--body);line-height:1.3;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-.tv-to{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-from{font-size:13px;font-weight:700;color:var(--body);line-height:1.35;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tv-to{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
 .tv-date{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0}
 .tv-badge-latest{font-size:9px;font-weight:700;background:#0078d4;color:#fff;border-radius:8px;padding:1px 6px;letter-spacing:.2px}
-.tv-msg-actions{display:flex;gap:4px;flex-wrap:wrap;padding:0 11px 8px 47px}
-.tv-msg-actions button{height:24px;padding:0 8px;border-radius:4px;border:1px solid #d1d5db;background:#fff;color:#374151;font-family:Inter,sans-serif;font-size:10.5px;font-weight:600;cursor:pointer}
+.tv-msg-actions{display:flex;gap:5px;flex-wrap:wrap;padding:0 13px 10px 55px;background:var(--white)}
+.tv-msg-actions button{height:26px;padding:0 9px;border-radius:4px;border:1px solid #d1d5db;background:#fff;color:#374151;font-family:Inter,sans-serif;font-size:11px;font-weight:600;cursor:pointer}
 .tv-msg-actions button:hover{background:#f3faf4;border-color:#b8d9bd;color:#0E3416}
 .tv-body{border-top:1px solid var(--border)}
 .tv-body--collapsed{display:none}
-.tv-preview{padding:5px 11px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--sage);background:var(--sage3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-preview{padding:7px 13px 8px 55px;font-size:12px;color:var(--muted);border-top:1px solid var(--sage);background:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-history-note{font-size:10.5px;color:#64748b;background:#f8fafc;border-top:1px solid #e5e7eb;padding:6px 13px 6px 55px}
 .tv-att{padding:6px 11px 7px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--sage3)}
-.tv-body-inner{padding:10px 11px 12px}
+.tv-body-inner{padding:13px 14px 15px 55px}
 .form-grp{margin-bottom:13px}
 .form-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--sub);margin-bottom:4px;display:block}
 .form-in,.form-sel,.form-ta{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:13px;color:var(--body);outline:none;transition:border .15s;background:var(--white)}
@@ -22347,6 +22348,92 @@ function tvToggle(msgId){
   if(wasHidden){body.querySelectorAll('iframe').forEach(fr=>{try{if(fr.contentDocument?.body)fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});}
 }
 
+let threadShowFullHistory=false;
+let threadViewState={subject:'',messages:[],backEmailId:'',backFolder:'inbox',webLink:''};
+
+function stripQuotedPlainText(text){
+  let out=String(text||'').replace(/\r\n/g,'\n');
+  const patterns=[
+    /\n\s*_{5,}\s*\n[\s\S]*$/i,
+    /\n\s*-{2,}\s*Original Message\s*-{2,}[\s\S]*$/i,
+    /\n\s*Begin forwarded message:[\s\S]*$/i,
+    /\n\s*On .{0,180}wrote:\s*\n[\s\S]*$/i,
+    /\n\s*From:\s.+\n\s*(Sent|Date):\s.+\n\s*To:\s.+[\s\S]*$/i,
+    /\n\s*________________________________\s*\n\s*From:\s[\s\S]*$/i
+  ];
+  patterns.forEach(re=>{out=out.replace(re,'');});
+  return out.trim()||String(text||'').trim();
+}
+
+function removeNodeAndFollowing(node){
+  if(!node||!node.parentNode)return;
+  let cur=node;
+  while(cur){
+    const next=cur.nextSibling;
+    cur.parentNode.removeChild(cur);
+    cur=next;
+  }
+}
+
+function stripQuotedHTML(html){
+  const raw=String(html||'');
+  if(!raw)return raw;
+  try{
+    const wrap=document.createElement('div');
+    wrap.innerHTML=raw;
+    wrap.querySelectorAll('blockquote,.gmail_quote,.yahoo_quoted,.moz-cite-prefix,[id^="divRplyFwdMsg"],[class*="OutlookMessageHeader"],[id*="appendonsend"]').forEach(removeNodeAndFollowing);
+    wrap.querySelectorAll('hr').forEach(hr=>{
+      const tail=(hr.nextSibling?.textContent||hr.parentNode?.textContent||'').slice(0,400);
+      if(/From:\s|Sent:\s|To:\s|Subject:\s/i.test(tail))removeNodeAndFollowing(hr);
+    });
+    const text=wrap.textContent||'';
+    if(/^\s*$/.test(text))return raw;
+    return wrap.innerHTML;
+  }catch{
+    return raw;
+  }
+}
+
+function threadMessageBody(m,isHtml){
+  const body=m.body?.content||m.bodyPreview||'';
+  if(threadShowFullHistory)return body;
+  return isHtml?stripQuotedHTML(body):stripQuotedPlainText(body);
+}
+
+function threadHeaderHTML(){
+  const s=threadViewState;
+  const historyLabel=threadShowFullHistory?'Hide full message history':'Show full message history';
+  return `<div class="tv-hdr">
+    <div class="tv-subject">${escapeHtml(s.subject||'(no subject)')}</div>
+    <div class="tv-count">${s.messages.length} message${s.messages.length!==1?'s':''} · newest first</div>
+    <div class="tv-hdr-actions">
+      ${s.backEmailId?`<button class="btn btn-ghost btn-sm" onclick="readEmail('${s.backEmailId}','${s.backFolder||'inbox'}')">← Back to Email</button>`:''}
+      <button class="btn btn-ghost btn-sm" onclick="toggleThreadHistory()">${historyLabel}</button>
+      ${s.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${s.backEmailId}')">Open in Outlook</button>`:''}
+    </div>
+  </div>`;
+}
+
+async function renderStoredThread(token){
+  const readerEl=document.getElementById('ol-email-reader');
+  if(!readerEl)return;
+  readerEl.innerHTML=threadHeaderHTML()+`<div class="tv-list">${buildThreadHTML(threadViewState.messages)}</div>`;
+  const useToken=token||await getAccessToken();
+  readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){
+    var c=window._emailFrameBodies[+fr.dataset.bidx];
+    if(c){
+      fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});
+      resolveInlineImages(useToken,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});
+    }
+  });
+  loadThreadAttachmentChips(threadViewState.messages);
+}
+
+async function toggleThreadHistory(){
+  threadShowFullHistory=!threadShowFullHistory;
+  await renderStoredThread();
+}
+
 function buildThreadHTML(messages){
   const sorted=[...messages].sort((a,b)=>new Date(b.receivedDateTime||b.sentDateTime)-new Date(a.receivedDateTime||a.sentDateTime));
   window._emailFrameBodies=[];
@@ -22361,9 +22448,11 @@ function buildThreadHTML(messages){
     const to=renderExpandablePeople(m.toRecipients||[],`thread-to-${m.id}`,2);
     const cc=(m.ccRecipients||[]).length?renderExpandablePeople(m.ccRecipients||[],`thread-cc-${m.id}`,2):'';
     const dt=new Date(m.receivedDateTime||m.sentDateTime);
-    const body=m.body?.content||m.bodyPreview||'';
     const isHtml=m.body?.contentType==='html';
-    const bIdx=isHtml?(window._emailFrameBodies.push(body)-1):-1;
+    const displayBody=threadMessageBody(m,isHtml);
+    const fullBody=m.body?.content||m.bodyPreview||'';
+    const wasTrimmed=!threadShowFullHistory&&String(displayBody||'').trim()!==String(fullBody||'').trim();
+    const bIdx=isHtml?(window._emailFrameBodies.push(displayBody)-1):-1;
     const isLatest=i===0;
     const preview=escapeHtml((m.bodyPreview||'').slice(0,140).replace(/\s+/g,' '));
     const msgId=`tv-${m.id.replace(/[^a-zA-Z0-9]/g,'_')}`;
@@ -22384,7 +22473,8 @@ function buildThreadHTML(messages){
 	      ${!isLatest&&preview?`<div class="tv-preview">${preview}…</div>`:''}
       <div class="tv-body${isLatest?'':' tv-body--collapsed'}" id="${msgId}-body">
         ${m.hasAttachments?`<div class="tv-att" id="thread-att-${m.id}"></div>`:''}
-        <div class="tv-body-inner">${isHtml?`<iframe data-bidx="${bIdx}" data-msgid="${m.id}" style="width:100%;border:none;display:block;min-height:160px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:inherit;white-space:pre-wrap;font-size:13px;line-height:1.6;margin:0">${escapeHtml(body)}</pre>`}</div>
+        ${wasTrimmed?`<div class="tv-history-note">Quoted earlier messages are hidden here. Use "Show full message history" above to see the complete original body.</div>`:''}
+        <div class="tv-body-inner">${isHtml?`<iframe data-bidx="${bIdx}" data-msgid="${m.id}" style="width:100%;border:none;display:block;min-height:160px" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>`:`<pre style="font-family:inherit;white-space:pre-wrap;font-size:13px;line-height:1.6;margin:0">${escapeHtml(displayBody)}</pre>`}</div>
       </div>
     </div>`;
   }).join('');
@@ -22412,9 +22502,9 @@ async function openTaskThread(taskId){
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
     refreshTaskFromThreadMessages(messages,emailSubject(t)).catch(()=>{});
-    readerEl.innerHTML=`<div class="tv-hdr"><div class="tv-subject">${emailSubject(t)}</div><div class="tv-count">${messages.length} message${messages.length!==1?'s':''} · newest first</div></div><div class="tv-list">${buildThreadHTML(messages)}</div>`;
-    readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
-    loadThreadAttachmentChips(messages);
+    threadShowFullHistory=false;
+    threadViewState={subject:emailSubject(t),messages,backEmailId:taskEmailId(t)||'',backFolder:'inbox',webLink:''};
+    await renderStoredThread(token);
   }catch(err){
     toast('Could not open email thread');
   }
@@ -22471,9 +22561,9 @@ async function viewFullThread(emailId){
     const data=await res.json();
     const messages=(data.value||[]).sort((a,b)=>new Date(a.receivedDateTime||a.sentDateTime)-new Date(b.receivedDateTime||b.sentDateTime));
     refreshTaskFromThreadMessages(messages,email.subject||'(no subject)').catch(()=>{});
-    readerEl.innerHTML=`<div class="tv-hdr"><div class="tv-subject">${email.subject||'(no subject)'}</div><div class="tv-count">${messages.length} message${messages.length!==1?'s':''} · newest first</div><div class="tv-hdr-actions"><button class="btn btn-ghost btn-sm" onclick="readEmail('${emailId}','${currentFolder}')">← Back to Email</button>${email.webLink?`<button class="btn btn-ghost btn-sm" onclick="openEmailInOutlook('${emailId}')">Open in Outlook</button>`:''}</div></div><div class="tv-list">${buildThreadHTML(messages)}</div>`;
-    readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){var c=window._emailFrameBodies[+fr.dataset.bidx];if(c){fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});resolveInlineImages(token,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});}});
-    loadThreadAttachmentChips(messages);
+    threadShowFullHistory=false;
+    threadViewState={subject:email.subject||'(no subject)',messages,backEmailId:emailId,backFolder:currentFolder,webLink:email.webLink||''};
+    await renderStoredThread(token);
   }catch(err){
     console.error('Thread load error:',err);
     toast('Could not load the full thread');
