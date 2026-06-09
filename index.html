@@ -20883,15 +20883,20 @@ async function refreshTaskFromThreadMessages(messages,subject=''){
   t.lastReplyAt=latest.receivedDateTime||latest.sentDateTime||t.lastReplyAt;
   if(hasHigh)t.priority="High";
   const local=localThreadSummary(ordered);
-  if(local)t.summary=local;
-  try{
-    const ai=await callAISummary(ordered,t.emailSubject||subject||'');
-    if(ai){t.summary=ai;t.threadSummary=ai;t.aiGenerated=true;}
-  }catch{}
-  syncBadges();
-  renderMaster();
-  if(document.querySelector(".page.active")?.id==="page-wednesday")renderWed();
-  await saveTasksToOneDrive();
+  if(local&&!t.aiGenerated)t.summary=local;
+  // Only call AI if: no summary yet, or new messages arrived since last summary was generated
+  const lastSumAt=t.summaryGeneratedAt?new Date(t.summaryGeneratedAt).getTime():0;
+  const hasNewMessages=ordered.some(m=>new Date(m.receivedDateTime||m.sentDateTime||0).getTime()>lastSumAt);
+  if(!t.aiGenerated||hasNewMessages){
+    try{
+      const ai=await callAISummary(ordered,t.emailSubject||subject||'');
+      if(ai){t.summary=ai;t.threadSummary=ai;t.aiGenerated=true;t.summaryGeneratedAt=new Date().toISOString();}
+    }catch{}
+    syncBadges();
+    renderMaster();
+    if(document.querySelector(".page.active")?.id==="page-wednesday")renderWed();
+    await saveTasksToOneDrive();
+  }
 }
 
 function sbadge(s) {
@@ -22817,9 +22822,10 @@ function sanitizeEmailFrameHTML(html){
 
 async function resolveInlineImages(token,emailId,html){
   if(!html)return html;
+  if(_resolvedBodyCache.has(emailId))return _resolvedBodyCache.get(emailId);
   // Upgrade HTTP image URLs to HTTPS to avoid mixed-content blocking on the HTTPS app
   html=html.replace(/(<img\b[^>]*?\bsrc=(["']))http:\/\//gi,'$1https://');
-  if(html.toLowerCase().indexOf('cid:')===-1)return sanitizeEmailFrameHTML(html);
+  if(html.toLowerCase().indexOf('cid:')===-1){const r=sanitizeEmailFrameHTML(html);_resolvedBodyCache.set(emailId,r);return r;}
   // Convert Outlook VML image elements to regular img tags so browsers render them
   html=html.replace(/<v:imagedata\b[^>]*\bsrc=(["'])(cid:[^"']+)\1[^>]*>/gi,function(m,q,src){
     return '<img src="'+src+'" style="max-width:100%;height:auto">';
@@ -22854,11 +22860,18 @@ async function resolveInlineImages(token,emailId,html){
         try{html=html.replace(new RegExp('cid:'+encodeURIComponent(v),'gi'),dataUrl);}catch(e){}
       });
     }
-    return sanitizeEmailFrameHTML(html);
-  }catch(e){return sanitizeEmailFrameHTML(html);}
+    const resolved=sanitizeEmailFrameHTML(html);
+    _resolvedBodyCache.set(emailId,resolved);
+    return resolved;
+  }catch(e){
+    const resolved=sanitizeEmailFrameHTML(html);
+    _resolvedBodyCache.set(emailId,resolved);
+    return resolved;
+  }
 }
 
 var _activeEmailEl=null;
+const _resolvedBodyCache=new Map(); // msgId → resolved HTML string
 const CENTRAL_TZ='America/Chicago';
 function tzOffsetMs(timeZone,date){
   const parts=new Intl.DateTimeFormat('en-US',{timeZone,hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(date);
@@ -22903,10 +22916,12 @@ async function processMeetingMsg(m,token){
     joinUrl:teamsJoinUrl
   }:null);
   if(isEventMsg&&m.id){
-    try{
-      const r=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+m.id+'?$select=meetingRequestType,startDateTime,endDateTime,location,attendees',{headers:{Authorization:'Bearer '+token}});
-      if(r.ok){const d=await r.json();Object.assign(m,d);if(m.id)emailCache[m.id]=m;}
-    }catch{}
+    if(!m.startDateTime){
+      try{
+        const r=await fetch('https://graph.microsoft.com/v1.0/me/messages/'+m.id+'?$select=meetingRequestType,startDateTime,endDateTime,location,attendees',{headers:{Authorization:'Bearer '+token}});
+        if(r.ok){const d=await r.json();Object.assign(m,d);if(m.id)emailCache[m.id]=m;}
+      }catch{}
+    }
     const gm=buildMeetingDataFromGraph(m);
     meetingData={...gm,joinUrl:gm.joinUrl||meetingData?.joinUrl||teamsJoinUrl,description:gm.description||meetingData?.description||''};
   }
