@@ -19727,6 +19727,7 @@ let sharedDataActive = false;
 let selectedTaskIds = new Set();
 let curTaskId = null, curWeek = 0, curSearch = "", curPplSel = null, curDeptSel = null, curPplFilter = "", directoryMode = "people";
 let CH = {};
+const PROOF_RETURN_KEY='dpeg_proof_return_search';
 
 // ============================================================
 // PEOPLE & DEPARTMENTS DATA
@@ -19775,6 +19776,7 @@ async function initMsal() {
     }
 
     if (response && response.account) {
+      restoreProofReturnSearch();
       currentAccount = response.account;
       await loadUser(currentAccount);
       return;
@@ -19783,6 +19785,7 @@ async function initMsal() {
     // Check existing session
     const accounts = msalInstance.getAllAccounts();
     if (accounts.length > 0) {
+      restoreProofReturnSearch();
       currentAccount = accounts[0];
       await loadUser(currentAccount);
       return;
@@ -19812,11 +19815,20 @@ function setMsStatus(msg) {
   if (el) el.textContent = msg;
 }
 
+function restoreProofReturnSearch(){
+  const saved=sessionStorage.getItem(PROOF_RETURN_KEY)||'';
+  if(saved&&saved.includes('proof=1')&&!location.search.includes('proof=1')){
+    history.replaceState(null,'',location.pathname+saved);
+  }
+  if(location.search.includes('proof=1'))sessionStorage.removeItem(PROOF_RETURN_KEY);
+}
+
 async function signInWithMicrosoft() {
   const btn = document.getElementById("ms-login-btn");
   if (btn) { btn.disabled = true; btn.textContent = "Connecting..."; }
   setMsStatus("Redirecting to Microsoft...");
   try {
+    if(isProofUploadRoute())sessionStorage.setItem(PROOF_RETURN_KEY,location.search);
     const loginRequest = {
       scopes: SCOPES,
       redirectUri: "https://dpeg-software.github.io/dhanani_task_manager/",
@@ -19861,6 +19873,11 @@ async function loadUser(account) {
 
   // Hide sign-in screen immediately
   hideSignIn();
+
+  if(isProofUploadRoute()){
+    await showProofUploadMode();
+    return;
+  }
 
   updateUI();
   await loadTasksFromOneDrive();
@@ -19933,6 +19950,183 @@ async function getAccessToken() {
       console.error("Token error:", popupErr);
       throw popupErr;
     }
+  }
+}
+
+function isProofUploadRoute(){
+  return new URLSearchParams(location.search).get('proof')==='1';
+}
+
+function proofRouteParams(){
+  const p=new URLSearchParams(location.search);
+  return {
+    appTaskId:p.get('taskId')||'',
+    todoListId:p.get('todoListId')||'',
+    todoTaskId:p.get('todoTaskId')||'',
+  };
+}
+
+function safeProofFileName(name){
+  const cleaned=String(name||'proof-file').replace(/[\\/:*?"<>|#%{}~&]/g,'_').replace(/\s+/g,' ').trim();
+  return cleaned.slice(0,120)||'proof-file';
+}
+
+async function ensureDriveFolderPath(token,segments){
+  let path='';
+  for(const name of segments){
+    const parentPath=path;
+    path+=`/${name}`;
+    const check=await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:${encodeURI(path)}`,{headers:{Authorization:`Bearer ${token}`}});
+    if(check.ok)continue;
+    const endpoint=parentPath
+      ?`https://graph.microsoft.com/v1.0/me/drive/root:${encodeURI(parentPath)}:/children`
+      :'https://graph.microsoft.com/v1.0/me/drive/root/children';
+    const create=await fetch(endpoint,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({name,folder:{},'@microsoft.graph.conflictBehavior':'rename'})
+    });
+    if(!create.ok){
+      const err=await create.text().catch(()=>'');
+      throw new Error(`Could not create OneDrive folder ${name}: ${err}`);
+    }
+  }
+}
+
+function parseProofBlock(text){
+  const raw=String(text||'');
+  const start=raw.indexOf('DPEG_PROOF_START');
+  const end=raw.indexOf('DPEG_PROOF_END');
+  if(start<0||end<0||end<=start)return {proofs:[],base:raw.trim()};
+  const before=raw.slice(0,start).trim();
+  const after=raw.slice(end+'DPEG_PROOF_END'.length).trim();
+  try{
+    const parsed=JSON.parse(raw.slice(start+'DPEG_PROOF_START'.length,end).trim());
+    return {proofs:Array.isArray(parsed.proofs)?parsed.proofs:[],base:[before,after].filter(Boolean).join('\n\n')};
+  }catch{
+    return {proofs:[],base:[before,after].filter(Boolean).join('\n\n')};
+  }
+}
+
+function buildProofBlock(base,proofs){
+  return `${String(base||'').trim()}\n\nDPEG_PROOF_START\n${JSON.stringify({proofs},null,2)}\nDPEG_PROOF_END`.trim();
+}
+
+async function createProofViewLink(token,itemId){
+  try{
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/createLink`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({type:'view',scope:'organization'})
+    });
+    if(res.ok){
+      const data=await res.json();
+      return data.link?.webUrl||'';
+    }
+  }catch{}
+  return '';
+}
+
+async function uploadProofFiles(){
+  const params=proofRouteParams();
+  const status=document.getElementById('proof-status');
+  const fileInput=document.getElementById('proof-files');
+  const note=document.getElementById('proof-note')?.value||'';
+  const markDone=document.getElementById('proof-mark-done')?.checked!==false;
+  const files=Array.from(fileInput?.files||[]);
+  if(!params.todoListId||!params.todoTaskId){status.textContent='This proof link is missing task details.';return;}
+  if(!files.length){status.textContent='Please choose at least one file.';return;}
+  status.textContent='Uploading proof files...';
+  try{
+    const token=await getAccessToken();
+    const taskRes=await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${encodeURIComponent(params.todoListId)}/tasks/${encodeURIComponent(params.todoTaskId)}?$select=id,title,body,status`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!taskRes.ok)throw new Error('This signed-in account cannot access the assigned To Do task.');
+    const todoTask=await taskRes.json();
+    await ensureDriveFolderPath(token,[ONEDRIVE_FOLDER,'ProofUploads',params.todoTaskId]);
+    const uploaded=[];
+    for(const file of files){
+      const stamped=`${new Date().toISOString().replace(/[:.]/g,'-')}-${safeProofFileName(file.name)}`;
+      const path=`/${ONEDRIVE_FOLDER}/ProofUploads/${params.todoTaskId}/${stamped}`;
+      const put=await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:${encodeURI(path)}:/content`,{
+        method:'PUT',
+        headers:{Authorization:`Bearer ${token}`,'Content-Type':file.type||'application/octet-stream'},
+        body:file
+      });
+      if(!put.ok){
+        const err=await put.text().catch(()=>'');
+        throw new Error(`Could not upload ${file.name}: ${err}`);
+      }
+      const item=await put.json();
+      const sharedUrl=await createProofViewLink(token,item.id);
+      uploaded.push({
+        name:file.name,
+        size:file.size,
+        type:file.type||'',
+        uploadedBy:currentUser?.email||'',
+        uploadedByName:currentUser?.name||'',
+        uploadedAt:new Date().toISOString(),
+        webUrl:sharedUrl||item.webUrl||'',
+        driveItemId:item.id||'',
+        note:note.trim(),
+      });
+    }
+    const parsed=parseProofBlock(todoTask.body?.content||'');
+    const proofs=[...parsed.proofs,...uploaded];
+    const patch={body:{content:buildProofBlock(parsed.base,proofs),contentType:'text'}};
+    if(markDone)patch.status='completed';
+    const patchRes=await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${encodeURIComponent(params.todoListId)}/tasks/${encodeURIComponent(params.todoTaskId)}`,{
+      method:'PATCH',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify(patch)
+    });
+    if(!patchRes.ok)throw new Error('Files uploaded, but the To Do task could not be updated.');
+    status.textContent=markDone?'Proof uploaded and task marked complete.':'Proof uploaded. You can now mark the task complete in To Do.';
+    fileInput.value='';
+  }catch(err){
+    status.textContent=err.message||'Could not upload proof.';
+  }
+}
+
+async function showProofUploadMode(){
+  document.querySelector('aside')?.remove();
+  const main=document.querySelector('main');
+  if(main)main.style.display='none';
+  const screen=document.createElement('div');
+  screen.id='proof-upload-screen';
+  screen.style.cssText='min-height:100vh;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,sans-serif';
+  screen.innerHTML=`<div style="width:min(620px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 12px 32px rgba(15,23,42,.08);overflow:hidden">
+    <div style="padding:18px 20px;border-bottom:1px solid #e5e7eb;background:#0E3416;color:#fff">
+      <div style="font-size:18px;font-weight:800;margin-bottom:3px">Submit Completion Proof</div>
+      <div id="proof-task-title" style="font-size:12px;opacity:.82">Loading task...</div>
+    </div>
+    <div style="padding:20px">
+      <div style="font-size:12px;color:#374151;line-height:1.6;margin-bottom:14px">Signed in as <strong>${escapeHtml(currentUser?.email||'')}</strong>. Upload pictures, PDFs, or files for this task. The assignor will see proof links when they review the completion notification.</div>
+      <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Proof files</label>
+      <input id="proof-files" type="file" multiple style="display:block;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fff;margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Note</label>
+      <textarea id="proof-note" placeholder="Optional note about the completed work..." style="width:100%;min-height:82px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:12px"></textarea>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#374151;margin-bottom:14px"><input id="proof-mark-done" type="checkbox" checked style="accent-color:#0E3416"> Mark this Microsoft To Do task complete after upload</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="uploadProofFiles()">Upload Proof</button>
+        <button class="btn btn-ghost btn-sm" onclick="signOut()">Sign Out</button>
+        <span id="proof-status" style="font-size:12px;color:#6b7280"></span>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(screen);
+  try{
+    const params=proofRouteParams();
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${encodeURIComponent(params.todoListId)}/tasks/${encodeURIComponent(params.todoTaskId)}?$select=title`,{headers:{Authorization:`Bearer ${token}`}});
+    if(res.ok){
+      const data=await res.json();
+      const titleEl=document.getElementById('proof-task-title');
+      if(titleEl)titleEl.textContent=data.title||'Assigned task';
+    }else{
+      document.getElementById('proof-status').textContent='This account cannot access the assigned To Do task.';
+    }
+  }catch(err){
+    document.getElementById('proof-status').textContent=err.message||'Could not load task.';
   }
 }
 
@@ -24281,6 +24475,8 @@ async function createToDoTask(task){
     ? `\n\nAttachments from email:\n${task.attachmentNames.map(n=>`- ${n}`).join('\n')}`
     : '';
   const dueDate=task.deadline||((task.deadline===undefined)?task.date:'');
+  task.assignedByName=task.assignedByName||currentUser?.name||'DPEG Manager';
+  task.assignedByEmail=task.assignedByEmail||currentUser?.email||'';
 
   // ── 1. Current user's To Do via Tasks.ReadWrite (now in SCOPES_GRAPH) ──
   try{
@@ -24326,6 +24522,10 @@ async function createToDoTask(task){
         priority:task.priority||'Normal',
         date:dueDate||'',
         deadline:dueDate||'',
+        assignedByName:task.assignedByName,
+        assignedByEmail:task.assignedByEmail,
+        appTaskId:String(task.id||''),
+        proofBaseUrl:location.origin+location.pathname,
       }),
     });
     if(!todoRes.ok){
@@ -24585,6 +24785,7 @@ async function approveNotification(id){
       task.status='Done';
       task.completedAt=new Date().toISOString();
       task.approvedBy=currentUser?.email||'';
+      if(Array.isArray(n.proofs)&&n.proofs.length)task.proofs=n.proofs;
       syncBadges();refreshAll();
     }
   }
@@ -24598,10 +24799,25 @@ async function approveNotification(id){
 async function dismissNotification(id){
   const n=notifications.find(x=>x.id===id);
   if(!n)return;
+  const reason=prompt('Reason for dismissing this completed task?');
+  if(reason===null)return;
   n.status='dismissed';
+  n.dismissReason=String(reason||'').trim();
+  if(n.taskId){
+    const task=tasks.find(t=>t.id===n.taskId);
+    if(task){
+      task.status='Pending';
+      task.dismissReason=n.dismissReason;
+      task.lastDismissedAt=new Date().toISOString();
+    }
+  }
+  if(n.todoTaskId)processedEmailIds.delete('todo-'+n.todoTaskId);
+  try{localStorage.setItem('dpeg_processed_done_emails',JSON.stringify([...processedEmailIds].slice(-200)));}catch{}
   updateNotifBadge();
   renderNotifications();
   await saveNotifications();
+  await sendDismissalEmail(n).catch(err=>console.warn('Dismissal email failed:',err.message));
+  toast('Dismissed and emailed assignee');
 }
 
 async function markAllNotificationsRead(){
@@ -24625,11 +24841,14 @@ function renderNotifications(){
     const icon=n.type==='task_completion'
       ?`<svg width="16" height="16" fill="none" stroke="#15803d" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
       :`<svg width="16" height="16" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const proofHtml=renderNotificationProofs(n);
     return`<div class="card" style="padding:12px 14px">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <div style="flex-shrink:0;margin-top:1px">${icon}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:12.5px;color:var(--body);line-height:1.4;margin-bottom:4px">${escapeHtml(n.message||'')}</div>
+          ${proofHtml}
+          ${n.dismissReason?`<div style="margin-top:6px;font-size:11px;color:#991b1b">Dismissed reason: ${escapeHtml(n.dismissReason)}</div>`:''}
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-size:10px;color:var(--muted)">${ts}</span>
             <span style="font-size:10px;font-weight:600;color:${statusColor}">${statusLabel}</span>
@@ -24642,6 +24861,39 @@ function renderNotifications(){
       </div>
     </div>`;
   }).join('');
+}
+
+function renderNotificationProofs(n){
+  const proofs=Array.isArray(n.proofs)?n.proofs:[];
+  if(!proofs.length)return '<div style="margin:6px 0;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:6px 8px">No proof files were attached.</div>';
+  return `<div style="margin:7px 0;padding:7px 8px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:5px">
+    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:5px">Completion proof</div>
+    ${proofs.map(p=>`<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;margin:3px 0;min-width:0">
+      <span style="font-weight:700;color:#111;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name||'Proof file')}</span>
+      <span style="color:#9ca3af;flex-shrink:0">${p.size?escapeHtml(formatFileSize(p.size)):''}</span>
+      ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700;flex-shrink:0">Open</a>`:''}
+    </div>${p.note?`<div style="font-size:11px;color:#6b7280;margin:2px 0 5px">${escapeHtml(p.note)}</div>`:''}`).join('')}
+  </div>`;
+}
+
+async function sendDismissalEmail(n){
+  const task=tasks.find(t=>t.id===n.taskId)||{};
+  const recipient=n.recipientEmail||task.email;
+  if(!recipient)return;
+  const token=await getAccessToken();
+  const reason=n.dismissReason||'No reason provided.';
+  const subject=`Task completion dismissed: ${task.title||'Task'}`;
+  const html=`<div style="font-family:Arial,sans-serif;max-width:620px">
+    <h2 style="color:#991b1b">Task completion dismissed</h2>
+    <p><strong>Task:</strong> ${escapeHtml(task.title||'Task')}</p>
+    <p><strong>Dismissed by:</strong> ${escapeHtml(currentUser?.name||currentUser?.email||'DPEG Task Manager')}</p>
+    <p><strong>Reason:</strong> ${escapeHtml(reason)}</p>
+    <p>Please update the task/proof and mark it complete again when ready.</p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
+    <p style="color:#9ca3af;font-size:12px">DPEG Task Manager - automated notification</p>
+  </div>`;
+  const message={subject,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:recipient}}]};
+  await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
 }
 
 // ============================================================
@@ -24699,6 +24951,8 @@ async function pollToDoCompletions(manual=false){
           message:`${matchTask.person||'Someone'} completed "${matchTask.title||'task'}"${deadlineStr}. Marked done on ${completedOn}. Do you want to approve?`,
           taskId:matchTask.id,
           todoTaskId:item.todoTaskId,
+          recipientEmail:item.recipientEmail||matchTask.email||'',
+          proofs:Array.isArray(item.proofs)?item.proofs:[],
           timestamp:new Date().toISOString(),
           status:'pending'
         });

@@ -14,6 +14,8 @@ const CORS = {
 
 const DATA_KEY = 'company-state';
 const ADMIN_EMAILS = new Set(['systemmanager1@dhananipeg.com', 'propertymanagement2@dhananipeg.com']);
+const PROOF_START = 'DPEG_PROOF_START';
+const PROOF_END = 'DPEG_PROOF_END';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -42,6 +44,29 @@ function extractEmailAddress(value) {
   if (angle) return angle[1].trim().toLowerCase();
   const email = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
   return email ? email[0].trim().toLowerCase() : raw.toLowerCase();
+}
+
+function proofSubmitUrl(body, listId, taskId) {
+  const base = String(body.proofBaseUrl || 'https://dpeg-software.github.io/dhanani_task_manager/').split('#')[0];
+  const url = new URL(base);
+  url.searchParams.set('proof', '1');
+  url.searchParams.set('taskId', String(body.appTaskId || ''));
+  url.searchParams.set('todoListId', listId);
+  url.searchParams.set('todoTaskId', taskId);
+  return url.toString();
+}
+
+function parseProofs(text) {
+  const raw = String(text || '');
+  const start = raw.indexOf(PROOF_START);
+  const end = raw.indexOf(PROOF_END);
+  if (start < 0 || end < 0 || end <= start) return [];
+  try {
+    const parsed = JSON.parse(raw.slice(start + PROOF_START.length, end).trim());
+    return Array.isArray(parsed?.proofs) ? parsed.proofs : [];
+  } catch {
+    return [];
+  }
 }
 
 function decodeToken(token) {
@@ -94,7 +119,7 @@ async function handleTodo(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
 
-  const { recipientEmail, title, summary = '', priority = 'Normal', date, deadline } = body;
+  const { recipientEmail, title, summary = '', priority = 'Normal', date, deadline, assignedByName = '', assignedByEmail = '', appTaskId = '' } = body;
   const recipient = extractEmailAddress(recipientEmail);
   if (!recipient || !title) {
     return json({ error: 'recipientEmail and title are required' }, 400);
@@ -108,7 +133,9 @@ async function handleTodo(request, env) {
   try { appToken = await getAppToken(env); }
   catch (err) { return json({ error: 'Could not acquire app token', detail: err.message }, 502); }
 
-  // Find recipient's default To Do list
+  // Find or create recipient list grouped by assigner
+  const assignerLabel = String(assignedByName || assignedByEmail || 'DPEG Manager').trim();
+  const desiredListName = `Tasks from ${assignerLabel}`;
   const listsRes = await fetch(
     `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists`,
     { headers: { Authorization: `Bearer ${appToken}` } }
@@ -118,15 +145,13 @@ async function handleTodo(request, env) {
     return json({ error: 'Cannot access recipient To Do', detail: err }, listsRes.status);
   }
   const listsData = await listsRes.json();
-  let defaultList =
-    (listsData.value || []).find(l => l.isDefaultList) ||
-    (listsData.value || [])[0];
+  let defaultList = (listsData.value || []).find(l => l.displayName === desiredListName);
 
-  // If no list exists, create one (recipient may not have opened To Do yet)
+  // If this assigner list does not exist, create it.
   if (!defaultList) {
     const createRes = await fetch(
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists`,
-      { method: 'POST', headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: 'Tasks' }) }
+      { method: 'POST', headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName: desiredListName }) }
     );
     if (!createRes.ok) {
       const err = await createRes.text().catch(() => '');
@@ -136,10 +161,18 @@ async function handleTodo(request, env) {
   }
 
   // Build the To Do task
+  const cleanSummary = summary.replace(/[•*▾▲◆]/g, '').slice(0, 1200);
   const task = {
     title,
     body: {
-      content: `Assigned to you via DPEG Task Manager\n\n${summary.replace(/[•*▾▲◆]/g, '').slice(0, 600)}`,
+      content: [
+        `Assigned by: ${assignerLabel}${assignedByEmail ? ` <${assignedByEmail}>` : ''}`,
+        appTaskId ? `DPEG Task ID: ${appTaskId}` : '',
+        '',
+        cleanSummary,
+        '',
+        'Proof upload link will appear here after this task is created.',
+      ].filter(Boolean).join('\n'),
       contentType: 'text',
     },
     importance: String(priority).toLowerCase() === 'high' ? 'high' : 'normal',
@@ -162,6 +195,30 @@ async function handleTodo(request, env) {
   }
 
   const taskData = await taskRes.json().catch(() => ({}));
+  if (taskData.id) {
+    const link = proofSubmitUrl(body, defaultList.id, taskData.id);
+    const patchedBody = {
+      content: [
+        `Assigned by: ${assignerLabel}${assignedByEmail ? ` <${assignedByEmail}>` : ''}`,
+        appTaskId ? `DPEG Task ID: ${appTaskId}` : '',
+        '',
+        cleanSummary,
+        '',
+        `Submit completion proof: ${link}`,
+        '',
+        `${PROOF_START}\n{"proofs":[]}\n${PROOF_END}`,
+      ].filter(Boolean).join('\n'),
+      contentType: 'text',
+    };
+    await fetch(
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists/${defaultList.id}/tasks/${taskData.id}`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: patchedBody }),
+      }
+    ).catch(() => {});
+  }
   return json({ success: true, listId: defaultList.id, taskId: taskData.id || null });
 }
 
@@ -321,13 +378,19 @@ async function handlePollCompletions(request, env) {
     if (!recipientEmail.includes('@dhananipeg.com')) continue;
     try {
       const res = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists/${todoListId}/tasks/${todoTaskId}?$select=id,status,completedDateTime`,
+        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists/${todoListId}/tasks/${todoTaskId}?$select=id,status,completedDateTime,body`,
         { headers: { Authorization: `Bearer ${appToken}` } }
       );
       if (!res.ok) continue;
       const taskData = await res.json();
       if (taskData.status === 'completed') {
-        completed.push({ taskId, todoTaskId, recipientEmail, completedDateTime: taskData.completedDateTime?.dateTime || null });
+        completed.push({
+          taskId,
+          todoTaskId,
+          recipientEmail,
+          completedDateTime: taskData.completedDateTime?.dateTime || null,
+          proofs: parseProofs(taskData.body?.content || ''),
+        });
       }
     } catch {}
   }
