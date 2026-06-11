@@ -69,6 +69,28 @@ function parseProofs(text) {
   }
 }
 
+function userEmailFromClaims(claims) {
+  return extractEmailAddress(claims.preferred_username || claims.upn || claims.email || '');
+}
+
+function todoTaskUrl(userEmail, listId, taskId) {
+  return `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userEmail)}/todo/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`;
+}
+
+function parseProofBlock(text) {
+  const raw = String(text || '');
+  const start = raw.indexOf(PROOF_START);
+  const end = raw.indexOf(PROOF_END);
+  if (start < 0 || end < 0 || end <= start) return { proofs: [], base: raw.trim() };
+  const before = raw.slice(0, start).trim();
+  const after = raw.slice(end + PROOF_END.length).trim();
+  return { proofs: parseProofs(raw), base: [before, after].filter(Boolean).join('\n\n') };
+}
+
+function buildProofBlock(base, proofs) {
+  return `${String(base || '').trim()}\n\n${PROOF_START}\n${JSON.stringify({ proofs }, null, 2)}\n${PROOF_END}`.trim();
+}
+
 function decodeToken(token) {
   try {
     const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
@@ -378,7 +400,7 @@ async function handlePollCompletions(request, env) {
     if (!recipientEmail.includes('@dhananipeg.com')) continue;
     try {
       const res = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipientEmail)}/todo/lists/${todoListId}/tasks/${todoTaskId}?$select=id,status,completedDateTime,body`,
+        `${todoTaskUrl(recipientEmail, todoListId, todoTaskId)}?$select=id,status,completedDateTime,body`,
         { headers: { Authorization: `Bearer ${appToken}` } }
       );
       if (!res.ok) continue;
@@ -398,6 +420,77 @@ async function handlePollCompletions(request, env) {
   return json({ completed });
 }
 
+async function handleProofTask(request, env) {
+  const { error, status, claims } = validateUserToken(request);
+  if (error) return json({ error }, status);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const userEmail = userEmailFromClaims(claims);
+  const { todoListId, todoTaskId } = body;
+  if (!userEmail || !todoListId || !todoTaskId) return json({ error: 'Missing proof task details' }, 400);
+
+  let appToken;
+  try { appToken = await getAppToken(env); }
+  catch (err) { return json({ error: 'Could not acquire app token', detail: err.message }, 502); }
+
+  const res = await fetch(
+    `${todoTaskUrl(userEmail, todoListId, todoTaskId)}?$select=id,title,body,status`,
+    { headers: { Authorization: `Bearer ${appToken}` } }
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    return json({ error: 'Could not load assigned To Do task', detail }, res.status);
+  }
+  const task = await res.json();
+  return json({ title: task.title || '', status: task.status || '', proofs: parseProofs(task.body?.content || '') });
+}
+
+async function handleProofSubmit(request, env) {
+  const { error, status, claims } = validateUserToken(request);
+  if (error) return json({ error }, status);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const userEmail = userEmailFromClaims(claims);
+  const { todoListId, todoTaskId, proofs = [], markDone = true } = body;
+  if (!userEmail || !todoListId || !todoTaskId) return json({ error: 'Missing proof task details' }, 400);
+  if (!Array.isArray(proofs) || !proofs.length) return json({ error: 'No proof files provided' }, 400);
+
+  let appToken;
+  try { appToken = await getAppToken(env); }
+  catch (err) { return json({ error: 'Could not acquire app token', detail: err.message }, 502); }
+
+  const taskUrl = todoTaskUrl(userEmail, todoListId, todoTaskId);
+  const currentRes = await fetch(`${taskUrl}?$select=id,body,status`, { headers: { Authorization: `Bearer ${appToken}` } });
+  if (!currentRes.ok) {
+    const detail = await currentRes.text().catch(() => '');
+    return json({ error: 'Could not load assigned To Do task', detail }, currentRes.status);
+  }
+  const task = await currentRes.json();
+  const parsed = parseProofBlock(task.body?.content || '');
+  const nextProofs = [...parsed.proofs, ...proofs];
+  const patch = {
+    body: { content: buildProofBlock(parsed.base, nextProofs), contentType: 'text' },
+  };
+  if (markDone) patch.status = 'completed';
+
+  const patchRes = await fetch(taskUrl, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!patchRes.ok) {
+    const detail = await patchRes.text().catch(() => '');
+    return json({ error: 'Could not update assigned To Do task', detail }, patchRes.status);
+  }
+  return json({ success: true, proofs: nextProofs });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -413,6 +506,8 @@ export default {
 
     if (path === '/todo') return handleTodo(request, env);
     if (path === '/poll-completions') return handlePollCompletions(request, env);
+    if (path === '/proof-task') return handleProofTask(request, env);
+    if (path === '/proof-submit') return handleProofSubmit(request, env);
     if (path === '/attachment-summary') return handleAttachmentSummary(request, env);
     return handleSummary(request, env);
   },

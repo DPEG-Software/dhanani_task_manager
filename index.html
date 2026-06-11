@@ -19966,6 +19966,10 @@ function proofRouteParams(){
   };
 }
 
+function workerBaseUrl(){
+  return (localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
+}
+
 function safeProofFileName(name){
   const cleaned=String(name||'proof-file').replace(/[\\/:*?"<>|#%{}~&]/g,'_').replace(/\s+/g,' ').trim();
   return cleaned.slice(0,120)||'proof-file';
@@ -20039,9 +20043,17 @@ async function uploadProofFiles(){
   status.textContent='Uploading proof files...';
   try{
     const token=await getAccessToken();
-    const taskRes=await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${encodeURIComponent(params.todoListId)}/tasks/${encodeURIComponent(params.todoTaskId)}?$select=id,title,body,status`,{headers:{Authorization:`Bearer ${token}`}});
-    if(!taskRes.ok)throw new Error('This signed-in account cannot access the assigned To Do task.');
-    const todoTask=await taskRes.json();
+    const fnUrl=workerBaseUrl();
+    if(!fnUrl)throw new Error('Worker URL is not configured.');
+    const taskCheck=await fetch(`${fnUrl}/proof-task`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({todoListId:params.todoListId,todoTaskId:params.todoTaskId})
+    });
+    if(!taskCheck.ok){
+      const detail=await taskCheck.text().catch(()=>'');
+      throw new Error(`This signed-in account cannot access the assigned To Do task. ${detail.slice(0,180)}`);
+    }
     await ensureDriveFolderPath(token,[ONEDRIVE_FOLDER,'ProofUploads',params.todoTaskId]);
     const uploaded=[];
     for(const file of files){
@@ -20070,16 +20082,15 @@ async function uploadProofFiles(){
         note:note.trim(),
       });
     }
-    const parsed=parseProofBlock(todoTask.body?.content||'');
-    const proofs=[...parsed.proofs,...uploaded];
-    const patch={body:{content:buildProofBlock(parsed.base,proofs),contentType:'text'}};
-    if(markDone)patch.status='completed';
-    const patchRes=await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${encodeURIComponent(params.todoListId)}/tasks/${encodeURIComponent(params.todoTaskId)}`,{
-      method:'PATCH',
+    const submitRes=await fetch(`${fnUrl}/proof-submit`,{
+      method:'POST',
       headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify(patch)
+      body:JSON.stringify({todoListId:params.todoListId,todoTaskId:params.todoTaskId,proofs:uploaded,markDone})
     });
-    if(!patchRes.ok)throw new Error('Files uploaded, but the To Do task could not be updated.');
+    if(!submitRes.ok){
+      const detail=await submitRes.text().catch(()=>'');
+      throw new Error(`Files uploaded, but the To Do task could not be updated. ${detail.slice(0,180)}`);
+    }
     status.textContent=markDone?'Proof uploaded and task marked complete.':'Proof uploaded. You can now mark the task complete in To Do.';
     fileInput.value='';
   }catch(err){
@@ -20117,7 +20128,12 @@ async function showProofUploadMode(){
   try{
     const params=proofRouteParams();
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${encodeURIComponent(params.todoListId)}/tasks/${encodeURIComponent(params.todoTaskId)}?$select=title`,{headers:{Authorization:`Bearer ${token}`}});
+    const fnUrl=workerBaseUrl();
+    const res=await fetch(`${fnUrl}/proof-task`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({todoListId:params.todoListId,todoTaskId:params.todoTaskId})
+    });
     if(res.ok){
       const data=await res.json();
       const titleEl=document.getElementById('proof-task-title');
