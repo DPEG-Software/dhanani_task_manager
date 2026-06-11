@@ -19961,6 +19961,7 @@ function proofRouteParams(){
   const p=new URLSearchParams(location.search);
   return {
     appTaskId:p.get('taskId')||'',
+    recipientEmail:p.get('recipientEmail')||'',
     todoListId:p.get('todoListId')||'',
     todoTaskId:p.get('todoTaskId')||'',
   };
@@ -20035,10 +20036,12 @@ async function uploadProofFiles(){
   const params=proofRouteParams();
   const status=document.getElementById('proof-status');
   const fileInput=document.getElementById('proof-files');
+  const recipientEmail=(params.recipientEmail||document.getElementById('proof-recipient-email')?.value||'').trim();
   const note=document.getElementById('proof-note')?.value||'';
   const markDone=document.getElementById('proof-mark-done')?.checked!==false;
   const files=Array.from(fileInput?.files||[]);
   if(!params.todoListId||!params.todoTaskId){status.textContent='This proof link is missing task details.';return;}
+  if(!recipientEmail){status.textContent='Please enter the assigned recipient email.';return;}
   if(!files.length){status.textContent='Please choose at least one file.';return;}
   status.textContent='Uploading proof files...';
   try{
@@ -20048,7 +20051,7 @@ async function uploadProofFiles(){
     const taskCheck=await fetch(`${fnUrl}/proof-task`,{
       method:'POST',
       headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({todoListId:params.todoListId,todoTaskId:params.todoTaskId})
+      body:JSON.stringify({recipientEmail,todoListId:params.todoListId,todoTaskId:params.todoTaskId})
     });
     if(!taskCheck.ok){
       const detail=await taskCheck.text().catch(()=>'');
@@ -20085,7 +20088,7 @@ async function uploadProofFiles(){
     const submitRes=await fetch(`${fnUrl}/proof-submit`,{
       method:'POST',
       headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({todoListId:params.todoListId,todoTaskId:params.todoTaskId,proofs:uploaded,markDone})
+      body:JSON.stringify({recipientEmail,todoListId:params.todoListId,todoTaskId:params.todoTaskId,proofs:uploaded,markDone})
     });
     if(!submitRes.ok){
       const detail=await submitRes.text().catch(()=>'');
@@ -20113,6 +20116,10 @@ async function showProofUploadMode(){
     <div style="padding:20px">
       <div style="font-size:12px;color:#374151;line-height:1.6;margin-bottom:14px">Signed in as <strong>${escapeHtml(currentUser?.email||'')}</strong>. Upload pictures, PDFs, or files for this task. The assignor will see proof links when they review the completion notification.</div>
       <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Proof files</label>
+      <div id="proof-recipient-wrap" style="${proofRouteParams().recipientEmail?'display:none':'display:block'}">
+        <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Assigned recipient email</label>
+        <input id="proof-recipient-email" type="email" placeholder="employee@dhananipeg.com" value="${escapeHtml(proofRouteParams().recipientEmail)}" style="width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;margin-bottom:12px">
+      </div>
       <input id="proof-files" type="file" multiple style="display:block;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fff;margin-bottom:12px">
       <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Note</label>
       <textarea id="proof-note" placeholder="Optional note about the completed work..." style="width:100%;min-height:82px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:12px"></textarea>
@@ -20132,14 +20139,14 @@ async function showProofUploadMode(){
     const res=await fetch(`${fnUrl}/proof-task`,{
       method:'POST',
       headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({todoListId:params.todoListId,todoTaskId:params.todoTaskId})
+      body:JSON.stringify({recipientEmail:params.recipientEmail,todoListId:params.todoListId,todoTaskId:params.todoTaskId})
     });
     if(res.ok){
       const data=await res.json();
       const titleEl=document.getElementById('proof-task-title');
       if(titleEl)titleEl.textContent=data.title||'Assigned task';
     }else{
-      document.getElementById('proof-status').textContent='This account cannot access the assigned To Do task.';
+      document.getElementById('proof-status').textContent=params.recipientEmail?'Could not load the assigned To Do task.':'Enter the assigned recipient email before uploading.';
     }
   }catch(err){
     document.getElementById('proof-status').textContent=err.message||'Could not load task.';

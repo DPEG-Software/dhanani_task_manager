@@ -51,6 +51,7 @@ function proofSubmitUrl(body, listId, taskId) {
   const url = new URL(base);
   url.searchParams.set('proof', '1');
   url.searchParams.set('taskId', String(body.appTaskId || ''));
+  url.searchParams.set('recipientEmail', String(body.recipientEmail || ''));
   url.searchParams.set('todoListId', listId);
   url.searchParams.set('todoTaskId', taskId);
   return url.toString();
@@ -428,16 +429,17 @@ async function handleProofTask(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
 
-  const userEmail = userEmailFromClaims(claims);
+  const recipientEmail = extractEmailAddress(body.recipientEmail || '');
   const { todoListId, todoTaskId } = body;
-  if (!userEmail || !todoListId || !todoTaskId) return json({ error: 'Missing proof task details' }, 400);
+  if (!recipientEmail || !todoListId || !todoTaskId) return json({ error: 'Missing proof task details' }, 400);
+  if (!recipientEmail.includes('@dhananipeg.com')) return json({ error: 'Only @dhananipeg.com task recipients are supported' }, 403);
 
   let appToken;
   try { appToken = await getAppToken(env); }
   catch (err) { return json({ error: 'Could not acquire app token', detail: err.message }, 502); }
 
   const res = await fetch(
-    `${todoTaskUrl(userEmail, todoListId, todoTaskId)}?$select=id,title,body,status`,
+    `${todoTaskUrl(recipientEmail, todoListId, todoTaskId)}?$select=id,title,body,status`,
     { headers: { Authorization: `Bearer ${appToken}` } }
   );
   if (!res.ok) {
@@ -456,16 +458,17 @@ async function handleProofSubmit(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
 
-  const userEmail = userEmailFromClaims(claims);
+  const recipientEmail = extractEmailAddress(body.recipientEmail || '');
   const { todoListId, todoTaskId, proofs = [], markDone = true } = body;
-  if (!userEmail || !todoListId || !todoTaskId) return json({ error: 'Missing proof task details' }, 400);
+  if (!recipientEmail || !todoListId || !todoTaskId) return json({ error: 'Missing proof task details' }, 400);
+  if (!recipientEmail.includes('@dhananipeg.com')) return json({ error: 'Only @dhananipeg.com task recipients are supported' }, 403);
   if (!Array.isArray(proofs) || !proofs.length) return json({ error: 'No proof files provided' }, 400);
 
   let appToken;
   try { appToken = await getAppToken(env); }
   catch (err) { return json({ error: 'Could not acquire app token', detail: err.message }, 502); }
 
-  const taskUrl = todoTaskUrl(userEmail, todoListId, todoTaskId);
+  const taskUrl = todoTaskUrl(recipientEmail, todoListId, todoTaskId);
   const currentRes = await fetch(`${taskUrl}?$select=id,body,status`, { headers: { Authorization: `Bearer ${appToken}` } });
   if (!currentRes.ok) {
     const detail = await currentRes.text().catch(() => '');
