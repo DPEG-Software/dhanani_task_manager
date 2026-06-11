@@ -52,6 +52,9 @@ function proofSubmitUrl(body, listId, taskId) {
   url.searchParams.set('proof', '1');
   url.searchParams.set('taskId', String(body.appTaskId || ''));
   url.searchParams.set('recipientEmail', String(body.recipientEmail || ''));
+  url.searchParams.set('assignedByName', String(body.assignedByName || ''));
+  url.searchParams.set('assignedByEmail', String(body.assignedByEmail || ''));
+  url.searchParams.set('title', String(body.title || 'Task'));
   url.searchParams.set('todoListId', listId);
   url.searchParams.set('todoTaskId', taskId);
   return url.toString();
@@ -142,8 +145,10 @@ async function handleTodo(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
 
-  const { recipientEmail, title, summary = '', priority = 'Normal', date, deadline, assignedByName = '', assignedByEmail = '', appTaskId = '' } = body;
+  const { recipientEmail, title, summary = '', priority = 'Normal', date, deadline, appTaskId = '' } = body;
   const recipient = extractEmailAddress(recipientEmail);
+  const assignedByEmail = extractEmailAddress(body.assignedByEmail || userEmailFromClaims(claims));
+  const assignedByName = String(body.assignedByName || claims.name || assignedByEmail || '').trim();
   if (!recipient || !title) {
     return json({ error: 'recipientEmail and title are required' }, 400);
   }

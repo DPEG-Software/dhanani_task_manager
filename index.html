@@ -19962,6 +19962,9 @@ function proofRouteParams(){
   return {
     appTaskId:p.get('taskId')||'',
     recipientEmail:p.get('recipientEmail')||'',
+    assignedByName:p.get('assignedByName')||'',
+    assignedByEmail:p.get('assignedByEmail')||'',
+    title:p.get('title')||'Assigned task',
     todoListId:p.get('todoListId')||'',
     todoTaskId:p.get('todoTaskId')||'',
   };
@@ -20036,32 +20039,20 @@ async function uploadProofFiles(){
   const params=proofRouteParams();
   const status=document.getElementById('proof-status');
   const fileInput=document.getElementById('proof-files');
-  const recipientEmail=(params.recipientEmail||document.getElementById('proof-recipient-email')?.value||'').trim();
+  const assignedByEmail=(params.assignedByEmail||document.getElementById('proof-assignor-email')?.value||'').trim();
   const note=document.getElementById('proof-note')?.value||'';
-  const markDone=document.getElementById('proof-mark-done')?.checked!==false;
   const files=Array.from(fileInput?.files||[]);
-  if(!params.todoListId||!params.todoTaskId){status.textContent='This proof link is missing task details.';return;}
-  if(!recipientEmail){status.textContent='Please enter the assigned recipient email.';return;}
+  if(!assignedByEmail){status.textContent='Please enter the assignor email so proof can be sent.';return;}
   if(!files.length){status.textContent='Please choose at least one file.';return;}
   status.textContent='Uploading proof files...';
   try{
     const token=await getAccessToken();
-    const fnUrl=workerBaseUrl();
-    if(!fnUrl)throw new Error('Worker URL is not configured.');
-    const taskCheck=await fetch(`${fnUrl}/proof-task`,{
-      method:'POST',
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({recipientEmail,todoListId:params.todoListId,todoTaskId:params.todoTaskId})
-    });
-    if(!taskCheck.ok){
-      const detail=await taskCheck.text().catch(()=>'');
-      throw new Error(`This signed-in account cannot access the assigned To Do task. ${detail.slice(0,180)}`);
-    }
-    await ensureDriveFolderPath(token,[ONEDRIVE_FOLDER,'ProofUploads',params.todoTaskId]);
+    const proofKey=params.todoTaskId||params.appTaskId||String(Date.now());
+    await ensureDriveFolderPath(token,[ONEDRIVE_FOLDER,'ProofUploads',proofKey]);
     const uploaded=[];
     for(const file of files){
       const stamped=`${new Date().toISOString().replace(/[:.]/g,'-')}-${safeProofFileName(file.name)}`;
-      const path=`/${ONEDRIVE_FOLDER}/ProofUploads/${params.todoTaskId}/${stamped}`;
+      const path=`/${ONEDRIVE_FOLDER}/ProofUploads/${proofKey}/${stamped}`;
       const put=await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:${encodeURI(path)}:/content`,{
         method:'PUT',
         headers:{Authorization:`Bearer ${token}`,'Content-Type':file.type||'application/octet-stream'},
@@ -20085,19 +20076,34 @@ async function uploadProofFiles(){
         note:note.trim(),
       });
     }
-    const submitRes=await fetch(`${fnUrl}/proof-submit`,{
-      method:'POST',
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({recipientEmail,todoListId:params.todoListId,todoTaskId:params.todoTaskId,proofs:uploaded,markDone})
-    });
-    if(!submitRes.ok){
-      const detail=await submitRes.text().catch(()=>'');
-      throw new Error(`Files uploaded, but the To Do task could not be updated. ${detail.slice(0,180)}`);
-    }
-    status.textContent=markDone?'Proof uploaded and task marked complete.':'Proof uploaded. You can now mark the task complete in To Do.';
+    await sendProofUploadEmail(token,assignedByEmail,params,uploaded,note);
+    status.textContent='Proof uploaded and emailed to the assignor. You can now mark the task complete in Microsoft To Do.';
     fileInput.value='';
   }catch(err){
     status.textContent=err.message||'Could not upload proof.';
+  }
+}
+
+async function sendProofUploadEmail(token,assignedByEmail,params,proofs,note){
+  const subject=`Completion proof submitted: ${params.title||'Task'}`;
+  const rows=proofs.map(p=>`<li><a href="${escapeHtml(p.webUrl||'#')}" target="_blank" rel="noopener">${escapeHtml(p.name||'Proof file')}</a> ${p.size?`(${escapeHtml(formatFileSize(p.size))})`:''}</li>`).join('');
+  const html=`<div style="font-family:Arial,sans-serif;max-width:620px">
+    <h2 style="color:#0E3416">Completion proof submitted</h2>
+    <p><strong>Task:</strong> ${escapeHtml(params.title||'Task')}</p>
+    <p><strong>Assigned by:</strong> ${escapeHtml(params.assignedByName||assignedByEmail)}</p>
+    <p><strong>Submitted by:</strong> ${escapeHtml(currentUser?.name||currentUser?.email||'')}</p>
+    ${note?`<p><strong>Note:</strong> ${escapeHtml(note)}</p>`:''}
+    <p><strong>Proof files:</strong></p>
+    <ul>${rows}</ul>
+    <p style="color:#6b7280;font-size:12px">Review these files, then approve or dismiss the task completion in DPEG Task Manager when the completion notification appears.</p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
+    <p style="color:#9ca3af;font-size:12px">DPEG Task Manager - automated proof notification</p>
+  </div>`;
+  const message={subject,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:assignedByEmail}}]};
+  const res=await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
+  if(!res.ok){
+    const detail=await res.text().catch(()=>'');
+    throw new Error(`Proof files uploaded, but email could not be sent. ${detail.slice(0,180)}`);
   }
 }
 
@@ -20114,16 +20120,16 @@ async function showProofUploadMode(){
       <div id="proof-task-title" style="font-size:12px;opacity:.82">Loading task...</div>
     </div>
     <div style="padding:20px">
-      <div style="font-size:12px;color:#374151;line-height:1.6;margin-bottom:14px">Signed in as <strong>${escapeHtml(currentUser?.email||'')}</strong>. Upload pictures, PDFs, or files for this task. The assignor will see proof links when they review the completion notification.</div>
+      <div style="font-size:12px;color:#374151;line-height:1.6;margin-bottom:14px">Signed in as <strong>${escapeHtml(currentUser?.email||'')}</strong>. Upload pictures, PDFs, or files for this task. Proof links will be emailed to the assignor.</div>
       <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Proof files</label>
-      <div id="proof-recipient-wrap" style="${proofRouteParams().recipientEmail?'display:none':'display:block'}">
-        <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Assigned recipient email</label>
-        <input id="proof-recipient-email" type="email" placeholder="employee@dhananipeg.com" value="${escapeHtml(proofRouteParams().recipientEmail)}" style="width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;margin-bottom:12px">
+      <div id="proof-assignor-wrap" style="${proofRouteParams().assignedByEmail?'display:none':'display:block'}">
+        <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Assignor email</label>
+        <input id="proof-assignor-email" type="email" placeholder="manager@dhananipeg.com" value="${escapeHtml(proofRouteParams().assignedByEmail)}" style="width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;margin-bottom:12px">
       </div>
       <input id="proof-files" type="file" multiple style="display:block;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fff;margin-bottom:12px">
       <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Note</label>
       <textarea id="proof-note" placeholder="Optional note about the completed work..." style="width:100%;min-height:82px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:12px"></textarea>
-      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#374151;margin-bottom:14px"><input id="proof-mark-done" type="checkbox" checked style="accent-color:#0E3416"> Mark this Microsoft To Do task complete after upload</label>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:14px">After uploading proof, mark the task complete in Microsoft To Do.</div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn btn-primary btn-sm" onclick="uploadProofFiles()">Upload Proof</button>
         <button class="btn btn-ghost btn-sm" onclick="signOut()">Sign Out</button>
@@ -20132,25 +20138,8 @@ async function showProofUploadMode(){
     </div>
   </div>`;
   document.body.appendChild(screen);
-  try{
-    const params=proofRouteParams();
-    const token=await getAccessToken();
-    const fnUrl=workerBaseUrl();
-    const res=await fetch(`${fnUrl}/proof-task`,{
-      method:'POST',
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({recipientEmail:params.recipientEmail,todoListId:params.todoListId,todoTaskId:params.todoTaskId})
-    });
-    if(res.ok){
-      const data=await res.json();
-      const titleEl=document.getElementById('proof-task-title');
-      if(titleEl)titleEl.textContent=data.title||'Assigned task';
-    }else{
-      document.getElementById('proof-status').textContent=params.recipientEmail?'Could not load the assigned To Do task.':'Enter the assigned recipient email before uploading.';
-    }
-  }catch(err){
-    document.getElementById('proof-status').textContent=err.message||'Could not load task.';
-  }
+  const titleEl=document.getElementById('proof-task-title');
+  if(titleEl)titleEl.textContent=proofRouteParams().title||'Assigned task';
 }
 
 async function loadTasksFromOneDrive() {
@@ -24498,8 +24487,10 @@ async function createToDoTask(task){
     ? `\n\nAttachments from email:\n${task.attachmentNames.map(n=>`- ${n}`).join('\n')}`
     : '';
   const dueDate=task.deadline||((task.deadline===undefined)?task.date:'');
-  task.assignedByName=task.assignedByName||currentUser?.name||'DPEG Manager';
-  task.assignedByEmail=task.assignedByEmail||currentUser?.email||'';
+  const assignerEmail=currentUser?.email||currentAccount?.username||'';
+  const assignerName=currentUser?.name||currentAccount?.name||assignerEmail||'DPEG Manager';
+  task.assignedByName=task.assignedByName||assignerName;
+  task.assignedByEmail=task.assignedByEmail||assignerEmail;
 
   // ── 1. Current user's To Do via Tasks.ReadWrite (now in SCOPES_GRAPH) ──
   try{
