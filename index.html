@@ -19528,6 +19528,56 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
   </div>
 </div>
 
+<!-- NEW MEETING MODAL -->
+<div class="mo" id="mo-new-meeting">
+  <div class="mo-box" style="width:600px;max-height:92vh">
+    <div class="mo-hdr" style="background:#0E3416;border-radius:var(--rlg) var(--rlg) 0 0">
+      <div>
+        <div class="mo-title" style="color:#fff">New Teams Meeting</div>
+        <div class="mo-sub" style="color:rgba(255,255,255,.65)">Schedule a meeting and send invites</div>
+      </div>
+      <button class="mo-x" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" onclick="closeMo('mo-new-meeting')">&#10005;</button>
+    </div>
+    <div class="mo-body" style="padding:14px 18px">
+      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Subject</span>
+        <input type="text" id="meet-subject" placeholder="Meeting subject..." style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:var(--body);background:transparent">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Required</span>
+        <input type="text" id="meet-required" placeholder="Attendee emails, comma-separated..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Optional</span>
+        <input type="text" id="meet-optional" placeholder="Optional attendees..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Date</span>
+        <input type="date" id="meet-date" style="border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Time</span>
+        <input type="time" id="meet-start" style="border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+        <span style="font-size:11px;color:var(--muted)">to</span>
+        <input type="time" id="meet-end" style="border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:8px">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Location</span>
+        <input type="text" id="meet-location" placeholder="Optional room or address..." style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
+      </div>
+      <textarea id="meet-notes" placeholder="Add notes or agenda (optional)..." style="width:100%;min-height:90px;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);resize:vertical;line-height:1.6;background:transparent"></textarea>
+    </div>
+    <div class="mo-foot" style="border-top:1px solid var(--border)">
+      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;margin-right:auto;user-select:none">
+        <input type="checkbox" id="meet-teams" checked style="cursor:pointer;accent-color:var(--forest)">
+        Add Teams link
+      </label>
+      <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-new-meeting')">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="scheduleTeamsMeeting()" id="meet-send-btn">Send Invite</button>
+    </div>
+  </div>
+</div>
+
 <!-- DETAIL MODAL -->
 <div class="mo" id="mo-detail">
   <div class="mo-box">
@@ -22582,8 +22632,8 @@ function threadHeaderHTML(){
   const ccAll=latest?.ccRecipients||[];
   const dt=latest?new Date(latest.receivedDateTime||latest.sentDateTime):null;
   const dateStr=dt?centralDate(dt,{weekday:'short',month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-  const toStr=toAll.length?renderExpandablePeople(toAll,'thread-hdr-to',2):'—';
-  const ccStr=ccAll.length?renderExpandablePeople(ccAll,'thread-hdr-cc',2):'';
+  const toStr=toAll.length?renderPeopleChips(toAll,'thread-hdr-to',4):'—';
+  const ccStr=ccAll.length?renderPeopleChips(ccAll,'thread-hdr-cc',4):'';
   return `<div class="tv-hdr">
     <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">
       <div style="flex:1;min-width:0">
@@ -22593,9 +22643,9 @@ function threadHeaderHTML(){
       ${s.showBack&&s.backEmailId?`<button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="readEmail('${s.backEmailId}','${s.backFolder||'inbox'}')">← Back</button>`:''}
     </div>
     ${latest?`<div style="margin-bottom:7px">
-      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0">From</span><span style="font-size:12px;color:var(--body)">${escapeHtml(sender?.name||'')}${sender?.address?' <span style="color:var(--muted);font-size:11px">&lt;'+escapeHtml(sender.address)+'&gt;</span>':''}</span></div>
-      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0">To</span><span style="font-size:12px;color:var(--body)">${toStr}</span></div>
-      ${ccStr?`<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0">CC</span><span style="font-size:12px;color:var(--body)">${ccStr}</span></div>`:''}
+      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0;padding-top:2px">From</span><span style="font-size:12px;color:var(--body)">${escapeHtml(sender?.name||'')}${sender?.address?' <span style="color:var(--muted);font-size:11px">&lt;'+escapeHtml(sender.address)+'&gt;</span>':''}</span></div>
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:3px;position:relative"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0;padding-top:4px">To</span><div style="display:flex;flex-wrap:wrap;flex:1;min-width:0">${toStr}</div></div>
+      ${ccStr?`<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:3px;position:relative"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0;padding-top:4px">CC</span><div style="display:flex;flex-wrap:wrap;flex:1;min-width:0">${ccStr}</div></div>`:''}
       <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:11px;color:var(--muted);font-weight:600;width:32px;flex-shrink:0">Date</span><span style="font-size:11px;color:var(--muted)">${dateStr}</span></div>
     </div>`:''}
     ${s.actionsHTML?`<div style="display:flex;gap:5px;flex-wrap:wrap">${s.actionsHTML}</div>`:''}
@@ -22785,6 +22835,8 @@ async function viewFullThread(emailId){
       pBtn('Reply','<path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','replyEmail(\''+latestId+'\')'),
       pBtn('Reply All','<path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6M7 6h8a7 7 0 017 7" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','replyAllEmail(\''+latestId+'\')'),
       pBtn('Forward','<path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','forwardEmail(\''+latestId+'\')'),
+      pBtn('New Meeting','<path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','openNewMeetingFromEmail(\''+emailId+'\')'),
+      pBtn('Mark Unread','<path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','markEmailUnread(\''+latestId+'\')'),
       email.webLink?pBtn('Outlook','<path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','openEmailInOutlook(\''+latestId+'\')',''):'',
       '<button onclick="toggleEmailAISummary(\''+latestId+'\')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e9d5ff;background:#fff;color:#7c3aed;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background=\'#f5f3ff\'" onmouseout="this.style.background=\'#fff\'"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarize</button>',
       isTracked
@@ -23058,6 +23110,31 @@ function renderExpandablePeople(items,id,limit=2){
   return `${shown} <button id="${safe}-btn" data-closed="${closed}" onclick="event.stopPropagation();togglePeopleList('${safe}')" style="border:none;background:none;color:#0E3416;font-size:11.5px;font-weight:700;cursor:pointer;padding:0 2px">${closed}</button><div id="${safe}" style="display:none;margin-top:4px;padding:6px 8px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:5px;line-height:1.5">${hidden}</div>`;
 }
 
+function renderPeopleChips(items,id,limit=3){
+  const avColors=['#0078d4','#107c41','#b91c1c','#7c3aed','#b45309','#0f766e','#c2185b','#455a64'];
+  const chipColor=n=>{const h=Array.from(n||'?').reduce((s,c)=>s+c.charCodeAt(0),0);return avColors[h%avColors.length];};
+  const chipInit=n=>(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()||'?';
+  const people=(items||[]).map(x=>{
+    const name=x?.emailAddress?.name||x?.emailAddress?.address||x?.name||x?.address||'';
+    const addr=x?.emailAddress?.address||x?.address||'';
+    return {name,addr};
+  }).filter(p=>p.name||p.addr);
+  if(!people.length)return '—';
+  const chipHTML=p=>{
+    const label=p.name||p.addr;
+    const col=chipColor(label);
+    const init=chipInit(label);
+    return `<span title="${escapeHtml(p.addr||p.name)}" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px 2px 3px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:11px;font-size:11px;color:#374151;white-space:nowrap;margin:1px 3px 1px 0;line-height:1.4"><span style="display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:${col};color:#fff;font-size:7.5px;font-weight:700;flex-shrink:0">${init}</span>${escapeHtml(label)}</span>`;
+  };
+  const shown=people.slice(0,limit);
+  const rest=people.slice(limit);
+  const safe=safeDomId(id);
+  if(!rest.length)return shown.map(chipHTML).join('');
+  const hiddenHTML=rest.map(p=>`<div style="padding:2px 0">${chipHTML(p)}</div>`).join('');
+  const closed=`+${rest.length}`;
+  return `${shown.map(chipHTML).join('')}<button id="${safe}-btn" data-closed="${closed}" onclick="event.stopPropagation();togglePeopleList('${safe}')" style="display:inline-flex;align-items:center;padding:2px 7px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:11px;font-size:11px;color:#0E3416;font-weight:700;cursor:pointer;margin:1px 3px 1px 0">${closed}</button><div id="${safe}" style="display:none;position:absolute;left:40px;margin-top:2px;padding:8px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:7px;box-shadow:0 4px 14px rgba(0,0,0,.12);z-index:200;min-width:180px">${hiddenHTML}</div>`;
+}
+
 function extractMeetingJoinLink(raw){
   const text=String(raw||'');
   if(!text)return '';
@@ -23128,7 +23205,8 @@ async function readEmail(emailId,folder,el){
       ${pBtn('Reply','<path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`replyEmail('${emailId}')`)}
       ${pBtn('Reply All','<path d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6M7 6h8a7 7 0 017 7" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`replyAllEmail('${emailId}')`)}
       ${pBtn('Forward','<path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`forwardEmail('${emailId}')`)}
-
+      ${pBtn('New Meeting','<path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`openNewMeetingFromEmail('${emailId}')`)}
+      ${pBtn('Mark Unread','<path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`markEmailUnread('${emailId}')`)}
       <button onclick="toggleEmailAISummary('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e9d5ff;background:#fff;color:#7c3aed;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='#fff'"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarize</button>
       ${isTracked
         ?`<span style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500">✓ In Tasks</span><button onclick="removeTaskByEmail('${emailId}')" style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">Remove</button>`
@@ -23196,6 +23274,94 @@ async function downloadAttachment(emailId,attId,filename){
     setTimeout(()=>URL.revokeObjectURL(url),2000);
     toast(`Downloaded: ${filename}`);
   }catch(err){toast('Download failed');}
+}
+
+async function markEmailUnread(emailId){
+  if(!emailId)return;
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{
+      method:'PATCH',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({isRead:false})
+    });
+    if(res.ok){
+      const email=emailCache[emailId];
+      if(email)email.isRead=false;
+      const folder=currentFolder||'inbox';
+      const cached=(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId);
+      if(cached)cached.isRead=false;
+      document.getElementById('email-item-'+emailId)?.classList.add('unread');
+      updateUnreadBadges(1);
+      toast('Marked as unread');
+    }
+  }catch{toast('Could not mark as unread');}
+}
+
+function openNewMeetingFromEmail(emailId){
+  const email=emailCache[emailId]||{};
+  const toRecipients=email.toRecipients||[];
+  const ccRecipients=email.ccRecipients||[];
+  const required=[...toRecipients,...ccRecipients]
+    .map(r=>r?.emailAddress?.address||'').filter(Boolean).join(', ');
+  document.getElementById('meet-subject').value=email.subject?'Re: '+email.subject:'';
+  document.getElementById('meet-required').value=required;
+  document.getElementById('meet-optional').value='';
+  document.getElementById('meet-location').value='';
+  document.getElementById('meet-notes').value='';
+  const tomorrow=new Date();tomorrow.setDate(tomorrow.getDate()+1);
+  const y=tomorrow.getFullYear();
+  const mo=String(tomorrow.getMonth()+1).padStart(2,'0');
+  const d=String(tomorrow.getDate()).padStart(2,'0');
+  document.getElementById('meet-date').value=`${y}-${mo}-${d}`;
+  document.getElementById('meet-start').value='09:00';
+  document.getElementById('meet-end').value='09:30';
+  document.getElementById('meet-teams').checked=true;
+  document.getElementById('mo-new-meeting').classList.add('open');
+}
+
+async function scheduleTeamsMeeting(){
+  const subject=(document.getElementById('meet-subject').value||'').trim();
+  const dateVal=document.getElementById('meet-date').value;
+  const startVal=document.getElementById('meet-start').value;
+  const endVal=document.getElementById('meet-end').value;
+  if(!subject||!dateVal||!startVal||!endVal){toast('Please fill in subject, date, and time');return;}
+  const parseAtts=(str,type)=>str.split(/[,;]+/).map(s=>s.trim()).filter(Boolean).map(e=>({emailAddress:{address:e},type}));
+  const attendees=[
+    ...parseAtts(document.getElementById('meet-required').value,'required'),
+    ...parseAtts(document.getElementById('meet-optional').value,'optional')
+  ];
+  const location=(document.getElementById('meet-location').value||'').trim();
+  const notes=(document.getElementById('meet-notes').value||'').trim();
+  const teamsOn=document.getElementById('meet-teams').checked;
+  const event={
+    subject,
+    start:{dateTime:`${dateVal}T${startVal}:00`,timeZone:'Central Standard Time'},
+    end:{dateTime:`${dateVal}T${endVal}:00`,timeZone:'Central Standard Time'},
+    attendees,
+    isOnlineMeeting:teamsOn,
+    onlineMeetingProvider:teamsOn?'teamsForBusiness':'unknown',
+    body:{contentType:'text',content:notes||''}
+  };
+  if(location)event.location={displayName:location};
+  const btn=document.getElementById('meet-send-btn');
+  if(btn){btn.disabled=true;btn.textContent='Sending...';}
+  try{
+    const token=await getAccessToken();
+    const res=await fetch('https://graph.microsoft.com/v1.0/me/events',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify(event)
+    });
+    if(!res.ok){const err=await res.text();throw new Error(err);}
+    closeMo('mo-new-meeting');
+    toast('Meeting invite sent!');
+  }catch(err){
+    toast('Could not send meeting invite');
+    console.error('Meeting invite error:',err);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='Send Invite';}
+  }
 }
 
 async function toggleOutlookFlag(emailId,ev){
