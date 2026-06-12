@@ -23427,7 +23427,7 @@ async function resolveInlineImages(token,emailId,html){
 
 var _activeEmailEl=null;
 const _resolvedBodyCache=new Map(); // msgId → resolved HTML string
-const CENTRAL_TZ='America/Chicago';
+const CENTRAL_TZ=Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
 function tzOffsetMs(timeZone,date){
   const parts=new Intl.DateTimeFormat('en-US',{timeZone,hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(date);
   const vals=Object.fromEntries(parts.filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)]));
@@ -23480,7 +23480,7 @@ async function processMeetingMsg(m,token){
     const gm=buildMeetingDataFromGraph(m);
     meetingData={...gm,joinUrl:gm.joinUrl||meetingData?.joinUrl||teamsJoinUrl,description:gm.description||meetingData?.description||''};
   }
-  if(meetingData)return{...m,body:{contentType:'html',content:renderMeetingCard(meetingData,m.subject)},bodyPreview:m.bodyPreview||meetingData.description||''};
+  if(meetingData)return{...m,body:{contentType:'html',content:renderMeetingCard(meetingData,m.subject,isEventMsg?m.id:'')},bodyPreview:m.bodyPreview||meetingData.description||''};
   return m;
 }
 
@@ -23525,7 +23525,7 @@ function parseICalData(raw){
     joinUrl:extractMeetingJoinLink(desc),
   };
 }
-function renderMeetingCard(d,emailSubjectHint){
+function renderMeetingCard(d,emailSubjectHint,emailId){
   const fmt=(dt)=>centralDate(dt,{weekday:'short',month:'short',day:'numeric',year:'numeric'});
   const fmtT=(dt)=>centralTime(dt,{hour:'2-digit',minute:'2-digit'});
   const dur=(d.dtstart&&d.dtend&&!isNaN(d.dtstart)&&!isNaN(d.dtend))?Math.round((d.dtend-d.dtstart)/60000):0;
@@ -23549,7 +23549,7 @@ function renderMeetingCard(d,emailSubjectHint){
   if(d.joinUrl)rows.push(`<span style="color:#6b7280;font-weight:600">Teams Link</span><span><a href="${escapeHtml(d.joinUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700">Join Teams Meeting</a></span>`);
   if(d.organizer)rows.push(`<span style="color:#6b7280;font-weight:600">Organiser</span><span>${escapeHtml(d.organizer)}</span>`);
   if(d.attendees.length)rows.push(`<span style="color:#6b7280;font-weight:600">Attendees</span><span style="line-height:1.6">${renderExpandablePeople(d.attendees,'meet-att-'+Math.random().toString(36).slice(2),4)}</span>`);
-  return`<div style="padding:20px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#0E3416" stroke-width="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-size:11px;font-weight:700;color:#0E3416;text-transform:uppercase;letter-spacing:.5px">Meeting Request</span>${statusBadge?` ${statusBadge}`:''}</div><div style="background:#f8fdf9;border:1px solid #d1e9d4;border-radius:6px;padding:14px">${d.summary?`<div style="font-size:14px;font-weight:700;color:#111;margin-bottom:12px">${escapeHtml(d.summary)}</div>`:''}<div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px">${rows.join('')}</div>${d.description&&d.description.trim()?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6;white-space:pre-wrap">${escapeHtml(d.description.trim().slice(0,800))}</div>`:''}</div></div>`;
+  return`<div style="padding:20px 16px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#0E3416" stroke-width="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="font-size:11px;font-weight:700;color:#0E3416;text-transform:uppercase;letter-spacing:.5px">Meeting Request</span>${statusBadge?` ${statusBadge}`:''}</div>${emailId&&!method?`<div data-rsvp-email="${emailId}" style="display:flex;gap:8px;margin-bottom:10px"><button onclick="rsvpMeeting('${emailId}','accept')" style="padding:5px 14px;background:#0E3416;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer;font-weight:600">Accept</button><button onclick="rsvpMeeting('${emailId}','tentative')" style="padding:5px 14px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:4px;font-size:12px;cursor:pointer;font-weight:600">Tentative</button><button onclick="rsvpMeeting('${emailId}','decline')" style="padding:5px 14px;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:4px;font-size:12px;cursor:pointer;font-weight:600">Decline</button></div>`:''}<div style="background:#f8fdf9;border:1px solid #d1e9d4;border-radius:6px;padding:14px">${d.summary?`<div style="font-size:14px;font-weight:700;color:#111;margin-bottom:12px">${escapeHtml(d.summary)}</div>`:''}<div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px">${rows.join('')}</div>${d.description&&d.description.trim()?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid #d1e9d4;font-size:12.5px;color:#374151;line-height:1.6;white-space:pre-wrap">${escapeHtml(d.description.trim().slice(0,800))}</div>`:''}</div></div>`;
 }
 function buildMeetingDataFromGraph(email){
   const attendees=(email.attendees||[]).map(a=>a.emailAddress?.name||a.emailAddress?.address||'').filter(Boolean);
@@ -23908,6 +23908,28 @@ async function scheduleTeamsMeeting(){
   }
 }
 
+async function rsvpMeeting(emailId,action){
+  if(!emailId||!action)return;
+  const map={accept:'accept',tentative:'tentativelyAccept',decline:'decline'};
+  const endpoint=map[action];if(!endpoint)return;
+  const labels={accept:'Accepted',tentative:'Tentative',decline:'Declined'};
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/${endpoint}`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({sendResponse:true,comment:''})
+    });
+    if(!res.ok)throw new Error(await res.text());
+    const container=document.querySelector(`[data-rsvp-email="${emailId}"]`);
+    const colors={accept:'#15803d',tentative:'#b45309',decline:'#b91c1c'};
+    if(container)container.innerHTML=`<span style="font-size:12px;font-weight:600;color:${colors[action]||'#374151'}">✓ ${labels[action]||action}</span>`;
+    toast('Meeting '+( labels[action]||action));
+  }catch(err){
+    toast('Could not update meeting response');
+    console.error('RSVP error:',err);
+  }
+}
 async function toggleOutlookFlag(emailId,ev){
   ev?.stopPropagation();
   if(!emailId)return;
