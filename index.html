@@ -23871,14 +23871,21 @@ async function scheduleTeamsMeeting(){
   const location=(document.getElementById('meet-location').value||'').trim();
   const notes=(document.getElementById('meet-notes').value||'').trim();
   const teamsOn=document.getElementById('meet-teams').checked;
+  // Parse as local time then convert to UTC so Graph stores the correct absolute time
+  // regardless of what timezone the browser is in
+  const startDT=new Date(`${dateVal}T${startVal}:00`);
+  const endDT=new Date(`${dateVal}T${endVal}:00`);
+  const toUTCStr=dt=>dt.toISOString().replace('Z','');
   const event={
     subject,
-    start:{dateTime:`${dateVal}T${startVal}:00`,timeZone:'Central Standard Time'},
-    end:{dateTime:`${dateVal}T${endVal}:00`,timeZone:'Central Standard Time'},
+    start:{dateTime:toUTCStr(startDT),timeZone:'UTC'},
+    end:{dateTime:toUTCStr(endDT),timeZone:'UTC'},
     attendees,
+    responseRequested:true,
+    allowNewTimeProposals:false,
     isOnlineMeeting:teamsOn,
     onlineMeetingProvider:teamsOn?'teamsForBusiness':'unknown',
-    body:{contentType:'text',content:notes||''}
+    body:{contentType:'HTML',content:notes?`<p>${escapeHtml(notes)}</p>`:''}
   };
   if(location)event.location={displayName:location};
   const btn=document.getElementById('meet-send-btn');
