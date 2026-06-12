@@ -20146,16 +20146,25 @@ function buildProofBlock(base,proofs){
 }
 
 async function createProofViewLink(token,itemId){
+  // Try org-scoped first, fall back to anonymous view link
+  for(const scope of['organization','anonymous']){
+    try{
+      const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/createLink`,{
+        method:'POST',
+        headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({type:'view',scope})
+      });
+      if(res.ok){
+        const data=await res.json();
+        const url=data.link?.webUrl||'';
+        if(url)return url;
+      }
+    }catch{}
+  }
+  // Last resort: return the direct drive item webUrl
   try{
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/createLink`,{
-      method:'POST',
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({type:'view',scope:'organization'})
-    });
-    if(res.ok){
-      const data=await res.json();
-      return data.link?.webUrl||'';
-    }
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${itemId}?$select=id,webUrl`,{headers:{Authorization:`Bearer ${token}`}});
+    if(res.ok){const d=await res.json();return d.webUrl||'';}
   }catch{}
   return '';
 }
@@ -25572,7 +25581,10 @@ async function pollNow(){
 
 function startNotifPolling(){
   if(_notifPollTimer)return;
-  _notifPollTimer=setInterval(()=>{pollToDoCompletions();},60000); // 1 minute
+  _notifPollTimer=setInterval(()=>{
+    pollToDoCompletions();
+    checkAndLoadProofNotifications().catch(()=>{});
+  },60000); // 1 minute
 }
 
 // ============================================================
