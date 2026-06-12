@@ -25256,6 +25256,27 @@ async function approveProof(notifId,taskId){
   }catch(err){toast('Could not approve: '+err.message);}
 }
 
+async function sendProofDeclineEmail(recipientEmail,taskTitle,reason,senderName){
+  try{
+    const token=await getAccessToken();
+    const subject=`Proof declined: ${taskTitle||'Task'}`;
+    const html=`<div style="font-family:Arial,sans-serif;max-width:600px;color:#111">
+      <h2 style="color:#b91c1c;margin-bottom:8px">Proof Declined</h2>
+      <p><strong>Task:</strong> ${escapeHtml(taskTitle||'Task')}</p>
+      <p><strong>Declined by:</strong> ${escapeHtml(senderName||'The assignor')}</p>
+      <p><strong>Reason:</strong> ${escapeHtml(reason||'No reason provided')}</p>
+      <p>Please review the feedback, upload updated proof, and resubmit using the link in your To Do task.</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
+      <p style="color:#9ca3af;font-size:12px">DPEG Task Manager</p>
+    </div>`;
+    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({message:{subject,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:recipientEmail}}]},saveToSentItems:false}),
+    });
+  }catch(err){console.warn('Proof decline email failed:',err.message);}
+}
+
 async function dismissProof(notifId,taskId){
   const t=tasks.find(x=>x.id===taskId);
   if(!t||!t._proofNotif)return;
@@ -25268,11 +25289,13 @@ async function dismissProof(notifId,taskId){
     await fetch(`${fnUrl}/notify`,{
       method:'POST',
       headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-      body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided'}),
+      body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:t.recipientTodoListId||'',todoTaskId:t.recipientTodoTaskId||''}),
     });
     delete t._proofNotif;
-    closeMo('mo-detail');refreshAll();toast('Proof declined — recipient notified in app');
+    closeMo('mo-detail');refreshAll();
     await saveTasksToOneDrive();
+    await sendProofDeclineEmail(n.recipientEmail||'',t.title||'',reason,currentUser?.name||'');
+    toast('Proof declined — email sent to recipient');
   }catch(err){toast('Could not decline: '+err.message);}
 }
 
@@ -25349,7 +25372,7 @@ async function approveNotification(id){
 async function dismissNotification(id){
   const n=notifications.find(x=>x.id===id);
   if(!n)return;
-  // KV-based proof_submitted — route through KV decline endpoint (no email)
+  // KV-based proof_submitted — route through KV decline endpoint + email
   if(n.type==='proof_submitted'&&n.kvNotifId){
     const task=n.taskId!=null?tasks.find(t=>t.id===n.taskId):null;
     const reason=prompt('Reason for declining this proof?');
@@ -25360,14 +25383,15 @@ async function dismissNotification(id){
       await fetch(`${fnUrl}/notify`,{
         method:'POST',
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-        body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided'}),
+        body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:task?.recipientTodoListId||'',todoTaskId:task?.recipientTodoTaskId||''}),
       });
       if(task)delete task._proofNotif;
       n.status='dismissed';n.dismissReason=String(reason||'').trim();
       updateNotifBadge();renderNotifications();
       await Promise.all([saveNotifications(),saveTasksToOneDrive()]);
+      await sendProofDeclineEmail(n.recipientEmail||'',task?.title||'',reason,currentUser?.name||'');
       refreshAll();
-      toast('Proof declined — recipient notified in app');
+      toast('Proof declined — email sent to recipient');
     }catch(err){toast('Could not decline: '+err.message);}
     return;
   }

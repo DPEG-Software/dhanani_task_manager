@@ -539,6 +539,23 @@ async function handleNotify(request, env) {
       createdAt: new Date().toISOString(),
       seen: false,
     });
+    // If declined, reset the recipient's To Do task back to notStarted
+    if (body.result === 'declined' && body.todoListId && body.todoTaskId && body.recipientEmail) {
+      try {
+        const appToken = await getAppToken(env);
+        const recipientEmail = extractEmailAddress(body.recipientEmail);
+        if (recipientEmail.includes('@dhananipeg.com')) {
+          await fetch(
+            `${todoTaskUrl(recipientEmail, body.todoListId, body.todoTaskId)}`,
+            {
+              method: 'PATCH',
+              headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'notStarted' }),
+            }
+          );
+        }
+      } catch {}
+    }
   } else if (body.type === 'proof_submitted') {
     notifications.push({
       id: `pn-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
