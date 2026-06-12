@@ -18476,6 +18476,18 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
 .compose-ac-name{font-size:13px;font-weight:600;color:var(--body);line-height:1.2}
 .compose-ac-email{font-size:11.5px;color:var(--muted);margin-top:1px}
 .compose-ac-role{font-size:10.5px;color:var(--forest);font-weight:600;margin-top:1px}
+.chip-pill{display:inline-flex;align-items:center;gap:2px;padding:2px 4px 2px 7px;background:#e8f0fe;border:1px solid #c6d7f7;border-radius:12px;font-size:12px;color:#1a56db;white-space:nowrap;margin:2px 3px 2px 0;line-height:1.3;max-width:220px}
+.chip-pill-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
+.chip-pill .chip-x{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;border:none;background:none;color:#6b7280;cursor:pointer;font-size:14px;line-height:1;padding:0;flex-shrink:0;transition:background .1s}
+.chip-pill .chip-x:hover{background:#c6d7f7;color:#1a56db}
+.chip-field-wrap{display:flex;flex-wrap:wrap;align-items:center;gap:2px;border-bottom:1px solid var(--border);padding:5px 0;margin-bottom:4px;min-height:35px;cursor:text}
+.chip-text-input{flex:1;min-width:80px;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent}
+.ctx-menu{position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:7px;box-shadow:0 4px 18px rgba(0,0,0,.16);z-index:99999;min-width:192px;padding:4px 0;font-family:Inter,sans-serif;font-size:12.5px}
+.ctx-item{display:flex;align-items:center;gap:9px;padding:8px 14px;cursor:pointer;color:#374151;transition:background .1s;user-select:none;white-space:nowrap}
+.ctx-item:hover{background:#f5f5f5}
+.ctx-item--danger{color:#dc2626}
+.ctx-item--danger:hover{background:#fff1f2}
+.ctx-sep{height:1px;background:#f0f0f0;margin:3px 0}
 
 /* ACTION LOG CARD LIST */
 .task-list{background:#fff;border-radius:0 0 var(--rlg) var(--rlg);overflow:hidden}
@@ -19293,26 +19305,41 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
       <div class="mo-body" style="padding:14px 18px">
         <!-- TO -->
         <div style="position:relative">
-          <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+          <div class="chip-field-wrap" onclick="document.getElementById('compose-to-input').focus()">
             <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">To</span>
-            <input type="text" id="compose-to" placeholder="Type a name or email..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showRecipientPreview();showComposeAC('compose-to','to-ac')" onkeydown="acKeyNav(event,'to-ac','compose-to')" onblur="hideComposeAC('to-ac')">
-            <button onclick="toggleBcc()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;font-weight:600;padding:2px 6px;border-radius:4px;transition:all .12s" id="bcc-toggle-btn" title="Add BCC">BCC</button>
+            <div id="compose-to-chips" style="display:contents"></div>
+            <input class="chip-text-input" type="text" id="compose-to-input" placeholder="Type a name or email..." autocomplete="off"
+              oninput="showRecipientPreview();showComposeAC('compose-to-input','to-ac')"
+              onkeydown="chipKeyDown(event,'compose-to-chips','compose-to','compose-to-input','to-ac')"
+              onblur="chipBlur('compose-to-chips','compose-to','compose-to-input');hideComposeAC('to-ac')">
+            <input type="hidden" id="compose-to" value="">
+            <button onclick="toggleBcc()" style="font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;font-weight:600;padding:2px 6px;border-radius:4px;transition:all .12s;flex-shrink:0" id="bcc-toggle-btn" title="Add BCC">BCC</button>
           </div>
           <div id="to-ac" class="compose-ac" style="display:none"></div>
         </div>
         <!-- CC -->
         <div style="position:relative" id="cc-row">
-          <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+          <div class="chip-field-wrap" onclick="document.getElementById('compose-cc-input').focus()">
             <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">CC</span>
-            <input type="text" id="compose-cc" placeholder="Add CC recipients..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showRecipientPreview();showComposeAC('compose-cc','cc-ac')" onkeydown="acKeyNav(event,'cc-ac','compose-cc')" onblur="hideComposeAC('cc-ac')">
+            <div id="compose-cc-chips" style="display:contents"></div>
+            <input class="chip-text-input" type="text" id="compose-cc-input" placeholder="Add CC recipients..." autocomplete="off"
+              oninput="showRecipientPreview();showComposeAC('compose-cc-input','cc-ac')"
+              onkeydown="chipKeyDown(event,'compose-cc-chips','compose-cc','compose-cc-input','cc-ac')"
+              onblur="chipBlur('compose-cc-chips','compose-cc','compose-cc-input');hideComposeAC('cc-ac')">
+            <input type="hidden" id="compose-cc" value="">
           </div>
           <div id="cc-ac" class="compose-ac" style="display:none"></div>
         </div>
         <!-- BCC — hidden by default -->
         <div style="display:none;position:relative" id="bcc-row">
-          <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
+          <div class="chip-field-wrap" onclick="document.getElementById('compose-bcc-input').focus()">
             <span style="font-size:11px;font-weight:700;color:var(--muted);width:40px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">BCC</span>
-            <input type="text" id="compose-bcc" placeholder="Add BCC recipients..." autocomplete="off" style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent" oninput="showRecipientPreview();showComposeAC('compose-bcc','bcc-ac')" onkeydown="acKeyNav(event,'bcc-ac','compose-bcc')" onblur="hideComposeAC('bcc-ac')">
+            <div id="compose-bcc-chips" style="display:contents"></div>
+            <input class="chip-text-input" type="text" id="compose-bcc-input" placeholder="Add BCC recipients..." autocomplete="off"
+              oninput="showRecipientPreview();showComposeAC('compose-bcc-input','bcc-ac')"
+              onkeydown="chipKeyDown(event,'compose-bcc-chips','compose-bcc','compose-bcc-input','bcc-ac')"
+              onblur="chipBlur('compose-bcc-chips','compose-bcc','compose-bcc-input');hideComposeAC('bcc-ac')">
+            <input type="hidden" id="compose-bcc" value="">
           </div>
           <div id="bcc-ac" class="compose-ac" style="display:none"></div>
         </div>
@@ -19965,6 +19992,7 @@ function proofRouteParams(){
     assignedByName:p.get('assignedByName')||'',
     assignedByEmail:p.get('assignedByEmail')||'',
     title:p.get('title')||'Assigned task',
+    proofShareUrl:p.get('proofShareUrl')||'',
     todoListId:p.get('todoListId')||'',
     todoTaskId:p.get('todoTaskId')||'',
   };
@@ -20001,6 +20029,62 @@ async function ensureDriveFolderPath(token,segments){
   }
 }
 
+async function ensureDriveFolderPathItem(token,segments){
+  let path='';
+  let last=null;
+  for(const name of segments){
+    const parentPath=path;
+    path+=`/${name}`;
+    const check=await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:${encodeURI(path)}`,{headers:{Authorization:`Bearer ${token}`}});
+    if(check.ok){last=await check.json();continue;}
+    const endpoint=parentPath
+      ?`https://graph.microsoft.com/v1.0/me/drive/root:${encodeURI(parentPath)}:/children`
+      :'https://graph.microsoft.com/v1.0/me/drive/root/children';
+    const create=await fetch(endpoint,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({name,folder:{},'@microsoft.graph.conflictBehavior':'rename'})
+    });
+    if(!create.ok){
+      const err=await create.text().catch(()=>'');
+      throw new Error(`Could not create OneDrive folder ${name}: ${err}`);
+    }
+    last=await create.json();
+  }
+  return last;
+}
+
+async function createOrgEditLinkForDriveItem(token,itemId){
+  const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/createLink`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({type:'edit',scope:'organization'})
+  });
+  if(!res.ok){
+    const detail=await res.text().catch(()=>'');
+    throw new Error(`Could not create proof upload link: ${detail}`);
+  }
+  const data=await res.json();
+  return data.link?.webUrl||'';
+}
+
+function proofFolderName(task){
+  const id=String(task?.id||Date.now()).replace(/[^a-z0-9_.-]/gi,'_').slice(0,40);
+  const title=safeProofFileName(task?.title||'Task').slice(0,60);
+  return `${id}-${title}`;
+}
+
+async function ensureTaskProofFolder(task){
+  if(task.proofShareUrl&&task.proofFolderItemId)return task.proofShareUrl;
+  const token=await getAccessToken();
+  const folder=await ensureDriveFolderPathItem(token,[ONEDRIVE_FOLDER,'Proofs',proofFolderName(task)]);
+  const link=await createOrgEditLinkForDriveItem(token,folder.id);
+  task.proofFolderItemId=folder.id||'';
+  task.proofFolderWebUrl=folder.webUrl||'';
+  task.proofShareUrl=link;
+  return link;
+}
+
 function parseProofBlock(text){
   const raw=String(text||'');
   const start=raw.indexOf('DPEG_PROOF_START');
@@ -20035,34 +20119,65 @@ async function createProofViewLink(token,itemId){
   return '';
 }
 
+function graphShareIdFromUrl(url){
+  const b64=btoa(unescape(encodeURIComponent(String(url||''))))
+    .replace(/=+$/,'')
+    .replace(/\//g,'_')
+    .replace(/\+/g,'-');
+  return 'u!'+b64;
+}
+
+async function uploadToSharedProofFolder(token,shareUrl,file,filename){
+  const shareId=graphShareIdFromUrl(shareUrl);
+  const encodedName=encodeURIComponent(filename).replace(/%2F/gi,'_');
+  const direct=await fetch(`https://graph.microsoft.com/v1.0/shares/${shareId}/driveItem:/${encodedName}:/content`,{
+    method:'PUT',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':file.type||'application/octet-stream','Prefer':'redeemSharingLink'},
+    body:file
+  });
+  if(direct.ok)return direct.json();
+
+  const folderRes=await fetch(`https://graph.microsoft.com/v1.0/shares/${shareId}/driveItem?$select=id,name,parentReference,webUrl`,{
+    headers:{Authorization:`Bearer ${token}`,'Prefer':'redeemSharingLink'}
+  });
+  if(!folderRes.ok){
+    const detail=await direct.text().catch(()=>'');
+    const folderDetail=await folderRes.text().catch(()=>'');
+    throw new Error(`Could not access shared proof folder. ${detail || folderDetail}`.slice(0,240));
+  }
+  const folder=await folderRes.json();
+  const driveId=folder.parentReference?.driveId;
+  if(!driveId||!folder.id)throw new Error('Shared proof folder did not return a drive location.');
+  const byId=await fetch(`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(folder.id)}:/${encodedName}:/content`,{
+    method:'PUT',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':file.type||'application/octet-stream'},
+    body:file
+  });
+  if(!byId.ok){
+    const detail=await byId.text().catch(()=>'');
+    throw new Error(`Could not upload ${file.name}: ${detail}`);
+  }
+  return byId.json();
+}
+
 async function uploadProofFiles(){
   const params=proofRouteParams();
   const status=document.getElementById('proof-status');
   const fileInput=document.getElementById('proof-files');
   const assignedByEmail=(params.assignedByEmail||document.getElementById('proof-assignor-email')?.value||'').trim();
+  const proofShareUrl=params.proofShareUrl||document.getElementById('proof-share-url')?.value||'';
   const note=document.getElementById('proof-note')?.value||'';
   const files=Array.from(fileInput?.files||[]);
   if(!assignedByEmail){status.textContent='Please enter the assignor email so proof can be sent.';return;}
+  if(!proofShareUrl){status.textContent='This proof link is missing the shared upload folder.';return;}
   if(!files.length){status.textContent='Please choose at least one file.';return;}
   status.textContent='Uploading proof files...';
   try{
     const token=await getAccessToken();
-    const proofKey=params.todoTaskId||params.appTaskId||String(Date.now());
-    await ensureDriveFolderPath(token,[ONEDRIVE_FOLDER,'ProofUploads',proofKey]);
     const uploaded=[];
     for(const file of files){
       const stamped=`${new Date().toISOString().replace(/[:.]/g,'-')}-${safeProofFileName(file.name)}`;
-      const path=`/${ONEDRIVE_FOLDER}/ProofUploads/${proofKey}/${stamped}`;
-      const put=await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:${encodeURI(path)}:/content`,{
-        method:'PUT',
-        headers:{Authorization:`Bearer ${token}`,'Content-Type':file.type||'application/octet-stream'},
-        body:file
-      });
-      if(!put.ok){
-        const err=await put.text().catch(()=>'');
-        throw new Error(`Could not upload ${file.name}: ${err}`);
-      }
-      const item=await put.json();
+      const item=await uploadToSharedProofFolder(token,proofShareUrl,file,stamped);
       const sharedUrl=await createProofViewLink(token,item.id);
       uploaded.push({
         name:file.name,
@@ -20126,6 +20241,7 @@ async function showProofUploadMode(){
         <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Assignor email</label>
         <input id="proof-assignor-email" type="email" placeholder="manager@dhananipeg.com" value="${escapeHtml(proofRouteParams().assignedByEmail)}" style="width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;margin-bottom:12px">
       </div>
+      <input id="proof-share-url" type="hidden" value="${escapeHtml(proofRouteParams().proofShareUrl)}">
       <input id="proof-files" type="file" multiple style="display:block;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fff;margin-bottom:12px">
       <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Note</label>
       <textarea id="proof-note" placeholder="Optional note about the completed work..." style="width:100%;min-height:82px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:12px"></textarea>
@@ -22368,8 +22484,8 @@ function getDpegRecipients(toStr,ccStr){
 }
 
 function showRecipientPreview(){
-  const to=document.getElementById('compose-to')?.value||'';
-  const cc=document.getElementById('compose-cc')?.value||'';
+  const to=collectChipEmails('compose-to-chips','compose-to-input');
+  const cc=collectChipEmails('compose-cc-chips','compose-cc-input');
   const dpeg=getDpegRecipients(to,cc);
   const preview=document.getElementById('compose-recipients-preview');
   const list=document.getElementById('compose-dpeg-list');
@@ -22426,19 +22542,106 @@ function showComposeAC(inputId, acId){
   ac.style.display='block';
 }
 
-function selectComposeAC(inputId,acId,email){
-  const input=document.getElementById(inputId);
-  const ac=document.getElementById(acId);
-  if(!input)return;
-  const val=input.value;
-  const lastSep=Math.max(val.lastIndexOf(','),val.lastIndexOf(';'));
-  const prefix=lastSep>=0?val.slice(0,lastSep+1)+' ':'';
-  input.value=prefix+email+', ';
-  if(ac)ac.style.display='none';
-  input.focus();
+// ── Chip input helpers ────────────────────────────────────────────────────────
+const _CHIP_MAP={
+  'compose-to-input':['compose-to-chips','compose-to'],
+  'compose-cc-input':['compose-cc-chips','compose-cc'],
+  'compose-bcc-input':['compose-bcc-chips','compose-bcc'],
+  'meet-required-input':['meet-required-chips','meet-required'],
+  'meet-optional-input':['meet-optional-chips','meet-optional'],
+};
+
+function addEmailChip(chipsId,syncId,email,label){
+  email=(email||'').trim();
+  if(!email)return;
+  label=(label||email).trim();
+  const chips=document.getElementById(chipsId);
+  if(!chips)return;
+  const dup=[...chips.querySelectorAll('.chip-pill')].some(c=>c.dataset.email===email.toLowerCase());
+  if(dup)return;
+  const pill=document.createElement('span');
+  pill.className='chip-pill';
+  pill.dataset.email=email.toLowerCase();
+  pill.title=email;
+  pill.innerHTML=`<span class="chip-pill-label">${escapeHtml(label)}</span><button class="chip-x" type="button" onclick="event.stopPropagation();removeEmailChip(this,'${escapeHtml(chipsId)}','${escapeHtml(syncId)}')">&#215;</button>`;
+  chips.appendChild(pill);
+  _syncChips(chipsId,syncId);
+}
+
+function removeEmailChip(btn,chipsId,syncId){
+  btn.closest('.chip-pill')?.remove();
+  _syncChips(chipsId,syncId);
+}
+
+function _syncChips(chipsId,syncId){
+  const chips=document.getElementById(chipsId);
+  const inp=document.getElementById(syncId);
+  if(inp)inp.value=[...( chips?.querySelectorAll('.chip-pill')||[])].map(c=>c.dataset.email).join(', ');
   showRecipientPreview();
-  // When forwarding and a To: recipient is chosen, show related tasks
-  if(inputId==='compose-to'&&currentComposeType==='Forward'){showForwardRelatedTasks(email);checkRecipientReplied(email);}
+}
+
+function collectChipEmails(chipsId,textInputId){
+  const chips=[...(document.getElementById(chipsId)?.querySelectorAll('.chip-pill')||[])].map(c=>c.dataset.email);
+  const typed=(document.getElementById(textInputId)?.value||'').trim();
+  if(typed)chips.push(typed);
+  return chips.filter(Boolean).join(', ');
+}
+
+function chipKeyDown(e,chipsId,syncId,textInputId,acId){
+  const inp=document.getElementById(textInputId);
+  if(!inp)return;
+  const ac=document.getElementById(acId);
+  const focused=ac?.querySelector('.ac-focused');
+  if((e.key==='Enter'||e.key===','||e.key===';')&&!focused){
+    e.preventDefault();
+    const val=inp.value.replace(/[,;]$|^\s+|\s+$/g,'').trim();
+    if(val){addEmailChip(chipsId,syncId,val);inp.value='';}
+    if(ac)ac.style.display='none';
+    return;
+  }
+  if(e.key==='Backspace'&&!inp.value){
+    const chips=document.getElementById(chipsId);
+    chips?.querySelector('.chip-pill:last-of-type')?.remove();
+    _syncChips(chipsId,syncId);
+    return;
+  }
+  acKeyNav(e,acId,textInputId);
+}
+
+function chipBlur(chipsId,syncId,textInputId){
+  const inp=document.getElementById(textInputId);
+  if(!inp)return;
+  const val=inp.value.replace(/[,;]$|^\s+|\s+$/g,'').trim();
+  if(val){addEmailChip(chipsId,syncId,val);inp.value='';}
+  _syncChips(chipsId,syncId);
+}
+
+function clearChipField(chipsId,syncId,textInputId){
+  document.getElementById(chipsId)?.querySelectorAll('.chip-pill').forEach(c=>c.remove());
+  const ti=document.getElementById(textInputId);if(ti)ti.value='';
+  const si=document.getElementById(syncId);if(si)si.value='';
+}
+
+function setChipField(chipsId,syncId,textInputId,emailsStr){
+  clearChipField(chipsId,syncId,textInputId);
+  (emailsStr||'').split(/[,;]+/).map(s=>s.trim()).filter(Boolean).forEach(e=>addEmailChip(chipsId,syncId,e));
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+function selectComposeAC(inputId,acId,email){
+  const ac=document.getElementById(acId);
+  if(ac)ac.style.display='none';
+  const map=_CHIP_MAP[inputId];
+  if(map){
+    const [chipsId,syncId]=map;
+    addEmailChip(chipsId,syncId,email);
+    const inp=document.getElementById(inputId);if(inp){inp.value='';inp.focus();}
+  }else{
+    const input=document.getElementById(inputId);
+    if(input){const v=input.value;const ls=Math.max(v.lastIndexOf(','),v.lastIndexOf(';'));input.value=(ls>=0?v.slice(0,ls+1)+' ':'')+email+', ';input.focus();}
+  }
+  showRecipientPreview();
+  if((inputId==='compose-to-input'||inputId==='compose-to')&&currentComposeType==='Forward'){showForwardRelatedTasks(email);checkRecipientReplied(email);}
 }
 
 function hideComposeAC(acId){
@@ -24491,6 +24694,11 @@ async function createToDoTask(task){
   const assignerName=currentUser?.name||currentAccount?.name||assignerEmail||'DPEG Manager';
   task.assignedByName=task.assignedByName||assignerName;
   task.assignedByEmail=task.assignedByEmail||assignerEmail;
+  try{
+    await ensureTaskProofFolder(task);
+  }catch(err){
+    console.warn('Proof folder creation failed:',err.message);
+  }
 
   // ── 1. Current user's To Do via Tasks.ReadWrite (now in SCOPES_GRAPH) ──
   try{
@@ -24539,6 +24747,7 @@ async function createToDoTask(task){
         assignedByName:task.assignedByName,
         assignedByEmail:task.assignedByEmail,
         appTaskId:String(task.id||''),
+        proofShareUrl:task.proofShareUrl||'',
         proofBaseUrl:location.origin+location.pathname,
       }),
     });
@@ -24910,6 +25119,27 @@ async function sendDismissalEmail(n){
   await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
 }
 
+async function listTaskProofFiles(task){
+  if(!task?.proofFolderItemId)return [];
+  const token=await getAccessToken();
+  const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(task.proofFolderItemId)}/children?$select=id,name,size,file,folder,webUrl,createdDateTime,lastModifiedDateTime,createdBy`,{
+    headers:{Authorization:`Bearer ${token}`}
+  });
+  if(!res.ok)return [];
+  const data=await res.json();
+  return (data.value||[]).filter(i=>i.file).map(i=>({
+    name:i.name||'Proof file',
+    size:i.size||0,
+    type:i.file?.mimeType||'',
+    uploadedBy:i.createdBy?.user?.email||i.createdBy?.user?.displayName||'',
+    uploadedByName:i.createdBy?.user?.displayName||'',
+    uploadedAt:i.createdDateTime||i.lastModifiedDateTime||'',
+    webUrl:i.webUrl||'',
+    driveItemId:i.id||'',
+    note:'',
+  }));
+}
+
 // ============================================================
 // TASK COMPLETION POLLING (via Cloudflare Worker /poll-completions)
 // ============================================================
@@ -24959,6 +25189,11 @@ async function pollToDoCompletions(manual=false){
           ?new Date(item.completedDateTime.endsWith('Z')?item.completedDateTime:item.completedDateTime+'Z').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
           :new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
         const deadlineStr=matchTask.deadline||matchTask.date?` — Deadline: ${matchTask.deadline||matchTask.date}`:'';
+        let proofFiles=Array.isArray(item.proofs)?item.proofs:[];
+        try{
+          const folderProofs=await listTaskProofFiles(matchTask);
+          if(folderProofs.length)proofFiles=folderProofs;
+        }catch(err){console.warn('Proof folder scan failed:',err.message);}
         notifications.unshift({
           id:Date.now()+Math.random(),
           type:'task_completion',
@@ -24966,7 +25201,7 @@ async function pollToDoCompletions(manual=false){
           taskId:matchTask.id,
           todoTaskId:item.todoTaskId,
           recipientEmail:item.recipientEmail||matchTask.email||'',
-          proofs:Array.isArray(item.proofs)?item.proofs:[],
+          proofs:proofFiles,
           timestamp:new Date().toISOString(),
           status:'pending'
         });

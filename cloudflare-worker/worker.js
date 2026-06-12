@@ -55,6 +55,7 @@ function proofSubmitUrl(body, listId, taskId) {
   url.searchParams.set('assignedByName', String(body.assignedByName || ''));
   url.searchParams.set('assignedByEmail', String(body.assignedByEmail || ''));
   url.searchParams.set('title', String(body.title || 'Task'));
+  url.searchParams.set('proofShareUrl', String(body.proofShareUrl || ''));
   url.searchParams.set('todoListId', listId);
   url.searchParams.set('todoTaskId', taskId);
   return url.toString();
