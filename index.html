@@ -24292,6 +24292,13 @@ async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipien
   const patch={subject,importance};
   if(ccRecipients.length)patch.ccRecipients=ccRecipients;
   if(bccRecipients.length)patch.bccRecipients=bccRecipients;
+  // Explicitly set from+sender to the forwarder's account so Exchange never
+  // shows "on behalf of [original sender]" in the recipient's inbox
+  if(currentUser?.email){
+    const me={emailAddress:{address:currentUser.email,name:currentUser.name||currentUser.email}};
+    patch.from=me;
+    patch.sender=me;
+  }
   const patchRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}`,{
     method:'PATCH',
     headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
