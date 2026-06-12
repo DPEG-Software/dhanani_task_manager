@@ -20168,20 +20168,12 @@ function graphShareIdFromUrl(url){
 async function uploadToSharedProofFolder(token,shareUrl,file,filename){
   const shareId=graphShareIdFromUrl(shareUrl);
   const encodedName=encodeURIComponent(filename).replace(/%2F/gi,'_');
-  const direct=await fetch(`https://graph.microsoft.com/v1.0/shares/${shareId}/driveItem:/${encodedName}:/content`,{
-    method:'PUT',
-    headers:{Authorization:`Bearer ${token}`,'Content-Type':file.type||'application/octet-stream','Prefer':'redeemSharingLink'},
-    body:file
-  });
-  if(direct.ok)return direct.json();
-
   const folderRes=await fetch(`https://graph.microsoft.com/v1.0/shares/${shareId}/driveItem?$select=id,name,parentReference,webUrl`,{
     headers:{Authorization:`Bearer ${token}`,'Prefer':'redeemSharingLink'}
   });
   if(!folderRes.ok){
-    const detail=await direct.text().catch(()=>'');
     const folderDetail=await folderRes.text().catch(()=>'');
-    throw new Error(`Could not access shared proof folder. ${detail || folderDetail}`.slice(0,240));
+    throw new Error(`Could not access shared proof folder. ${folderDetail}`.slice(0,240));
   }
   const folder=await folderRes.json();
   const driveId=folder.parentReference?.driveId;
