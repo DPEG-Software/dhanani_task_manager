@@ -56,6 +56,7 @@ function proofSubmitUrl(body, listId, taskId) {
   url.searchParams.set('assignedByEmail', String(body.assignedByEmail || ''));
   url.searchParams.set('title', String(body.title || 'Task'));
   url.searchParams.set('proofShareUrl', String(body.proofShareUrl || ''));
+  url.searchParams.set('proofInstructions', String(body.proofInstructions || ''));
   url.searchParams.set('todoListId', listId);
   url.searchParams.set('todoTaskId', taskId);
   return url.toString();
@@ -500,6 +501,68 @@ async function handleProofSubmit(request, env) {
   return json({ success: true, proofs: nextProofs });
 }
 
+// ── /notify endpoint: append or update proof notifications in KV ──────────────
+async function handleNotify(request, env) {
+  const { error, status } = validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_DATA) return json({ error: 'DPEG_DATA KV binding is not configured' }, 501);
+
+  if (request.method === 'GET') {
+    const data = await env.DPEG_DATA.get(DATA_KEY, 'json') || {};
+    return json({ notifications: Array.isArray(data.notifications) ? data.notifications : [] });
+  }
+
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const data = await env.DPEG_DATA.get(DATA_KEY, 'json') || {};
+  const notifications = Array.isArray(data.notifications) ? data.notifications : [];
+
+  if (body.type === 'proof_result') {
+    // Mark the original proof_submitted notification as resolved
+    const idx = notifications.findIndex(n => n.id === body.notifId && n.type === 'proof_submitted');
+    if (idx >= 0) notifications[idx].status = body.result === 'approved' ? 'approved' : 'declined';
+    // Add a result notification for the recipient
+    notifications.push({
+      id: `pr-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      type: 'proof_result',
+      appTaskId: String(body.appTaskId || ''),
+      taskTitle: String(body.taskTitle || ''),
+      senderEmail: String(body.senderEmail || ''),
+      senderName: String(body.senderName || ''),
+      recipientEmail: String(body.recipientEmail || ''),
+      result: body.result === 'approved' ? 'approved' : 'declined',
+      reason: String(body.reason || ''),
+      createdAt: new Date().toISOString(),
+      seen: false,
+    });
+  } else if (body.type === 'proof_submitted') {
+    notifications.push({
+      id: `pn-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      type: 'proof_submitted',
+      appTaskId: String(body.appTaskId || ''),
+      taskTitle: String(body.taskTitle || ''),
+      senderEmail: String(body.senderEmail || ''),
+      recipientEmail: String(body.recipientEmail || ''),
+      recipientName: String(body.recipientName || ''),
+      proofs: Array.isArray(body.proofs) ? body.proofs : [],
+      note: String(body.note || ''),
+      submittedAt: new Date().toISOString(),
+      status: 'pending',
+      seen: false,
+    });
+  } else {
+    return json({ error: 'Unknown notification type' }, 400);
+  }
+
+  data.notifications = notifications;
+  await env.DPEG_DATA.put(DATA_KEY, JSON.stringify(data));
+  return json({ success: true });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -508,6 +571,7 @@ export default {
     }
     const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
     if (path === '/data') return handleData(request, env);
+    if (path === '/notify') return handleNotify(request, env);
 
     if (request.method !== 'POST') {
       return json({ error: 'Only POST allowed' }, 405);

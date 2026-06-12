@@ -19654,6 +19654,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
       <div class="d-row"><div class="d-lbl">Date</div><div class="d-val" id="mo-date"></div></div>
       <div class="d-row"><div class="d-lbl">Status</div><select class="form-sel" id="mo-status" style="width:auto"><option>Pending</option><option>Done</option><option>Overdue</option></select></div>
       <div class="form-grp" style="margin-top:10px"><label class="form-lbl">Follow-up Note</label><input type="text" class="form-in" id="mo-followup" placeholder="Add a note..."></div>
+      <div id="mo-proof-panel"></div>
     </div>
     <div class="mo-foot">
       <button class="btn btn-ghost btn-sm" id="mo-refresh-summary" onclick="refreshTaskSummary()">Refresh Summary</button>
@@ -19671,6 +19672,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
     <div class="mo-body">
       <div class="form-grp"><label class="form-lbl">Task Title</label><input type="text" class="form-in" id="nt-title" placeholder="e.g. Q2 Budget Approval"></div>
       <div class="form-grp"><label class="form-lbl">Summary</label><textarea class="form-ta" id="nt-summary" placeholder="What needs to be done? Key details, deadlines..."></textarea></div>
+      <div class="form-grp"><label class="form-lbl">Proof Instructions <span style="color:var(--muted);font-weight:400;font-size:10px">(tell the recipient what to upload as proof)</span></label><input type="text" class="form-in" id="nt-proof-instructions" placeholder="e.g. Upload a photo of the completed work and signed document"></div>
       <div class="form-grp" style="position:relative">
         <label class="form-lbl">Assign To <span style="color:var(--muted);font-size:10px;font-weight:500">(type name or email)</span></label>
         <div style="position:relative">
@@ -20033,6 +20035,7 @@ function proofRouteParams(){
     proofShareUrl:p.get('proofShareUrl')||'',
     todoListId:p.get('todoListId')||'',
     todoTaskId:p.get('todoTaskId')||'',
+    proofInstructions:p.get('proofInstructions')||'',
   };
 }
 
@@ -20165,127 +20168,177 @@ function graphShareIdFromUrl(url){
   return 'u!'+b64;
 }
 
-async function uploadToSharedProofFolder(token,shareUrl,file,filename){
-  const shareId=graphShareIdFromUrl(shareUrl);
-  const encodedName=encodeURIComponent(filename).replace(/%2F/gi,'_');
-  const folderRes=await fetch(`https://graph.microsoft.com/v1.0/shares/${shareId}/driveItem?$select=id,name,parentReference,webUrl`,{
-    headers:{Authorization:`Bearer ${token}`,'Prefer':'redeemSharingLink'}
-  });
-  if(!folderRes.ok){
-    const folderDetail=await folderRes.text().catch(()=>'');
-    throw new Error(`Could not access shared proof folder. ${folderDetail}`.slice(0,240));
+// Upload a single file to the RECIPIENT's own OneDrive under /DPEG Task Proofs/{taskId}/
+// Handles large files (>4MB) via upload session automatically
+async function uploadFileToOwnOneDrive(token,taskId,file,onProgress){
+  const folderSegments=['DPEG Task Proofs',String(taskId).replace(/[^a-z0-9_-]/gi,'_').slice(0,40)];
+  await ensureDriveFolderPath(token,folderSegments);
+  const timestamp=new Date().toISOString().replace(/[:.]/g,'-');
+  const filename=`${timestamp}-${safeProofFileName(file.name)}`;
+  const uploadPath=folderSegments.join('/')+'/'+filename;
+  const THRESHOLD=4*1024*1024;
+  let item;
+  if(file.size<=THRESHOLD){
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/${encodeURIComponent(uploadPath)}:/content`,{
+      method:'PUT',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':file.type||'application/octet-stream'},
+      body:file,
+    });
+    if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(`Upload failed: ${d}`.slice(0,200));}
+    item=await res.json();
+    if(onProgress)onProgress(file.size,file.size);
+  }else{
+    // Large file: upload session in 3.125MB aligned chunks
+    const sessionRes=await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/${encodeURIComponent(uploadPath)}:/createUploadSession`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({item:{'@microsoft.graph.conflictBehavior':'rename'}}),
+    });
+    if(!sessionRes.ok)throw new Error('Could not start upload session for large file');
+    const {uploadUrl}=await sessionRes.json();
+    const chunkSize=327680*10; // 3.125MB — must be multiple of 320KB
+    let start=0,last=null;
+    while(start<file.size){
+      const end=Math.min(start+chunkSize,file.size);
+      const chunkRes=await fetch(uploadUrl,{
+        method:'PUT',
+        headers:{'Content-Range':`bytes ${start}-${end-1}/${file.size}`,'Content-Length':String(end-start)},
+        body:file.slice(start,end),
+      });
+      if(!chunkRes.ok&&chunkRes.status!==202){const d=await chunkRes.text().catch(()=>'');throw new Error(`Chunk upload failed: ${d}`.slice(0,200));}
+      if(chunkRes.status===200||chunkRes.status===201)last=await chunkRes.json();
+      if(onProgress)onProgress(end,file.size);
+      start=end;
+    }
+    item=last;
   }
-  const folder=await folderRes.json();
-  const driveId=folder.parentReference?.driveId;
-  if(!driveId||!folder.id)throw new Error('Shared proof folder did not return a drive location.');
-  const byId=await fetch(`https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(folder.id)}:/${encodedName}:/content`,{
-    method:'PUT',
-    headers:{Authorization:`Bearer ${token}`,'Content-Type':file.type||'application/octet-stream'},
-    body:file
+  if(!item?.id)throw new Error('Upload completed but no file ID returned');
+  const viewUrl=await createProofViewLink(token,item.id);
+  return{name:file.name,size:file.size,type:file.type||'application/octet-stream',shareId:graphShareIdFromUrl(viewUrl),webUrl:viewUrl,driveItemId:item.id||''};
+}
+
+async function saveProofNotificationToKV(params,proofs,note){
+  const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+  const userToken=await getAccessToken();
+  const res=await fetch(`${fnUrl}/notify`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
+    body:JSON.stringify({type:'proof_submitted',appTaskId:params.appTaskId||'',taskTitle:params.title||'',senderEmail:params.assignedByEmail||'',recipientEmail:currentUser?.email||'',recipientName:currentUser?.name||'',proofs,note}),
   });
-  if(!byId.ok){
-    const detail=await byId.text().catch(()=>'');
-    throw new Error(`Could not upload ${file.name}: ${detail}`);
-  }
-  return byId.json();
+  if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(`Could not save notification: ${d}`.slice(0,180));}
+}
+
+async function checkProofResult(appTaskId,recipientEmail){
+  try{
+    const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+    const userToken=await getAccessToken();
+    const res=await fetch(`${fnUrl}/notify`,{headers:{Authorization:`Bearer ${userToken}`}});
+    if(!res.ok)return null;
+    const data=await res.json();
+    const notifs=Array.isArray(data.notifications)?data.notifications:[];
+    return notifs.filter(n=>n.type==='proof_result'&&String(n.appTaskId)===String(appTaskId)&&n.recipientEmail===recipientEmail).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0]||null;
+  }catch{return null;}
 }
 
 async function uploadProofFiles(){
   const params=proofRouteParams();
-  const status=document.getElementById('proof-status');
+  const statusEl=document.getElementById('proof-status');
   const fileInput=document.getElementById('proof-files');
-  const assignedByEmail=(params.assignedByEmail||document.getElementById('proof-assignor-email')?.value||'').trim();
-  const proofShareUrl=params.proofShareUrl||document.getElementById('proof-share-url')?.value||'';
   const note=document.getElementById('proof-note')?.value||'';
   const files=Array.from(fileInput?.files||[]);
-  if(!assignedByEmail){status.textContent='Please enter the assignor email so proof can be sent.';return;}
-  if(!proofShareUrl){status.textContent='This proof link is missing the shared upload folder.';return;}
-  if(!files.length){status.textContent='Please choose at least one file.';return;}
-  status.textContent='Uploading proof files...';
+  const btn=document.getElementById('proof-upload-btn');
+  if(!files.length){statusEl.textContent='Please select at least one file.';return;}
+  btn.disabled=true;
+  const progressWrap=document.getElementById('proof-progress');
+  const progressBar=document.getElementById('proof-progress-bar');
+  const progressLabel=document.getElementById('proof-progress-label');
+  if(progressWrap)progressWrap.style.display='block';
+  statusEl.textContent='';
   try{
     const token=await getAccessToken();
+    const taskId=params.appTaskId||`ext-${Date.now()}`;
     const uploaded=[];
-    for(const file of files){
-      const stamped=`${new Date().toISOString().replace(/[:.]/g,'-')}-${safeProofFileName(file.name)}`;
-      const item=await uploadToSharedProofFolder(token,proofShareUrl,file,stamped);
-      const sharedUrl=await createProofViewLink(token,item.id);
-      uploaded.push({
-        name:file.name,
-        size:file.size,
-        type:file.type||'',
-        uploadedBy:currentUser?.email||'',
-        uploadedByName:currentUser?.name||'',
-        uploadedAt:new Date().toISOString(),
-        webUrl:sharedUrl||item.webUrl||'',
-        driveItemId:item.id||'',
-        note:note.trim(),
+    for(let i=0;i<files.length;i++){
+      const file=files[i];
+      if(progressLabel)progressLabel.textContent=`Uploading ${i+1} of ${files.length}: ${file.name}`;
+      const proofItem=await uploadFileToOwnOneDrive(token,taskId,file,(done,total)=>{
+        if(progressBar)progressBar.style.width=`${Math.round((done/total)*100)}%`;
       });
+      proofItem.uploadedBy=currentUser?.email||'';
+      proofItem.uploadedByName=currentUser?.name||'';
+      proofItem.uploadedAt=new Date().toISOString();
+      proofItem.note=note.trim();
+      uploaded.push(proofItem);
+      if(progressBar)progressBar.style.width=`${Math.round(((i+1)/files.length)*100)}%`;
     }
-    await sendProofUploadEmail(token,assignedByEmail,params,uploaded,note);
-    status.textContent='Proof uploaded and emailed to the assignor. You can now mark the task complete in Microsoft To Do.';
+    if(progressLabel)progressLabel.textContent='Saving...';
+    await saveProofNotificationToKV(params,uploaded,note);
+    if(progressWrap)progressWrap.style.display='none';
+    statusEl.innerHTML=`<span style="color:#166534;font-weight:600">✓ Proof submitted! The assignor will review your files in DPEG Task Manager.</span>`;
     fileInput.value='';
+    document.getElementById('proof-file-list').innerHTML='';
   }catch(err){
-    status.textContent=err.message||'Could not upload proof.';
-  }
-}
-
-async function sendProofUploadEmail(token,assignedByEmail,params,proofs,note){
-  const subject=`Completion proof submitted: ${params.title||'Task'}`;
-  const rows=proofs.map(p=>`<li><a href="${escapeHtml(p.webUrl||'#')}" target="_blank" rel="noopener">${escapeHtml(p.name||'Proof file')}</a> ${p.size?`(${escapeHtml(formatFileSize(p.size))})`:''}</li>`).join('');
-  const html=`<div style="font-family:Arial,sans-serif;max-width:620px">
-    <h2 style="color:#0E3416">Completion proof submitted</h2>
-    <p><strong>Task:</strong> ${escapeHtml(params.title||'Task')}</p>
-    <p><strong>Assigned by:</strong> ${escapeHtml(params.assignedByName||assignedByEmail)}</p>
-    <p><strong>Submitted by:</strong> ${escapeHtml(currentUser?.name||currentUser?.email||'')}</p>
-    ${note?`<p><strong>Note:</strong> ${escapeHtml(note)}</p>`:''}
-    <p><strong>Proof files:</strong></p>
-    <ul>${rows}</ul>
-    <p style="color:#6b7280;font-size:12px">Review these files, then approve or dismiss the task completion in DPEG Task Manager when the completion notification appears.</p>
-    <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
-    <p style="color:#9ca3af;font-size:12px">DPEG Task Manager - automated proof notification</p>
-  </div>`;
-  const message={subject,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:assignedByEmail}}]};
-  const res=await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
-  if(!res.ok){
-    const detail=await res.text().catch(()=>'');
-    throw new Error(`Proof files uploaded, but email could not be sent. ${detail.slice(0,180)}`);
-  }
+    if(progressWrap)progressWrap.style.display='none';
+    statusEl.innerHTML=`<span style="color:#b91c1c">${escapeHtml(err.message||'Upload failed. Please try again.')}</span>`;
+  }finally{btn.disabled=false;}
 }
 
 async function showProofUploadMode(){
   document.querySelector('aside')?.remove();
   const main=document.querySelector('main');
   if(main)main.style.display='none';
+  const params=proofRouteParams();
   const screen=document.createElement('div');
   screen.id='proof-upload-screen';
   screen.style.cssText='min-height:100vh;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,sans-serif';
+  const instrHtml=params.proofInstructions?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#166534;line-height:1.5"><strong>Instructions:</strong> ${escapeHtml(params.proofInstructions)}</div>`:'';
   screen.innerHTML=`<div style="width:min(620px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 12px 32px rgba(15,23,42,.08);overflow:hidden">
     <div style="padding:18px 20px;border-bottom:1px solid #e5e7eb;background:#0E3416;color:#fff">
       <div style="font-size:18px;font-weight:800;margin-bottom:3px">Submit Completion Proof</div>
-      <div id="proof-task-title" style="font-size:12px;opacity:.82">Loading task...</div>
+      <div style="font-size:12px;opacity:.82">${escapeHtml(params.title||'Assigned task')}</div>
     </div>
     <div style="padding:20px">
-      <div style="font-size:12px;color:#374151;line-height:1.6;margin-bottom:14px">Signed in as <strong>${escapeHtml(currentUser?.email||'')}</strong>. Upload pictures, PDFs, or files for this task. Proof links will be emailed to the assignor.</div>
-      <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Proof files</label>
-      <div id="proof-assignor-wrap" style="${proofRouteParams().assignedByEmail?'display:none':'display:block'}">
-        <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Assignor email</label>
-        <input id="proof-assignor-email" type="email" placeholder="manager@dhananipeg.com" value="${escapeHtml(proofRouteParams().assignedByEmail)}" style="width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;margin-bottom:12px">
-      </div>
-      <input id="proof-share-url" type="hidden" value="${escapeHtml(proofRouteParams().proofShareUrl)}">
-      <input id="proof-files" type="file" multiple style="display:block;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fff;margin-bottom:12px">
-      <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Note</label>
-      <textarea id="proof-note" placeholder="Optional note about the completed work..." style="width:100%;min-height:82px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:12px"></textarea>
-      <div style="font-size:11px;color:#6b7280;margin-bottom:14px">After uploading proof, mark the task complete in Microsoft To Do.</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-primary btn-sm" onclick="uploadProofFiles()">Upload Proof</button>
-        <button class="btn btn-ghost btn-sm" onclick="signOut()">Sign Out</button>
-        <span id="proof-status" style="font-size:12px;color:#6b7280"></span>
+      <div id="proof-result-area"></div>
+      <div id="proof-form-area">
+        <div style="font-size:12px;color:#374151;margin-bottom:12px">Signed in as <strong>${escapeHtml(currentUser?.email||'')}</strong></div>
+        ${instrHtml}
+        <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Proof files (photos, PDFs, documents)</label>
+        <input id="proof-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" style="display:block;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fff;margin-bottom:8px">
+        <div id="proof-file-list" style="margin-bottom:10px;font-size:11px;color:#374151"></div>
+        <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Note (optional)</label>
+        <textarea id="proof-note" placeholder="Describe the completed work..." style="width:100%;min-height:72px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:12px;box-sizing:border-box"></textarea>
+        <div id="proof-progress" style="display:none;margin-bottom:10px">
+          <div style="font-size:11px;color:#6b7280;margin-bottom:4px" id="proof-progress-label">Uploading...</div>
+          <div style="background:#e5e7eb;border-radius:4px;height:6px"><div id="proof-progress-bar" style="background:#0E3416;height:6px;border-radius:4px;transition:width .2s;width:0%"></div></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary btn-sm" onclick="uploadProofFiles()" id="proof-upload-btn">Submit Proof</button>
+          <button class="btn btn-ghost btn-sm" onclick="signOut()">Sign Out</button>
+        </div>
+        <div id="proof-status" style="margin-top:10px;font-size:12px"></div>
       </div>
     </div>
   </div>`;
   document.body.appendChild(screen);
-  const titleEl=document.getElementById('proof-task-title');
-  if(titleEl)titleEl.textContent=proofRouteParams().title||'Assigned task';
+  document.getElementById('proof-files')?.addEventListener('change',function(){
+    const list=document.getElementById('proof-file-list');
+    if(!list)return;
+    const files=Array.from(this.files||[]);
+    list.innerHTML=files.map(f=>`<div style="padding:1px 0">📄 ${escapeHtml(f.name)} <span style="color:#9ca3af">(${formatFileSize(f.size)})</span></div>`).join('');
+  });
+  // Check for existing proof result
+  if(params.appTaskId){
+    const result=await checkProofResult(params.appTaskId,currentUser?.email||'');
+    const resultArea=document.getElementById('proof-result-area');
+    if(result&&resultArea){
+      if(result.result==='approved'){
+        resultArea.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:14px 16px;margin-bottom:16px"><div style="font-size:14px;font-weight:700;color:#166534;margin-bottom:4px">✓ Proof Approved</div><div style="font-size:12px;color:#166534">Approved by ${escapeHtml(result.senderName||result.senderEmail||'the assignor')}. Task is complete.</div></div>`;
+        document.getElementById('proof-form-area').style.display='none';
+      }else if(result.result==='declined'){
+        resultArea.innerHTML=`<div style="background:#fff1f2;border:1px solid #fca5a5;border-radius:7px;padding:14px 16px;margin-bottom:16px"><div style="font-size:14px;font-weight:700;color:#b91c1c;margin-bottom:4px">✗ Proof Declined — Please Resubmit</div><div style="font-size:12px;color:#b91c1c"><strong>Reason:</strong> ${escapeHtml(result.reason||'No reason provided')}</div><div style="font-size:11px;color:#9ca3af;margin-top:4px">Address the feedback above and upload updated proof below.</div></div>`;
+      }
+    }
+  }
 }
 
 async function loadTasksFromOneDrive() {
@@ -20348,6 +20401,7 @@ function finishDataLoad(){
   updateNotifBadge();
   startNotifPolling();
   pollToDoCompletions().catch(()=>{});
+  checkAndLoadProofNotifications().catch(()=>{});
 }
 
 function companyDataIsEmpty(){
@@ -21467,7 +21521,7 @@ function renderMaster(){
         <input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)">
       </td>
       <td style="padding:10px 14px">
-        <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}${t._proofNotif?`<span style="margin-left:7px;padding:1px 7px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10px;font-weight:700;color:#92400e;vertical-align:middle">Proof Ready</span>`:''}</div>
         ${t.replyCount>1?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${t.replyCount} msgs</div>`:""}
         ${overdueNote}${priorityNote}
       </td>
@@ -21983,6 +22037,7 @@ function openDetail(id){
   document.getElementById("mo-followup").value=t.followup||"";
   const rs=document.getElementById("mo-refresh-summary");
   if(rs)rs.style.display=t.conversationId||t.emailId?"inline-flex":"none";
+  renderProofPanel(t);
   document.getElementById("mo-detail").classList.add("open");
 }
 async function saveDetail(){
@@ -22031,11 +22086,11 @@ async function addTask(){
   const email=emailHidden||(personInput.includes('@')?personInput:'');
   const person=personInput.includes('@')&&!emailHidden?(findPersonByEmail(personInput)?.name||personInput.split('@')[0]):personInput||"Unassigned";
   const dept=document.getElementById("nt-dept").value;
-  const task={id:Date.now(),title,summary:document.getElementById("nt-summary").value||"",person,email,dept,date:document.getElementById("nt-date").value,status:document.getElementById("nt-status").value,priority:document.getElementById("nt-priority").value,wednesday:false,followup:"",weekOffset:0};
+  const task={id:Date.now(),title,summary:document.getElementById("nt-summary").value||"",proofInstructions:document.getElementById("nt-proof-instructions")?.value.trim()||"",person,email,dept,date:document.getElementById("nt-date").value,status:document.getElementById("nt-status").value,priority:document.getElementById("nt-priority").value,wednesday:false,followup:"",weekOffset:0};
   tasks.unshift(task);
   saveStaffDeptForTask(task,dept);
   closeMo("mo-add");
-  ["nt-title","nt-summary"].forEach(i=>document.getElementById(i).value="");
+  ["nt-title","nt-summary","nt-proof-instructions"].forEach(i=>{if(document.getElementById(i))document.getElementById(i).value="";});
   clearAddTaskPerson();
   refreshAll();
   sendTaskNotification(task).catch(()=>{});
@@ -24812,6 +24867,7 @@ async function createToDoTask(task){
         assignedByEmail:task.assignedByEmail,
         appTaskId:String(task.id||''),
         proofShareUrl:task.proofShareUrl||'',
+        proofInstructions:task.proofInstructions||'',
         proofBaseUrl:location.origin+location.pathname,
       }),
     });
@@ -25062,6 +25118,115 @@ async function addCalendarEventToTasks(eventId){
 let notifications=[];
 let processedEmailIds=new Set(JSON.parse(localStorage.getItem('dpeg_processed_done_emails')||'[]'));
 let _notifPollTimer=null;
+
+// ── Proof notification system ─────────────────────────────────────────────────
+async function checkAndLoadProofNotifications(){
+  const fnUrl=workerBaseUrl();
+  if(!fnUrl||!currentUser?.email)return;
+  const userToken=await getAccessToken();
+  const res=await fetch(`${fnUrl}/notify`,{headers:{Authorization:`Bearer ${userToken}`}});
+  if(!res.ok)return;
+  const data=await res.json();
+  const kvNotifs=Array.isArray(data.notifications)?data.notifications:[];
+  const myEmail=(currentUser?.email||'').toLowerCase();
+  tasks.forEach(t=>delete t._proofNotif);
+  kvNotifs.filter(n=>n.type==='proof_submitted'&&n.status==='pending'&&n.senderEmail?.toLowerCase()===myEmail)
+    .forEach(pn=>{const task=tasks.find(t=>String(t.id)===String(pn.appTaskId));if(task)task._proofNotif=pn;});
+  refreshAll();
+}
+
+function renderProofPanel(t){
+  const panel=document.getElementById('mo-proof-panel');
+  if(!panel)return;
+  if(!t?._proofNotif){panel.innerHTML='';return;}
+  const n=t._proofNotif;
+  const fileRows=(n.proofs||[]).map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f3f4f6;flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:600;color:#111;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name||'File')}</span>
+    <span style="font-size:11px;color:#9ca3af;flex-shrink:0">${p.size?formatFileSize(p.size):''}</span>
+    ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="font-size:11px;font-weight:700;color:#0E3416;flex-shrink:0">Open ↗</a>`:''}
+  </div>`).join('');
+  panel.innerHTML=`<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <span style="padding:2px 9px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10.5px;font-weight:700;color:#92400e">Proof Ready for Review</span>
+    </div>
+    <div style="font-size:12px;color:#374151;margin-bottom:8px">
+      Submitted by <strong>${escapeHtml(n.recipientName||n.recipientEmail||'')}</strong>
+      ${n.note?`<div style="color:#6b7280;margin-top:2px;font-style:italic">"${escapeHtml(n.note)}"</div>`:''}
+    </div>
+    <div style="margin-bottom:10px">${fileRows}</div>
+    <div id="mo-proof-inline" style="display:grid;gap:8px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" style="background:#15803d;border-color:#15803d" onclick="approveProof('${escapeHtml(n.id)}',${t.id})">✓ Approve</button>
+      <button class="btn btn-ghost btn-sm" style="color:#b91c1c;border-color:#fca5a5" onclick="dismissProof('${escapeHtml(n.id)}',${t.id})">✗ Dismiss with Reason</button>
+    </div>
+  </div>`;
+  loadProofPreviews(n.proofs||[]);
+}
+
+async function loadProofPreviews(proofs){
+  const container=document.getElementById('mo-proof-inline');
+  if(!container||!proofs.length)return;
+  const token=await getAccessToken();
+  for(const p of proofs){
+    if(!p.shareId)continue;
+    try{
+      const res=await fetch(`https://graph.microsoft.com/v1.0/shares/${encodeURIComponent(p.shareId)}/driveItem?$select=id,name,file,@microsoft.graph.downloadUrl`,{headers:{Authorization:`Bearer ${token}`}});
+      if(!res.ok)continue;
+      const item=await res.json();
+      const url=item['@microsoft.graph.downloadUrl'];
+      if(!url)continue;
+      const mime=p.type||item.file?.mimeType||'';
+      const wrap=document.createElement('div');
+      if(mime.startsWith('image/')){
+        wrap.innerHTML=`<img src="${url}" alt="${escapeHtml(p.name)}" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid #e5e7eb;display:block"><div style="font-size:10px;color:#9ca3af;margin-top:2px">${escapeHtml(p.name)}</div>`;
+      }else if(mime==='application/pdf'){
+        wrap.innerHTML=`<embed src="${url}" type="application/pdf" style="width:100%;height:380px;border-radius:6px;border:1px solid #e5e7eb"><div style="font-size:10px;color:#9ca3af;margin-top:2px">${escapeHtml(p.name)}</div>`;
+      }else{
+        continue; // non-previewable formats show as "Open ↗" link above
+      }
+      container.appendChild(wrap);
+    }catch{}
+  }
+}
+
+async function approveProof(notifId,taskId){
+  const t=tasks.find(x=>x.id===taskId);
+  if(!t||!t._proofNotif)return;
+  const n=t._proofNotif;
+  try{
+    const fnUrl=workerBaseUrl();
+    const userToken=await getAccessToken();
+    await fetch(`${fnUrl}/notify`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
+      body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'approved',reason:''}),
+    });
+    t.status='Done';t.completedAt=new Date().toISOString();t.approvedBy=currentUser?.email||'';
+    delete t._proofNotif;
+    closeMo('mo-detail');refreshAll();toast('Proof approved — task marked Done');
+    await saveTasksToOneDrive();
+  }catch(err){toast('Could not approve: '+err.message);}
+}
+
+async function dismissProof(notifId,taskId){
+  const t=tasks.find(x=>x.id===taskId);
+  if(!t||!t._proofNotif)return;
+  const n=t._proofNotif;
+  const reason=prompt('Reason for declining this proof?');
+  if(reason===null)return;
+  try{
+    const fnUrl=workerBaseUrl();
+    const userToken=await getAccessToken();
+    await fetch(`${fnUrl}/notify`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
+      body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided'}),
+    });
+    delete t._proofNotif;
+    closeMo('mo-detail');refreshAll();toast('Proof declined — recipient notified in app');
+    await saveTasksToOneDrive();
+  }catch(err){toast('Could not decline: '+err.message);}
+}
 
 async function loadNotifications(){
   try{
