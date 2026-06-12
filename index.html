@@ -3192,9 +3192,14 @@ async function saveDetail(){
   t.date=newDate;t.priority=newPriority;t.status=newStatus;t.followup=newFollowup;
   saveStaffDeptForTask(t,newDept);
   closeMo("mo-detail");refreshAll();
-  if(changes.length&&t.email){
-    sendTaskUpdateNotification(t,changes).catch(()=>{});
-    toast(`Saved — alert sent to ${t.person}`);
+  if(changes.length){
+    updateTodoTask(t,changes).catch(()=>{});
+    if(t.email){
+      sendTaskUpdateNotification(t,changes).catch(()=>{});
+      toast(`Saved — alert sent to ${t.person}`);
+    }else{
+      toast("Changes saved — To Do updated");
+    }
   }else{
     toast("Changes saved");
   }
@@ -6183,6 +6188,61 @@ async function sendTaskNotification(task){
     await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
   }catch(err){
     console.warn('Task notification failed:',err.message);
+  }
+}
+
+async function updateTodoTask(task,changes){
+  const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+  const token=await getAccessToken();
+
+  // 1. Update current user's To Do task
+  if(task.todoListId&&task.todoTaskId){
+    try{
+      const cleanSummary=(task.summary||'').replace(/[•*▾▲◆]/g,'').slice(0,4000);
+      const due=graphDueDate(task.date||'');
+      const bodyLines=[
+        `Assigned to: ${task.person}`,
+        task.email?`Email: ${task.email}`:'',
+        `Dept: ${task.dept||''}`,
+        `Priority: ${task.priority||'Normal'}`,
+        task.date?`Date: ${task.date}`:'',
+        cleanSummary?`\n${cleanSummary}`:'',
+        task.followup?`\nFollow-up: ${task.followup}`:'',
+        changes.length?`\nUpdated: ${changes.join(' | ')}`:'',
+      ].filter(Boolean).join('\n');
+      const patch={
+        title:`[${task.person}] ${task.title||'Task'}`,
+        importance:task.priority==='High'?'high':'normal',
+        body:{content:bodyLines,contentType:'text'},
+      };
+      if(due)patch.dueDateTime=due;
+      await fetch(`https://graph.microsoft.com/v1.0/me/todo/lists/${task.todoListId}/tasks/${task.todoTaskId}`,{
+        method:'PATCH',
+        headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify(patch),
+      });
+    }catch(err){console.warn('Update own To Do failed:',err.message);}
+  }
+
+  // 2. Update recipient's To Do via Worker (needs app credentials)
+  if(task.recipientTodoListId&&task.recipientTodoTaskId&&task.email&&fnUrl){
+    try{
+      await fetch(`${fnUrl}/todo-update`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+        body:JSON.stringify({
+          recipientEmail:task.email,
+          todoListId:task.recipientTodoListId,
+          todoTaskId:task.recipientTodoTaskId,
+          title:task.title||'Task',
+          priority:task.priority||'Normal',
+          date:task.date||'',
+          followupNote:task.followup||'',
+          changes,
+          assignedByName:task.assignedByName||currentUser?.name||'',
+        }),
+      });
+    }catch(err){console.warn('Update recipient To Do failed:',err.message);}
   }
 }
 

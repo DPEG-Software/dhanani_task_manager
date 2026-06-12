@@ -234,7 +234,7 @@ async function handleTodo(request, env) {
         '',
         cleanSummary,
         '',
-        `Submit completion proof: ${link}`,
+        `DPEG proofs: ${link}`,
         '',
         `${PROOF_START}\n{"proofs":[]}\n${PROOF_END}`,
       ].filter(Boolean).join('\n'),
@@ -580,6 +580,60 @@ async function handleNotify(request, env) {
   return json({ success: true });
 }
 
+// ── Update recipient To Do task (preserves proof block) ──────────────────────
+async function handleTodoUpdate(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
+  const { recipientEmail, todoListId, todoTaskId, title, priority, date, followupNote, changes, assignedByName } = body;
+  if (!recipientEmail || !todoListId || !todoTaskId) {
+    return json({ error: 'recipientEmail, todoListId and todoTaskId are required' }, 400);
+  }
+  const recipient = extractEmailAddress(recipientEmail);
+  if (!recipient.includes('@dhananipeg.com')) return json({ error: 'Only @dhananipeg.com supported' }, 403);
+  let appToken;
+  try { appToken = await getAppToken(env); }
+  catch (err) { return json({ error: 'Could not acquire app token', detail: err.message }, 502); }
+
+  // Fetch existing body so we can preserve the proof block
+  const taskRes = await fetch(
+    `${todoTaskUrl(recipient, todoListId, todoTaskId)}?$select=id,body`,
+    { headers: { Authorization: `Bearer ${appToken}` } }
+  );
+  let parsedBase = '';
+  let existingProofs = [];
+  if (taskRes.ok) {
+    const td = await taskRes.json().catch(() => ({}));
+    const parsed = parseProofBlock(td.body?.content || '');
+    parsedBase = parsed.base;
+    existingProofs = parsed.proofs;
+  }
+
+  const extras = [
+    changes && changes.length ? `Updated: ${changes.join(' | ')}` : '',
+    followupNote ? `Follow-up note from manager: ${followupNote}` : '',
+  ].filter(Boolean).join('\n');
+  const newBase = [parsedBase, extras].filter(Boolean).join('\n\n');
+  const newContent = buildProofBlock(newBase, existingProofs);
+
+  const due = graphDueDate(date);
+  const patch = {
+    body: { content: newContent, contentType: 'text' },
+    importance: String(priority || '').toLowerCase() === 'high' ? 'high' : 'normal',
+  };
+  if (due) patch.dueDateTime = due;
+
+  const patchRes = await fetch(todoTaskUrl(recipient, todoListId, todoTaskId), {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!patchRes.ok) {
+    const err = await patchRes.text().catch(() => '');
+    return json({ error: 'Failed to update recipient To Do', detail: err }, patchRes.status);
+  }
+  return json({ success: true });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -595,6 +649,7 @@ export default {
     }
 
     if (path === '/todo') return handleTodo(request, env);
+    if (path === '/todo-update') return handleTodoUpdate(request, env);
     if (path === '/poll-completions') return handlePollCompletions(request, env);
     if (path === '/proof-task') return handleProofTask(request, env);
     if (path === '/proof-submit') return handleProofSubmit(request, env);
