@@ -231,19 +231,16 @@ async function handleTodo(request, env) {
   const taskData = await taskRes.json().catch(() => ({}));
   if (taskData.id) {
     const link = proofSubmitUrl(body, defaultList.id, taskData.id);
+    const safeLink = link.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const htmlBody = [
+      `<p><b>Assigned by:</b> ${esc(assignerLabel)}${assignedByEmail ? ` &lt;${esc(assignedByEmail)}&gt;` : ''}</p>`,
+      appTaskId ? `<p>DPEG Task ID: ${esc(appTaskId)}</p>` : '',
+      `<p>${esc(cleanSummary).replace(/\n/g, '<br>')}</p>`,
+      `<p><a href="${safeLink}">Proof of Submission: DPEG Task Manager</a></p>`,
+    ].filter(Boolean).join('');
     const patchedBody = {
-      content: [
-        `Assigned by: ${assignerLabel}${assignedByEmail ? ` <${assignedByEmail}>` : ''}`,
-        appTaskId ? `DPEG Task ID: ${appTaskId}` : '',
-        '',
-        cleanSummary,
-        '',
-        `Proof of Submission: DPEG Task Manager`,
-        link,
-        '',
-        `${PROOF_START}\n${JSON.stringify({ proofs: [] })}\n${PROOF_END}`,
-      ].filter(Boolean).join('\n'),
-      contentType: 'text',
+      content: `${htmlBody}\n${PROOF_START}\n${JSON.stringify({ proofs: [] })}\n${PROOF_END}`,
+      contentType: 'html',
     };
     await fetch(
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists/${defaultList.id}/tasks/${taskData.id}`,
@@ -490,7 +487,7 @@ async function handleProofSubmit(request, env) {
   const parsed = parseProofBlock(task.body?.content || '');
   const nextProofs = [...parsed.proofs, ...proofs];
   const patch = {
-    body: { content: buildProofBlock(parsed.base, nextProofs), contentType: 'text' },
+    body: { content: buildProofBlock(parsed.base, nextProofs), contentType: 'html' },
   };
   if (markDone) patch.status = 'completed';
 
@@ -622,7 +619,7 @@ async function handleTodoUpdate(request, env) {
 
   const due = graphDueDate(date);
   const patch = {
-    body: { content: newContent, contentType: 'text' },
+    body: { content: newContent, contentType: 'html' },
     importance: String(priority || '').toLowerCase() === 'high' ? 'high' : 'normal',
   };
   if (due) patch.dueDateTime = due;
