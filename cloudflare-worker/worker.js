@@ -535,7 +535,7 @@ async function handleProofSubmit(request, env) {
 
 // ── /notify endpoint: append or update proof notifications in KV ──────────────
 async function handleNotify(request, env) {
-  const { error, status } = validateUserToken(request);
+  const { error, status, claims } = validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_DATA) return json({ error: 'DPEG_DATA KV binding is not configured' }, 501);
 
@@ -599,10 +599,52 @@ async function handleNotify(request, env) {
       recipientName: String(body.recipientName || ''),
       proofs: Array.isArray(body.proofs) ? body.proofs : [],
       note: String(body.note || ''),
+      thread: [],
+      followupStatus: '',
       submittedAt: new Date().toISOString(),
       status: 'pending',
       seen: false,
     });
+  } else if (body.type === 'proof_followup_question') {
+    const idx = notifications.findIndex(n => n.id === body.notifId && n.type === 'proof_submitted' && n.status === 'pending');
+    if (idx < 0) return json({ error: 'Proof notification not found' }, 404);
+    const question = String(body.message || '').trim();
+    if (!question) return json({ error: 'Question is required' }, 400);
+    const thread = Array.isArray(notifications[idx].thread) ? notifications[idx].thread : [];
+    thread.push({
+      id: `fq-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      by: 'assignor',
+      email: String(body.senderEmail || userEmailFromClaims(claims)),
+      name: String(body.senderName || claims.name || ''),
+      message: question,
+      createdAt: new Date().toISOString(),
+    });
+    notifications[idx].thread = thread;
+    notifications[idx].followupStatus = 'question';
+    notifications[idx].updatedAt = new Date().toISOString();
+  } else if (body.type === 'proof_followup_answer') {
+    const recipientEmail = extractEmailAddress(body.recipientEmail || userEmailFromClaims(claims));
+    const idx = notifications.findIndex(n =>
+      n.type === 'proof_submitted' &&
+      n.status === 'pending' &&
+      (String(n.id) === String(body.notifId || '') ||
+        (String(n.appTaskId) === String(body.appTaskId || '') && extractEmailAddress(n.recipientEmail) === recipientEmail))
+    );
+    if (idx < 0) return json({ error: 'Follow-up question not found' }, 404);
+    const answer = String(body.message || '').trim();
+    if (!answer) return json({ error: 'Answer is required' }, 400);
+    const thread = Array.isArray(notifications[idx].thread) ? notifications[idx].thread : [];
+    thread.push({
+      id: `fa-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      by: 'assignee',
+      email: recipientEmail,
+      name: String(body.recipientName || claims.name || ''),
+      message: answer,
+      createdAt: new Date().toISOString(),
+    });
+    notifications[idx].thread = thread;
+    notifications[idx].followupStatus = 'answered';
+    notifications[idx].updatedAt = new Date().toISOString();
   } else {
     return json({ error: 'Unknown notification type' }, 400);
   }

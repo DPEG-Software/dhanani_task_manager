@@ -1365,6 +1365,65 @@ async function checkProofResult(appTaskId,recipientEmail){
   }catch{return null;}
 }
 
+async function checkProofFollowup(params){
+  try{
+    const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+    const userToken=await getAccessToken();
+    const res=await fetch(`${fnUrl}/notify`,{headers:{Authorization:`Bearer ${userToken}`}});
+    if(!res.ok)return null;
+    const data=await res.json();
+    const notifs=Array.isArray(data.notifications)?data.notifications:[];
+    const myEmail=(currentUser?.email||params.recipientEmail||'').toLowerCase();
+    return notifs
+      .filter(n=>n.type==='proof_submitted'&&n.status==='pending'&&String(n.appTaskId)===String(params.appTaskId||'')&&String(n.recipientEmail||'').toLowerCase()===myEmail)
+      .sort((a,b)=>new Date(b.updatedAt||b.submittedAt||0)-new Date(a.updatedAt||a.submittedAt||0))[0]||null;
+  }catch{return null;}
+}
+
+async function submitProofFollowupAnswer(notifId){
+  const params=proofRouteParams();
+  const answerEl=document.getElementById('proof-followup-answer');
+  const statusEl=document.getElementById('proof-followup-status');
+  const btn=document.getElementById('proof-followup-btn');
+  const message=String(answerEl?.value||'').trim();
+  if(!message){if(statusEl)statusEl.textContent='Please type your answer.';return;}
+  if(btn)btn.disabled=true;
+  if(statusEl)statusEl.textContent='Sending...';
+  try{
+    const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+    const userToken=await getAccessToken();
+    const res=await fetch(`${fnUrl}/notify`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
+      body:JSON.stringify({type:'proof_followup_answer',notifId,appTaskId:params.appTaskId||'',recipientEmail:currentUser?.email||params.recipientEmail||'',recipientName:currentUser?.name||'',message}),
+    });
+    if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not send answer');}
+    if(answerEl)answerEl.value='';
+    if(statusEl)statusEl.innerHTML='<span style="color:#166534;font-weight:600">✓ Reply sent. The assignor can now review it.</span>';
+    await renderProofFollowupBox(params);
+  }catch(err){
+    if(statusEl)statusEl.innerHTML=`<span style="color:#b91c1c">${escapeHtml(err.message||'Could not send answer')}</span>`;
+  }finally{if(btn)btn.disabled=false;}
+}
+
+async function renderProofFollowupBox(params){
+  const host=document.getElementById('proof-followup-area');
+  if(!host||!params.appTaskId)return;
+  const n=await checkProofFollowup(params);
+  if(!n){host.innerHTML='';return;}
+  const thread=Array.isArray(n.thread)?n.thread:[];
+  const last=thread[thread.length-1];
+  const needsAnswer=last?.by==='assignor';
+  host.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:7px;padding:12px 14px;margin-bottom:14px">
+    <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#92400e;margin-bottom:8px">Follow-up requested</div>
+    ${renderProofThread(n)}
+    ${needsAnswer?`<label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin:8px 0 6px">Your reply</label>
+      <textarea id="proof-followup-answer" placeholder="Reply with the number, quantity, or clarification..." style="width:100%;min-height:64px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:8px;box-sizing:border-box"></textarea>
+      <div style="display:flex;gap:8px;align-items:center"><button class="btn btn-primary btn-sm" id="proof-followup-btn" onclick="submitProofFollowupAnswer('${escapeHtml(n.id)}')">Send Reply</button><span id="proof-followup-status" style="font-size:12px;color:#6b7280"></span></div>`
+      :`<div style="font-size:12px;color:#166534;font-weight:600">Your reply was sent. Waiting for review.</div>`}
+  </div>`;
+}
+
 async function uploadProofFiles(){
   const params=proofRouteParams();
   const statusEl=document.getElementById('proof-status');
@@ -1428,6 +1487,7 @@ async function showProofUploadMode(){
     </div>
     <div style="padding:20px">
       <div id="proof-result-area"></div>
+      <div id="proof-followup-area"></div>
       <div id="proof-form-area">
         <div style="font-size:12px;color:#374151;margin-bottom:12px">Signed in as <strong>${escapeHtml(currentUser?.email||'')}</strong></div>
         ${instrHtml}
@@ -1457,6 +1517,7 @@ async function showProofUploadMode(){
   });
   // Check for existing proof result
   if(params.appTaskId){
+    await renderProofFollowupBox(params);
     const result=await checkProofResult(params.appTaskId,currentUser?.email||'');
     const resultArea=document.getElementById('proof-result-area');
     if(result&&resultArea){
@@ -6503,34 +6564,44 @@ async function checkAndLoadProofNotifications(){
 
   const existingKvIds=new Set((notifications||[]).filter(n=>n.kvNotifId).map(n=>n.kvNotifId));
   let newAdded=0;
+  let existingUpdated=0;
 
   kvNotifs.filter(n=>n.type==='proof_submitted'&&n.status==='pending'&&n.senderEmail?.toLowerCase()===myEmail)
     .forEach(pn=>{
       const task=tasks.find(t=>String(t.id)===String(pn.appTaskId));
       if(!task)return;
       task._proofNotif=pn;
-      if(!existingKvIds.has(pn.id)){
+      const existingLocal=notifications.find(n=>n.kvNotifId===pn.id);
+      const localData={
+        type:'proof_submitted',
+        message:`${pn.recipientName||pn.recipientEmail||'Someone'} submitted proof for "${pn.taskTitle||'a task'}"`,
+        taskId:task.id,
+        proofs:Array.isArray(pn.proofs)?pn.proofs:[],
+        note:pn.note||'',
+        thread:Array.isArray(pn.thread)?pn.thread:[],
+        followupStatus:pn.followupStatus||'',
+        timestamp:pn.updatedAt||pn.submittedAt||new Date().toISOString(),
+        status:'pending',
+        recipientEmail:pn.recipientEmail||'',
+      };
+      if(existingLocal){
+        Object.assign(existingLocal,localData);
+        existingUpdated++;
+      }else if(!existingKvIds.has(pn.id)){
         notifications.unshift({
           id:Date.now()+Math.random(),
           kvNotifId:pn.id,
-          type:'proof_submitted',
-          message:`${pn.recipientName||pn.recipientEmail||'Someone'} submitted proof for "${pn.taskTitle||'a task'}"`,
-          taskId:task.id,
-          proofs:Array.isArray(pn.proofs)?pn.proofs:[],
-          note:pn.note||'',
-          timestamp:pn.submittedAt||new Date().toISOString(),
-          status:'pending',
-          recipientEmail:pn.recipientEmail||'',
+          ...localData,
         });
         newAdded++;
       }
     });
 
-  if(newAdded>0){
+  if(newAdded>0||existingUpdated>0){
     updateNotifBadge();
     renderNotifications();
     await saveNotifications();
-    toast(`${newAdded} proof submission${newAdded>1?'s':''} ready for review — check Notifications`);
+    if(newAdded>0)toast(`${newAdded} proof submission${newAdded>1?'s':''} ready for review — check Notifications`);
   }
 
   refreshAll();
@@ -6548,6 +6619,7 @@ function renderProofPanel(t){
     ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="font-size:11px;font-weight:700;color:#0E3416;flex-shrink:0">Open ↗</a>`:''}
   </div>`).join('');
   const noteDisplay=n.note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#166534;line-height:1.5"><b>Note:</b> ${escapeHtml(n.note)}</div>`:'';
+  const threadHtml=renderProofThread(n);
   panel.innerHTML=`<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
       <span style="padding:2px 9px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10.5px;font-weight:700;color:#92400e">${proofFiles.length?'Proof Ready for Review':'Message Submitted'}</span>
@@ -6556,14 +6628,62 @@ function renderProofPanel(t){
       Submitted by <strong>${escapeHtml(n.recipientName||n.recipientEmail||'')}</strong>
     </div>
     ${noteDisplay}
+    ${threadHtml}
     <div style="margin-bottom:10px">${fileRows}</div>
     <div id="mo-proof-inline" style="display:grid;gap:8px;margin-bottom:12px"></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" style="background:#15803d;border-color:#15803d" onclick="approveProof('${escapeHtml(n.id)}',${t.id})">✓ Approve</button>
+      <button class="btn btn-ghost btn-sm" onclick="askProofFollowup('${escapeHtml(n.id)}',${t.id})">Ask Follow-up</button>
       <button class="btn btn-ghost btn-sm" style="color:#b91c1c;border-color:#fca5a5" onclick="dismissProof('${escapeHtml(n.id)}',${t.id})">✗ Dismiss with Reason</button>
     </div>
   </div>`;
   if(proofFiles.length)loadProofPreviews(proofFiles);
+}
+
+function renderProofThread(n){
+  const thread=Array.isArray(n?.thread)?n.thread:[];
+  if(!thread.length)return '';
+  return `<div style="margin:8px 0 10px;padding:8px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px">
+    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Follow-up thread</div>
+    ${thread.map(item=>{
+      const isAnswer=item.by==='assignee';
+      const label=isAnswer?'Assignee reply':'Question';
+      const color=isAnswer?'#14532d':'#1f2937';
+      const bg=isAnswer?'#f0fdf4':'#fff';
+      const border=isAnswer?'#bbf7d0':'#e5e7eb';
+      const dt=item.createdAt?new Date(item.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+      return `<div style="background:${bg};border:1px solid ${border};border-radius:5px;padding:7px 8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
+          <span style="font-size:10px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:.4px">${label}</span>
+          <span style="font-size:10px;color:#9ca3af">${escapeHtml(item.name||item.email||'')}</span>
+          ${dt?`<span style="font-size:10px;color:#9ca3af">${dt}</span>`:''}
+        </div>
+        <div style="font-size:12px;line-height:1.5;color:${color};white-space:pre-wrap">${escapeHtml(item.message||'')}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function askProofFollowup(notifId,taskId){
+  const t=tasks.find(x=>x.id===taskId);
+  if(!t||!t._proofNotif)return;
+  const question=prompt('Ask the assignee a follow-up question:');
+  if(question===null)return;
+  const message=String(question||'').trim();
+  if(!message){toast('Please type a follow-up question');return;}
+  try{
+    const fnUrl=workerBaseUrl();
+    const userToken=await getAccessToken();
+    const res=await fetch(`${fnUrl}/notify`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
+      body:JSON.stringify({type:'proof_followup_question',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:t._proofNotif.recipientEmail||'',message}),
+    });
+    if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not ask follow-up');}
+    await checkAndLoadProofNotifications();
+    openDetail(taskId);
+    toast('Follow-up question sent');
+  }catch(err){toast('Could not send follow-up: '+(err.message||err));}
 }
 
 async function loadProofPreviews(proofs){
@@ -6807,6 +6927,7 @@ function renderNotifications(){
         </div>
         ${n.status==='pending'?`<div style="display:flex;gap:5px;flex-shrink:0">
           ${(n.type==='task_completion'||n.type==='proof_submitted')?`<button class="btn btn-primary btn-sm" onclick="approveNotification(${n.id})">Approve</button>`:''}
+          ${n.type==='proof_submitted'?`<button class="btn btn-ghost btn-sm" onclick="askNotificationFollowup(${n.id})">Ask</button>`:''}
           <button class="btn btn-ghost btn-sm" onclick="dismissNotification(${n.id})">Dismiss</button>
         </div>`:''}
       </div>
@@ -6829,7 +6950,31 @@ function renderNotificationProofs(n){
       ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700;flex-shrink:0">Open</a>`:''}
     </div>`).join('')}
   </div>`:'<div style="margin:6px 0;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:6px 8px">No proof files were attached.</div>';
-  return noteHtml+filesHtml;
+  const threadHtml=renderProofThread(n);
+  return noteHtml+threadHtml+filesHtml;
+}
+
+async function askNotificationFollowup(id){
+  const n=notifications.find(x=>x.id===id);
+  if(!n||!n.kvNotifId)return;
+  const question=prompt('Ask the assignee a follow-up question:');
+  if(question===null)return;
+  const message=String(question||'').trim();
+  if(!message){toast('Please type a follow-up question');return;}
+  try{
+    const fnUrl=workerBaseUrl();
+    const userToken=await getAccessToken();
+    const task=n.taskId!=null?tasks.find(t=>t.id===n.taskId):null;
+    const res=await fetch(`${fnUrl}/notify`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
+      body:JSON.stringify({type:'proof_followup_question',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',message}),
+    });
+    if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not ask follow-up');}
+    await checkAndLoadProofNotifications();
+    renderNotifications();
+    toast('Follow-up question sent');
+  }catch(err){toast('Could not send follow-up: '+(err.message||err));}
 }
 
 async function sendDismissalEmail(n){
