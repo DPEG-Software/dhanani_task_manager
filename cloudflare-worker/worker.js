@@ -632,7 +632,8 @@ async function handleNotify(request, env) {
     );
     if (idx < 0) return json({ error: 'Follow-up question not found' }, 404);
     const answer = String(body.message || '').trim();
-    if (!answer) return json({ error: 'Answer is required' }, 400);
+    const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+    if (!answer && !attachments.length) return json({ error: 'Answer or attachment is required' }, 400);
     const thread = Array.isArray(notifications[idx].thread) ? notifications[idx].thread : [];
     thread.push({
       id: `fa-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -640,6 +641,7 @@ async function handleNotify(request, env) {
       email: recipientEmail,
       name: String(body.recipientName || claims.name || ''),
       message: answer,
+      attachments,
       createdAt: new Date().toISOString(),
     });
     notifications[idx].thread = thread;

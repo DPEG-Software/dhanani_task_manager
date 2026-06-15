@@ -1398,22 +1398,40 @@ async function checkProofFollowup(params){
 async function submitProofFollowupAnswer(notifId){
   const params=proofRouteParams();
   const answerEl=document.getElementById('proof-followup-answer');
+  const fileInput=document.getElementById('proof-followup-files');
   const statusEl=document.getElementById('proof-followup-status');
   const btn=document.getElementById('proof-followup-btn');
   const message=String(answerEl?.value||'').trim();
-  if(!message){if(statusEl)statusEl.textContent='Please type your answer.';return;}
+  const files=Array.from(fileInput?.files||[]);
+  if(!message&&!files.length){if(statusEl)statusEl.textContent='Please type your answer or attach a file.';return;}
   if(btn)btn.disabled=true;
   if(statusEl)statusEl.textContent='Sending...';
   try{
     const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
     const userToken=await getAccessToken();
+    const attachments=[];
+    if(files.length){
+      const token=await getAccessToken();
+      for(let i=0;i<files.length;i++){
+        if(statusEl)statusEl.textContent=`Uploading ${i+1} of ${files.length}: ${files[i].name}`;
+        const proofItem=await uploadFileToOwnOneDrive(token,params.appTaskId||`ext-${Date.now()}`,files[i]);
+        proofItem.uploadedBy=currentUser?.email||'';
+        proofItem.uploadedByName=currentUser?.name||'';
+        proofItem.uploadedAt=new Date().toISOString();
+        attachments.push(proofItem);
+      }
+      if(statusEl)statusEl.textContent='Sending reply...';
+    }
     const res=await fetch(`${fnUrl}/notify`,{
       method:'POST',
       headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-      body:JSON.stringify({type:'proof_followup_answer',notifId,appTaskId:params.appTaskId||'',recipientEmail:currentUser?.email||params.recipientEmail||'',recipientName:currentUser?.name||'',message}),
+      body:JSON.stringify({type:'proof_followup_answer',notifId,appTaskId:params.appTaskId||'',recipientEmail:currentUser?.email||params.recipientEmail||'',recipientName:currentUser?.name||'',message,attachments}),
     });
     if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not send answer');}
     if(answerEl)answerEl.value='';
+    if(fileInput)fileInput.value='';
+    const fileList=document.getElementById('proof-followup-file-list');
+    if(fileList)fileList.innerHTML='';
     if(statusEl)statusEl.innerHTML='<span style="color:#166534;font-weight:600">✓ Reply sent. The assignor can now review it.</span>';
     await renderProofFollowupBox(params);
   }catch(err){
@@ -1434,9 +1452,19 @@ async function renderProofFollowupBox(params){
     ${renderProofThread(n)}
     ${needsAnswer?`<label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin:8px 0 6px">Your reply</label>
       <textarea id="proof-followup-answer" placeholder="Reply with the number, quantity, or clarification..." style="width:100%;min-height:64px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:8px;box-sizing:border-box"></textarea>
+      <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin:2px 0 6px">Attach picture/file <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input id="proof-followup-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onchange="renderProofFollowupFileList(this.files)" style="display:block;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:9px;background:#fff;margin-bottom:6px;box-sizing:border-box">
+      <div id="proof-followup-file-list" style="margin-bottom:8px;font-size:11px;color:#374151"></div>
       <div style="display:flex;gap:8px;align-items:center"><button class="btn btn-primary btn-sm" id="proof-followup-btn" onclick="submitProofFollowupAnswer('${escapeHtml(n.id)}')">Send Reply</button><span id="proof-followup-status" style="font-size:12px;color:#6b7280"></span></div>`
       :`<div style="font-size:12px;color:#166534;font-weight:600">Your reply was sent. Waiting for review.</div>`}
   </div>`;
+}
+
+function renderProofFollowupFileList(fileList){
+  const list=document.getElementById('proof-followup-file-list');
+  if(!list)return;
+  const files=Array.from(fileList||[]);
+  list.innerHTML=files.map(f=>`<div style="padding:1px 0">File: ${escapeHtml(f.name)} <span style="color:#9ca3af">(${formatFileSize(f.size)})</span></div>`).join('');
 }
 
 async function uploadProofFiles(){
@@ -1493,7 +1521,7 @@ async function showProofUploadMode(){
   const params=proofRouteParams();
   const screen=document.createElement('div');
   screen.id='proof-upload-screen';
-  screen.style.cssText='min-height:100vh;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,sans-serif';
+  screen.style.cssText='position:fixed;inset:0;z-index:99999;min-height:100vh;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,sans-serif;box-sizing:border-box;overflow:auto';
   const instrHtml=params.proofInstructions?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#166534;line-height:1.5"><strong>Instructions:</strong> ${escapeHtml(params.proofInstructions)}</div>`:'';
   screen.innerHTML=`<div style="width:min(620px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 12px 32px rgba(15,23,42,.08);overflow:hidden">
     <div style="padding:18px 20px;border-bottom:1px solid #e5e7eb;background:#0E3416;color:#fff">
@@ -6672,6 +6700,14 @@ function renderProofThread(n){
       const bg=isAnswer?'#f0fdf4':'#fff';
       const border=isAnswer?'#bbf7d0':'#e5e7eb';
       const dt=item.createdAt?new Date(item.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+      const attachments=Array.isArray(item.attachments)?item.attachments:[];
+      const attachmentHtml=attachments.length?`<div style="margin-top:6px;display:grid;gap:4px">
+        ${attachments.map(a=>`<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;background:#fff;border:1px solid #e5e7eb;border-radius:5px;padding:5px 7px;min-width:0">
+          <span style="font-weight:700;color:#111;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(a.name||'Attachment')}</span>
+          <span style="color:#9ca3af;flex-shrink:0">${a.size?escapeHtml(formatFileSize(a.size)):''}</span>
+          ${a.webUrl?`<a href="${escapeHtml(a.webUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700;flex-shrink:0">Open</a>`:''}
+        </div>`).join('')}
+      </div>`:'';
       return `<div style="background:${bg};border:1px solid ${border};border-radius:5px;padding:7px 8px;margin-bottom:6px">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
           <span style="font-size:10px;font-weight:800;color:${color};text-transform:uppercase;letter-spacing:.4px">${label}</span>
@@ -6679,6 +6715,7 @@ function renderProofThread(n){
           ${dt?`<span style="font-size:10px;color:#9ca3af">${dt}</span>`:''}
         </div>
         <div style="font-size:12px;line-height:1.5;color:${color};white-space:pre-wrap">${escapeHtml(item.message||'')}</div>
+        ${attachmentHtml}
       </div>`;
     }).join('')}
     </div>
