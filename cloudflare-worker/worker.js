@@ -83,6 +83,10 @@ function todoTaskUrl(userEmail, listId, taskId) {
   return `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userEmail)}/todo/lists/${encodeURIComponent(listId)}/tasks/${encodeURIComponent(taskId)}`;
 }
 
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function parseProofBlock(text) {
   const raw = String(text || '');
   const start = raw.indexOf(PROOF_START);
@@ -229,16 +233,13 @@ async function handleTodo(request, env) {
     const link = proofSubmitUrl(body, defaultList.id, taskData.id);
     const patchedBody = {
       content: [
-        `Assigned by: ${assignerLabel}${assignedByEmail ? ` <${assignedByEmail}>` : ''}`,
-        appTaskId ? `DPEG Task ID: ${appTaskId}` : '',
-        '',
-        cleanSummary,
-        '',
-        `DPEG proofs: ${link}`,
-        '',
-        `${PROOF_START}\n{"proofs":[]}\n${PROOF_END}`,
+        `<p>Assigned by: ${esc(assignerLabel)}${assignedByEmail ? ` &lt;${esc(assignedByEmail)}&gt;` : ''}</p>`,
+        appTaskId ? `<p>DPEG Task ID: ${esc(appTaskId)}</p>` : '',
+        `<p>${esc(cleanSummary).replace(/\n/g,'<br>')}</p>`,
+        `<p><a href="${esc(link)}">Proof of Submission: DPEG Task Manager</a></p>`,
+        `<p>${PROOF_START}\n{"proofs":[]}\n${PROOF_END}</p>`,
       ].filter(Boolean).join('\n'),
-      contentType: 'text',
+      contentType: 'html',
     };
     await fetch(
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists/${defaultList.id}/tasks/${taskData.id}`,
@@ -485,7 +486,7 @@ async function handleProofSubmit(request, env) {
   const parsed = parseProofBlock(task.body?.content || '');
   const nextProofs = [...parsed.proofs, ...proofs];
   const patch = {
-    body: { content: buildProofBlock(parsed.base, nextProofs), contentType: 'text' },
+    body: { content: buildProofBlock(parsed.base, nextProofs), contentType: 'html' },
   };
   if (markDone) patch.status = 'completed';
 
@@ -617,7 +618,7 @@ async function handleTodoUpdate(request, env) {
 
   const due = graphDueDate(date);
   const patch = {
-    body: { content: newContent, contentType: 'text' },
+    body: { content: newContent, contentType: 'html' },
     importance: String(priority || '').toLowerCase() === 'high' ? 'high' : 'normal',
   };
   if (due) patch.dueDateTime = due;

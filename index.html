@@ -1642,7 +1642,12 @@ function allDepartments(){
   return list;
 }
 function ini(n) { return n.split(" ").map(x=>x[0]).join("").toUpperCase().slice(0,2); }
-function fmtD(d) { return new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
+function fmtD(d) {
+  if(!d)return "No deadline";
+  const dt=new Date(d);
+  if(isNaN(dt.getTime()))return "No deadline";
+  return dt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+}
 function nstt(s) { return s==="In Progress"?"Pending":(s||"Pending"); }
 function normEmail(email) { return String(email||"").trim().toLowerCase(); }
 function staffKey(email,name) { return normEmail(email) || String(name||"").trim().toLowerCase(); }
@@ -2660,9 +2665,11 @@ function renderMaster(){
         <div class="wed-btn${t.wednesday?" on":""}" style="width:auto;padding:0 8px;font-size:10.5px;white-space:nowrap" onclick="togWed(${t.id})">${t.wednesday?"On Wed":"+ Wed"}</div>
       </td>
       <td style="padding:10px 8px;font-size:11.5px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td>
-      <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 4px;text-align:right;display:flex;gap:4px;align-items:center;justify-content:flex-end">
-        <button class="btn btn-ghost btn-sm" style="padding:1px 7px;font-size:11px;min-width:0" onclick="openDetail(${t.id})" title="Edit task">✏</button>
-        <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:1px 6px;font-size:11px;min-width:0;opacity:.7" onclick="removeTask(${t.id})" title="Remove">&#10005;</button>
+      <td onclick="event.stopPropagation()" style="padding:6px 12px 6px 4px;text-align:right;white-space:nowrap">
+        <div style="display:inline-flex;gap:4px;align-items:center">
+          <button class="btn btn-ghost btn-sm" style="padding:3px 9px;font-size:13px;min-width:0;border-color:#d1d5db;color:#374151;line-height:1" onclick="openDetail(${t.id})" title="Edit task">✏️</button>
+          <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:3px 7px;font-size:11px;min-width:0;opacity:.7;line-height:1" onclick="removeTask(${t.id})" title="Remove">&#10005;</button>
+        </div>
       </td>
     </tr>`}).join("");
 }
