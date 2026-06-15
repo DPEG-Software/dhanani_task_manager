@@ -7027,15 +7027,27 @@ function renderNotifications(){
             <span style="font-size:10px;font-weight:600;color:${statusColor}">${statusLabel}</span>
           </div>
         </div>
-        ${n.status==='pending'?`<div style="display:flex;gap:5px;flex-shrink:0">
+        <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+          ${n.taskId!=null?`<button class="btn btn-ghost btn-sm" onclick="goToNotificationTask(${n.id})">Go to Action Log</button>`:''}
+          ${n.status==='pending'?`
           ${(n.type==='task_completion'||n.type==='proof_submitted')?`<button class="btn btn-primary btn-sm" onclick="approveNotification(${n.id})">Approve</button>`:''}
           ${n.type==='proof_submitted'?`<button class="btn btn-ghost btn-sm" onclick="askNotificationFollowup(${n.id})">Ask</button>`:''}
           <button class="btn btn-ghost btn-sm" onclick="dismissNotification(${n.id})">Dismiss</button>
-        </div>`:''}
+          `:''}
+        </div>
       </div>
     </div>`;
   }).join('');
   scrollProofThreadsToBottom(el);
+}
+
+function goToNotificationTask(id){
+  const n=notifications.find(x=>x.id===id);
+  if(!n||n.taskId==null){toast('Task not found for this notification');return;}
+  const task=tasks.find(t=>String(t.id)===String(n.taskId));
+  if(!task){toast('Task not found in Action Log');return;}
+  nav('master');
+  setTimeout(()=>openDetail(task.id),0);
 }
 
 function renderNotificationProofs(n){
