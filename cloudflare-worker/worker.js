@@ -16,6 +16,7 @@ const DATA_KEY = 'company-state';
 const ADMIN_EMAILS = new Set(['systemmanager1@dhananipeg.com', 'propertymanagement2@dhananipeg.com']);
 const PROOF_START = 'DPEG_PROOF_START';
 const PROOF_END = 'DPEG_PROOF_END';
+const PROOF_LINK_PREFIX = 'proof-link:';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -60,6 +61,33 @@ function proofSubmitUrl(body, listId, taskId) {
   url.searchParams.set('todoListId', listId);
   url.searchParams.set('todoTaskId', taskId);
   return url.toString();
+}
+
+function workerOrigin(request) {
+  return new URL(request.url).origin;
+}
+
+function proofShortCode() {
+  const bytes = new Uint8Array(9);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(36).padStart(2, '0')).join('').slice(0, 12);
+}
+
+async function createProofShortUrl(request, env, targetUrl) {
+  if (!env.DPEG_DATA) return targetUrl;
+  const code = proofShortCode();
+  await env.DPEG_DATA.put(`${PROOF_LINK_PREFIX}${code}`, JSON.stringify({
+    targetUrl,
+    createdAt: new Date().toISOString(),
+  }), { expirationTtl: 60 * 60 * 24 * 180 });
+  return `${workerOrigin(request)}/p/${code}`;
+}
+
+async function handleProofRedirect(request, env, code) {
+  if (!env.DPEG_DATA || !code) return new Response('Proof link not found', { status: 404, headers: CORS });
+  const record = await env.DPEG_DATA.get(`${PROOF_LINK_PREFIX}${code}`, 'json');
+  if (!record?.targetUrl) return new Response('Proof link expired or not found', { status: 404, headers: CORS });
+  return Response.redirect(record.targetUrl, 302);
 }
 
 function parseProofs(text) {
@@ -230,13 +258,15 @@ async function handleTodo(request, env) {
 
   const taskData = await taskRes.json().catch(() => ({}));
   if (taskData.id) {
-    const link = proofSubmitUrl(body, defaultList.id, taskData.id);
+    const longLink = proofSubmitUrl(body, defaultList.id, taskData.id);
+    const link = await createProofShortUrl(request, env, longLink);
     const safeLink = link.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     const htmlBody = [
       `<p><b>Assigned by:</b> ${esc(assignerLabel)}${assignedByEmail ? ` &lt;${esc(assignedByEmail)}&gt;` : ''}</p>`,
       appTaskId ? `<p>DPEG Task ID: ${esc(appTaskId)}</p>` : '',
       `<p>${esc(cleanSummary).replace(/\n/g, '<br>')}</p>`,
-      `<p><a href="${safeLink}">Proof of Submission: DPEG Task Manager</a></p>`,
+      `<p><b>Proof Submission:</b> <a href="${safeLink}">Open proof form</a></p>`,
+      `<p style="font-size:12px;color:#666">If the button is not clickable, open this short link:<br>${esc(link)}</p>`,
     ].filter(Boolean).join('');
     const patchedBody = {
       content: `${htmlBody}\n${PROOF_START}\n${JSON.stringify({ proofs: [] })}\n${PROOF_END}`,
@@ -643,6 +673,8 @@ export default {
       return new Response(null, { status: 204, headers: CORS });
     }
     const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
+    const proofMatch = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+    if (proofMatch && request.method === 'GET') return handleProofRedirect(request, env, proofMatch[1]);
     if (path === '/data') return handleData(request, env);
     if (path === '/notify') return handleNotify(request, env);
 
