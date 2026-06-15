@@ -233,13 +233,17 @@ async function handleTodo(request, env) {
     const link = proofSubmitUrl(body, defaultList.id, taskData.id);
     const patchedBody = {
       content: [
-        `<p>Assigned by: ${esc(assignerLabel)}${assignedByEmail ? ` &lt;${esc(assignedByEmail)}&gt;` : ''}</p>`,
-        appTaskId ? `<p>DPEG Task ID: ${esc(appTaskId)}</p>` : '',
-        `<p>${esc(cleanSummary).replace(/\n/g,'<br>')}</p>`,
-        `<p><a href="${esc(link)}">Proof of Submission: DPEG Task Manager</a></p>`,
-        `<p>${PROOF_START}\n{"proofs":[]}\n${PROOF_END}</p>`,
+        `Assigned by: ${assignerLabel}${assignedByEmail ? ` <${assignedByEmail}>` : ''}`,
+        appTaskId ? `DPEG Task ID: ${appTaskId}` : '',
+        '',
+        cleanSummary,
+        '',
+        `Proof of Submission: DPEG Task Manager`,
+        link,
+        '',
+        `${PROOF_START}\n${JSON.stringify({ proofs: [] })}\n${PROOF_END}`,
       ].filter(Boolean).join('\n'),
-      contentType: 'html',
+      contentType: 'text',
     };
     await fetch(
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists/${defaultList.id}/tasks/${taskData.id}`,
@@ -486,7 +490,7 @@ async function handleProofSubmit(request, env) {
   const parsed = parseProofBlock(task.body?.content || '');
   const nextProofs = [...parsed.proofs, ...proofs];
   const patch = {
-    body: { content: buildProofBlock(parsed.base, nextProofs), contentType: 'html' },
+    body: { content: buildProofBlock(parsed.base, nextProofs), contentType: 'text' },
   };
   if (markDone) patch.status = 'completed';
 
@@ -618,7 +622,7 @@ async function handleTodoUpdate(request, env) {
 
   const due = graphDueDate(date);
   const patch = {
-    body: { content: newContent, contentType: 'html' },
+    body: { content: newContent, contentType: 'text' },
     importance: String(priority || '').toLowerCase() === 'high' ? 'high' : 'normal',
   };
   if (due) patch.dueDateTime = due;
