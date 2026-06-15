@@ -1458,6 +1458,7 @@ async function renderProofFollowupBox(params){
       <div style="display:flex;gap:8px;align-items:center"><button class="btn btn-primary btn-sm" id="proof-followup-btn" onclick="submitProofFollowupAnswer('${escapeHtml(n.id)}')">Send Reply</button><span id="proof-followup-status" style="font-size:12px;color:#6b7280"></span></div>`
       :`<div style="font-size:12px;color:#166534;font-weight:600">Your reply was sent. Waiting for review.</div>`}
   </div>`;
+  scrollProofThreadsToBottom(host);
 }
 
 function renderProofFollowupFileList(fileList){
@@ -6680,19 +6681,20 @@ function renderProofPanel(t){
       <button class="btn btn-ghost btn-sm" style="color:#b91c1c;border-color:#fca5a5" onclick="dismissProof('${escapeHtml(n.id)}',${t.id})">✗ Dismiss with Reason</button>
     </div>
   </div>`;
+  scrollProofThreadsToBottom(panel);
   if(proofFiles.length)loadProofPreviews(proofFiles);
 }
 
 function renderProofThread(n){
   const thread=Array.isArray(n?.thread)?n.thread:[];
   if(!thread.length)return '';
-  const visible=[...thread].reverse();
+  const visible=[...thread];
   return `<div style="margin:8px 0 10px;padding:8px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
       <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280">Follow-up thread</div>
       ${thread.length>2?`<div style="font-size:10px;color:#9ca3af">${thread.length} messages</div>`:''}
     </div>
-    <div style="max-height:154px;overflow-y:auto;padding-right:3px">
+    <div data-proof-thread-scroll="1" style="max-height:154px;overflow-y:auto;padding-right:3px">
     ${visible.map(item=>{
       const isAnswer=item.by==='assignee';
       const label=isAnswer?'Assignee reply':'Question';
@@ -6720,6 +6722,14 @@ function renderProofThread(n){
     }).join('')}
     </div>
   </div>`;
+}
+
+function scrollProofThreadsToBottom(root=document){
+  setTimeout(()=>{
+    (root||document).querySelectorAll?.('[data-proof-thread-scroll="1"]').forEach(el=>{
+      el.scrollTop=el.scrollHeight;
+    });
+  },0);
 }
 
 async function sendProofFollowupEmail(recipientEmail,task,question){
@@ -7018,6 +7028,7 @@ function renderNotifications(){
       </div>
     </div>`;
   }).join('');
+  scrollProofThreadsToBottom(el);
 }
 
 function renderNotificationProofs(n){
