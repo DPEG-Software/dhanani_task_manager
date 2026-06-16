@@ -228,11 +228,12 @@
       <button id="dir-people-btn" class="active" onclick="setDirectoryMode('people')">People</button>
       <button id="dir-dept-btn" onclick="setDirectoryMode('departments')">Departments</button>
     </div>
-    <div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(160px,1.3fr) minmax(140px,.9fr) auto;gap:8px;align-items:end;margin:0 0 10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:7px">
-      <div><label class="form-lbl" style="margin-bottom:4px">Person</label><input class="form-in" id="dept-assign-name" placeholder="Name" style="padding:7px 9px;font-size:12.5px"></div>
-      <div><label class="form-lbl" style="margin-bottom:4px">Email</label><input class="form-in" id="dept-assign-email" placeholder="email@dhananipeg.com" style="padding:7px 9px;font-size:12.5px"></div>
+    <div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(160px,1.3fr) minmax(140px,.9fr) auto;gap:8px;align-items:end;margin:0 0 10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:7px;position:relative">
+      <div><label class="form-lbl" style="margin-bottom:4px">Person</label><input class="form-in" id="dept-assign-name" placeholder="Name" autocomplete="off" oninput="showDeptAssignAC('name')" onfocus="showDeptAssignAC('name')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
+      <div><label class="form-lbl" style="margin-bottom:4px">Email</label><input class="form-in" id="dept-assign-email" placeholder="email@dhananipeg.com" autocomplete="off" oninput="showDeptAssignAC('email')" onfocus="showDeptAssignAC('email')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
       <div><label class="form-lbl" style="margin-bottom:4px">Department</label><select class="form-sel" id="dept-assign-dept" style="padding:7px 9px;font-size:12.5px"></select></div>
       <button class="btn btn-primary btn-sm" onclick="saveDepartmentAssignmentSetting()">Save</button>
+      <div id="dept-assign-ac" class="compose-ac" style="display:none;position:absolute;left:12px;right:12px;top:64px;z-index:9999;max-height:220px;overflow:auto"></div>
     </div>
     <div class="directory-pane active" id="dir-people-pane">
       <div class="split-layout">
@@ -1811,7 +1812,109 @@ function saveStaffEmail(name,email){
   staffConfig[key]={...(staffConfig[key]||{}),name,email,dept:staffConfig[key]?.dept||existing.dept||"Needs Department",role:existing.role||""};
   tasks.forEach(t=>{if(t.person===name)t.email=email;});
 }
+function departmentAssignmentContacts(){
+  const map=new Map();
+  const add=p=>{
+    if(!p)return;
+    const name=String(p.name||p.displayName||p.fullName||"").trim().replace(/\s+/g," ");
+    const email=normEmail(p.email||p.mail||p.userPrincipalName||p.address||"");
+    if(!name&&!email)return;
+    const key=email||name.toLowerCase();
+    const existing=map.get(key)||{};
+    map.set(key,{
+      name: name||existing.name||email,
+      email: email||existing.email||"",
+      dept: String(p.dept||p.department||existing.dept||personDept(email,name)||"").trim(),
+      role: String(p.role||p.jobTitle||p.title||existing.role||"").trim()
+    });
+  };
+  Object.values(staffConfig||{}).forEach(add);
+  Object.values(userContacts||{}).forEach(add);
+  (outlookContacts||[]).forEach(add);
+  tasks.forEach(t=>add({name:t.person,email:t.email,dept:t.dept}));
+  return [...map.values()].sort((a,b)=>String(a.name||a.email).localeCompare(String(b.name||b.email)));
+}
+function setDeptAssignDepartment(dept){
+  const sel=document.getElementById('dept-assign-dept');
+  if(!sel)return;
+  const val=String(dept||"").trim()||"Needs Department";
+  if(![...sel.options].some(o=>o.value===val)){
+    const opt=document.createElement('option');
+    opt.textContent=val;
+    opt.value=val;
+    sel.insertBefore(opt,sel.firstChild);
+  }
+  sel.value=val;
+}
+function fillDeptAssignContact(p){
+  if(!p)return;
+  const nameEl=document.getElementById('dept-assign-name');
+  const emailEl=document.getElementById('dept-assign-email');
+  if(nameEl)nameEl.value=p.name||"";
+  if(emailEl)emailEl.value=p.email||"";
+  setDeptAssignDepartment(p.dept||personDept(p.email,p.name));
+}
+function showDeptAssignAC(source){
+  const ac=document.getElementById('dept-assign-ac');
+  if(!ac)return;
+  const nameEl=document.getElementById('dept-assign-name');
+  const emailEl=document.getElementById('dept-assign-email');
+  const token=String((source==='email'?emailEl?.value:nameEl?.value)||"").trim().toLowerCase();
+  if(!token){ac.style.display='none';return;}
+  const matches=departmentAssignmentContacts().filter(p=>{
+    const hay=[p.name,p.email,p.dept,p.role].map(x=>String(x||"").toLowerCase());
+    return hay.some(x=>x.includes(token));
+  }).slice(0,10);
+  window._deptAssignMatches=matches;
+  if(!matches.length){ac.style.display='none';return;}
+  ac.innerHTML=matches.map((p,i)=>`
+    <div class="compose-ac-item"
+      onmousedown="event.preventDefault();selectDeptAssignAC(${i})"
+      onmouseover="document.querySelectorAll('#dept-assign-ac .compose-ac-item').forEach(x=>x.classList.remove('ac-focused'));this.classList.add('ac-focused')">
+      ${av(p.name||p.email||'?',28)}
+      <div style="flex:1;min-width:0">
+        <div class="compose-ac-name">${escapeHtml(p.name||p.email)}</div>
+        <div class="compose-ac-email">${escapeHtml(p.email||'')}</div>
+        ${p.dept||p.role?`<div class="compose-ac-role">${escapeHtml(p.dept||p.role)}</div>`:''}
+      </div>
+    </div>`).join('');
+  ac.style.display='block';
+}
+function selectDeptAssignAC(index){
+  const p=(window._deptAssignMatches||[])[index];
+  if(!p)return;
+  fillDeptAssignContact(p);
+  const ac=document.getElementById('dept-assign-ac');
+  if(ac)ac.style.display='none';
+}
+function completeDeptAssignFromText(){
+  const nameEl=document.getElementById('dept-assign-name');
+  const emailEl=document.getElementById('dept-assign-email');
+  const name=String(nameEl?.value||"").trim().toLowerCase();
+  const email=normEmail(emailEl?.value||"");
+  if(!name&&!email)return null;
+  const exact=departmentAssignmentContacts().find(p=>
+    (email&&normEmail(p.email)===email) ||
+    (name&&String(p.name||"").trim().toLowerCase()===name)
+  );
+  if(exact)fillDeptAssignContact(exact);
+  return exact||null;
+}
+function hideDeptAssignAC(){
+  setTimeout(()=>{completeDeptAssignFromText();const ac=document.getElementById('dept-assign-ac');if(ac)ac.style.display='none';},160);
+}
+function deptAssignACNav(e){
+  const ac=document.getElementById('dept-assign-ac');
+  if(!ac||ac.style.display==='none')return;
+  const items=ac.querySelectorAll('.compose-ac-item');if(!items.length)return;
+  const focused=ac.querySelector('.ac-focused');
+  if(e.key==='ArrowDown'){e.preventDefault();const next=focused?focused.nextElementSibling||items[0]:items[0];items.forEach(i=>i.classList.remove('ac-focused'));if(next)next.classList.add('ac-focused');}
+  else if(e.key==='ArrowUp'){e.preventDefault();const prev=focused?focused.previousElementSibling||items[items.length-1]:items[items.length-1];items.forEach(i=>i.classList.remove('ac-focused'));if(prev)prev.classList.add('ac-focused');}
+  else if((e.key==='Enter'||e.key==='Tab')&&focused){e.preventDefault();focused.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));}
+  else if(e.key==='Escape'){ac.style.display='none';}
+}
 async function saveDepartmentAssignmentSetting(){
+  completeDeptAssignFromText();
   const name=String(document.getElementById('dept-assign-name')?.value||'').trim().replace(/\s+/g,' ');
   const email=String(document.getElementById('dept-assign-email')?.value||'').trim().toLowerCase();
   const dept=String(document.getElementById('dept-assign-dept')?.value||'').trim();
