@@ -228,6 +228,12 @@
       <button id="dir-people-btn" class="active" onclick="setDirectoryMode('people')">People</button>
       <button id="dir-dept-btn" onclick="setDirectoryMode('departments')">Departments</button>
     </div>
+    <div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(160px,1.3fr) minmax(140px,.9fr) auto;gap:8px;align-items:end;margin:0 0 10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:7px">
+      <div><label class="form-lbl" style="margin-bottom:4px">Person</label><input class="form-in" id="dept-assign-name" placeholder="Name" style="padding:7px 9px;font-size:12.5px"></div>
+      <div><label class="form-lbl" style="margin-bottom:4px">Email</label><input class="form-in" id="dept-assign-email" placeholder="email@dhananipeg.com" style="padding:7px 9px;font-size:12.5px"></div>
+      <div><label class="form-lbl" style="margin-bottom:4px">Department</label><select class="form-sel" id="dept-assign-dept" style="padding:7px 9px;font-size:12.5px"></select></div>
+      <button class="btn btn-primary btn-sm" onclick="saveDepartmentAssignmentSetting()">Save</button>
+    </div>
     <div class="directory-pane active" id="dir-people-pane">
       <div class="split-layout">
         <div class="split-panel">
@@ -1805,6 +1811,29 @@ function saveStaffEmail(name,email){
   staffConfig[key]={...(staffConfig[key]||{}),name,email,dept:staffConfig[key]?.dept||existing.dept||"Needs Department",role:existing.role||""};
   tasks.forEach(t=>{if(t.person===name)t.email=email;});
 }
+async function saveDepartmentAssignmentSetting(){
+  const name=String(document.getElementById('dept-assign-name')?.value||'').trim().replace(/\s+/g,' ');
+  const email=String(document.getElementById('dept-assign-email')?.value||'').trim().toLowerCase();
+  const dept=String(document.getElementById('dept-assign-dept')?.value||'').trim();
+  if(!name&&!email){toast('Enter a person name or email');return;}
+  if(email&&!email.includes('@')){toast('Enter a valid email');return;}
+  if(!dept){toast('Select a department');return;}
+  const existing=(email&&findPersonByEmail(email))||findPersonByName(name)||{};
+  const finalName=name||existing.name||email.split('@')[0];
+  const key=staffKey(email,finalName);
+  staffConfig[key]={...(staffConfig[key]||{}),name:finalName,email:email||existing.email||'',dept,role:staffConfig[key]?.role||existing.role||''};
+  tasks.forEach(t=>{
+    if((email&&normEmail(t.email)===normEmail(email))||(!email&&String(t.person||'').trim().toLowerCase()===finalName.toLowerCase())){
+      t.dept=dept;
+      if(email&&!t.email)t.email=email;
+    }
+  });
+  initSelects();
+  if(directoryMode==='people')renderPplList(curPplFilter);
+  if(directoryMode==='departments')renderDeptList();
+  await saveTasksToOneDrive();
+  toast(`Department saved for ${finalName}`);
+}
 function emailSubject(t){return t.emailSubject||t.subject||t.title||"(no subject)";}
 function taskEmailId(t){return t.lastMessageId||t.emailId||"";}
 function emailLinkButton(t,label="Open Full Email"){
@@ -2696,6 +2725,8 @@ function initSelects() {
     ["sf-dept","sum-d"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML+=`<option>${d}</option>`;});
   });
   document.getElementById("nt-dept").innerHTML=allDepartments().map(d=>`<option>${d}</option>`).join("");
+  const assignDept=document.getElementById("dept-assign-dept");
+  if(assignDept)assignDept.innerHTML=allDepartments().map(d=>`<option>${d}</option>`).join("");
 }
 
 const WL=["This Week","Last Week","2 Weeks Ago","3 Weeks Ago","4 Weeks Ago"];
