@@ -3,7 +3,11 @@
   "short_name": "Dhanani",
   "description": "DPEG Task and Email Management",
   "start_url": ".",
+  "scope": ".",
+  "id": "/dhanani_task_manager/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
   "background_color": "#ffffff",
   "theme_color": "#15803d",
   "icons": [
