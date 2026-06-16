@@ -3906,6 +3906,9 @@ function updateOlDividerIcons(){
 }
 
 function toggleOlSidebar(){toggleOlLeft();}
+function olMobileBackToList(){
+  document.getElementById('page-outlook')?.classList.remove('ol-mobile-reading');
+}
 
 async function fetchOutlookContacts(){
   try{
@@ -4433,6 +4436,7 @@ function renderEmailRows(folder,emails){
 
 async function loadFolder(folder){
   currentFolder=folder;
+  olMobileBackToList();
   _activeEmailEl=null;
   buildTrackedSet();
   const titleEl=document.getElementById('ol-folder-title');
@@ -4675,6 +4679,7 @@ function threadHeaderHTML(){
   const toStr=toAll.length?renderPeopleChips(toAll,'thread-hdr-to',4):'—';
   const ccStr=ccAll.length?renderPeopleChips(ccAll,'thread-hdr-cc',4):'';
   return `<div class="tv-hdr">
+    <button type="button" class="ol-mobile-back-btn" onclick="olMobileBackToList()">← Back to emails</button>
     <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">
       <div style="flex:1;min-width:0">
         <div class="tv-subject">${escapeHtml(s.subject||'(no subject)')}</div>
@@ -5191,6 +5196,7 @@ function extractMeetingJoinLink(raw){
 
 async function readEmail(emailId,folder,el){
   currentEmailId=emailId;
+  document.getElementById('page-outlook')?.classList.add('ol-mobile-reading');
   if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
   var _ael=el||document.getElementById('email-item-'+emailId);
   if(_ael){_ael.classList.add('active');_activeEmailEl=_ael;}

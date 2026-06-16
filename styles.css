@@ -497,6 +497,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
 .ol-search-input::placeholder{color:#9ca3af}
 .ol-divider-btn{width:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;border-right:1px solid #e5e7eb;background:#fafafa;transition:background .12s;height:100%;position:relative;z-index:2}
 .ol-divider-btn:hover{background:#f0f0f0}
+.ol-mobile-back-btn{display:none}
 /* Thin scrollbars in Outlook panels */
 #page-outlook ::-webkit-scrollbar{width:4px;height:4px}
 #page-outlook ::-webkit-scrollbar-track{background:transparent}
@@ -541,13 +542,52 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
   .btn{white-space:normal}
   .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:6px}
   table{min-width:760px}
+  #page-summary .sum-ctrl{display:grid;grid-template-columns:1fr 1fr;gap:7px;align-items:stretch}
+  #page-summary .sum-ctrl .sel-f,#page-summary .sum-ctrl .btn{width:100%;height:36px;justify-content:center}
+  #page-summary .sum-ctrl #sum-cnt{grid-column:1/-1}
+  #page-summary .tbl-wrap{overflow:visible;background:transparent;border:none}
+  #page-summary table{min-width:0;width:100%;display:block}
+  #page-summary thead{display:none}
+  #page-summary tbody{display:grid;gap:8px}
+  #page-summary tr{display:grid;grid-template-columns:1fr;gap:5px;background:var(--white);border:1px solid var(--border);border-radius:7px;padding:10px 11px;box-shadow:var(--sh)}
+  #page-summary td{display:flex;justify-content:space-between;gap:10px;padding:0!important;border:none;font-size:12px;color:var(--body)!important;white-space:normal!important}
+  #page-summary td::before{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);flex-shrink:0}
+  #page-summary td:nth-child(1){display:none}
+  #page-summary td:nth-child(2){display:block;font-size:13px}
+  #page-summary td:nth-child(2)::before{content:'Task';display:block;margin-bottom:3px}
+  #page-summary td:nth-child(3)::before{content:'Assigned'}
+  #page-summary td:nth-child(4)::before{content:'Department'}
+  #page-summary td:nth-child(5)::before{content:'Status'}
+  #page-summary td:nth-child(6)::before{content:'Priority'}
+  #page-summary td:nth-child(7)::before{content:'Date'}
+  #page-summary td:nth-child(8)::before{content:'Note'}
   .card,.ch-card,.pulse-card,.sc{border-radius:6px}
   .mo{align-items:flex-end;padding:0}
   .mo-box{width:100%!important;max-width:100%!important;max-height:92dvh;border-radius:12px 12px 0 0}
   .mo-body{max-height:calc(92dvh - 104px);overflow:auto}
   .split-layout{grid-template-columns:minmax(0,1fr)}
-  #ol-layout{height:calc(100dvh - 126px)!important}
-  #ol-left-panel{display:none}
+  #page-outlook{margin:-10px!important;height:calc(100dvh - 120px)!important;max-width:calc(100% + 20px)!important}
+  #ol-layout{height:100%!important;flex-direction:column;background:var(--white)!important}
+  #ol-left-panel{width:100%!important;height:122px!important;min-height:122px!important;display:flex!important;overflow:hidden!important;border-bottom:1px solid var(--border);background:var(--white)!important}
+  #ol-left-panel>div:first-child{padding:8px!important;gap:6px!important}
+  #ol-left-panel>div:nth-child(2){display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;padding:6px 8px!important;flex:0 0 auto!important;scrollbar-width:none}
+  #ol-left-panel>div:nth-child(2)::-webkit-scrollbar{display:none}
+  #ol-left-panel>div:nth-child(2)>div[style*="uppercase"],#ol-left-panel>div:nth-child(2)>div[style*="height:1px"]{display:none!important}
+  .ol-folder{flex:0 0 auto;min-width:86px;height:38px;border:1px solid var(--border);border-radius:6px;background:var(--white);padding:6px 8px!important;margin:0!important;justify-content:center}
+  .ol-folder span:first-of-type{font-size:11px;white-space:nowrap}
+  #ol-contacts-sync-bar{display:none!important}
+  .ol-divider-btn{display:none!important}
+  #ol-mid-panel{width:100%!important;min-width:100%!important;flex:1 1 auto!important;height:auto!important;border-right:none!important;display:flex!important}
+  #ol-right-panel{display:none!important;width:100%!important;flex:1 1 auto!important;height:auto!important}
+  #page-outlook.ol-mobile-reading #ol-left-panel,#page-outlook.ol-mobile-reading #ol-mid-panel{display:none!important}
+  #page-outlook.ol-mobile-reading #ol-right-panel{display:flex!important}
+  #ol-email-reader{overflow:auto!important}
+  .ol-mobile-back-btn{display:inline-flex;margin-bottom:8px;border:1px solid var(--border);background:var(--white);color:var(--body);border-radius:6px;padding:7px 10px;font-family:Inter,sans-serif;font-size:12px;font-weight:700}
+  .tv-hdr{padding:10px 12px!important}
+  .tv-list{padding:8px!important;overflow:auto!important}
+  .tv-msg{border-radius:7px!important}
+  .tv-msg-hdr{gap:7px!important}
+  .tv-date{font-size:10px!important;max-width:72px;white-space:normal!important;text-align:right}
 }
 
 @media (display-mode:standalone) and (max-width:760px){
