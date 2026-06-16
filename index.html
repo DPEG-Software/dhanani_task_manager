@@ -1923,17 +1923,24 @@ async function saveDepartmentAssignmentSetting(){
   if(!dept){toast('Select a department');return;}
   const existing=(email&&findPersonByEmail(email))||findPersonByName(name)||{};
   const finalName=name||existing.name||email.split('@')[0];
+  const finalEmail=normEmail(email||existing.email||'');
+  const finalNameKey=String(finalName||'').trim().toLowerCase();
   const key=staffKey(email,finalName);
-  staffConfig[key]={...(staffConfig[key]||{}),name:finalName,email:email||existing.email||'',dept,role:staffConfig[key]?.role||existing.role||''};
+  staffConfig[key]={...(staffConfig[key]||{}),name:finalName,email:finalEmail,dept,role:staffConfig[key]?.role||existing.role||''};
   tasks.forEach(t=>{
-    if((email&&normEmail(t.email)===normEmail(email))||(!email&&String(t.person||'').trim().toLowerCase()===finalName.toLowerCase())){
+    const taskEmail=normEmail(t.email);
+    const taskName=String(t.person||'').trim().toLowerCase();
+    if((finalEmail&&taskEmail===finalEmail)||(finalNameKey&&taskName===finalNameKey)){
       t.dept=dept;
-      if(email&&!t.email)t.email=email;
+      if(finalEmail&&!t.email)t.email=finalEmail;
     }
   });
   initSelects();
   if(directoryMode==='people')renderPplList(curPplFilter);
   if(directoryMode==='departments')renderDeptList();
+  syncBadges();
+  if(document.getElementById("page-master")?.classList.contains("active"))renderMaster();
+  if(document.getElementById("page-dashboard")?.classList.contains("active")){syncPulse();renderCharts();renderActivity();}
   await saveTasksToOneDrive();
   toast(`Department saved for ${finalName}`);
 }
