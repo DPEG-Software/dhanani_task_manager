@@ -97,6 +97,10 @@
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M22 21v-2a4 4 0 00-3-3.87M12 7a4 4 0 11-8 0 4 4 0 018 0M17 11l2 2 4-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Sync My Outlook Contacts
       </button>
+      <button class="acct-option" onclick="openDepartmentSettings();closeAccountMenu()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7M17 14l3 3m0 0l-3 3m3-3h-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Department Settings
+      </button>
       <button class="acct-option" id="admin-settings-btn" style="display:none" onclick="openAdminSettings();closeAccountMenu()">
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Admin Settings
@@ -227,13 +231,6 @@
     <div class="directory-toggle">
       <button id="dir-people-btn" class="active" onclick="setDirectoryMode('people')">People</button>
       <button id="dir-dept-btn" onclick="setDirectoryMode('departments')">Departments</button>
-    </div>
-    <div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(160px,1.3fr) minmax(140px,.9fr) auto;gap:8px;align-items:end;margin:0 0 10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:7px;position:relative">
-      <div><label class="form-lbl" style="margin-bottom:4px">Person</label><input class="form-in" id="dept-assign-name" placeholder="Name" autocomplete="off" oninput="showDeptAssignAC('name')" onfocus="showDeptAssignAC('name')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
-      <div><label class="form-lbl" style="margin-bottom:4px">Email</label><input class="form-in" id="dept-assign-email" placeholder="email@dhananipeg.com" autocomplete="off" oninput="showDeptAssignAC('email')" onfocus="showDeptAssignAC('email')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
-      <div><label class="form-lbl" style="margin-bottom:4px">Department</label><select class="form-sel" id="dept-assign-dept" style="padding:7px 9px;font-size:12.5px"></select></div>
-      <button class="btn btn-primary btn-sm" onclick="saveDepartmentAssignmentSetting()">Save</button>
-      <div id="dept-assign-ac" class="compose-ac" style="display:none;position:absolute;left:12px;right:12px;top:64px;z-index:9999;max-height:220px;overflow:auto"></div>
     </div>
     <div class="directory-pane active" id="dir-people-pane">
       <div class="split-layout">
@@ -553,6 +550,33 @@
   </div>
 </div>
 
+<!-- DEPARTMENT SETTINGS MODAL -->
+<div class="mo" id="mo-department-settings">
+  <div class="mo-box" style="max-width:620px">
+    <div class="mo-hdr">
+      <div>
+        <div class="mo-title">Department Settings</div>
+        <div class="mo-sub">Assign or reassign departments for people across the app</div>
+      </div>
+      <button class="mo-x" onclick="closeMo('mo-department-settings')">&#10005;</button>
+    </div>
+    <div class="mo-body">
+      <div style="display:grid;grid-template-columns:minmax(130px,1fr) minmax(170px,1.2fr) minmax(140px,.9fr) auto;gap:8px;align-items:end;margin-bottom:14px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:7px;position:relative">
+        <div><label class="form-lbl" style="margin-bottom:4px">Person</label><input class="form-in" id="dept-assign-name" placeholder="Name" autocomplete="off" oninput="showDeptAssignAC('name')" onfocus="showDeptAssignAC('name')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
+        <div><label class="form-lbl" style="margin-bottom:4px">Email</label><input class="form-in" id="dept-assign-email" placeholder="email@dhananipeg.com" autocomplete="off" oninput="showDeptAssignAC('email')" onfocus="showDeptAssignAC('email')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
+        <div><label class="form-lbl" style="margin-bottom:4px">Department</label><select class="form-sel" id="dept-assign-dept" style="padding:7px 9px;font-size:12.5px"></select></div>
+        <button class="btn btn-primary btn-sm" onclick="saveDepartmentAssignmentSetting()">Save</button>
+        <div id="dept-assign-ac" class="compose-ac" style="display:none;position:absolute;left:12px;right:12px;top:64px;z-index:9999;max-height:220px;overflow:auto"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Saved assignments update existing tasks and will be used for future tasks.</div>
+      <div id="department-settings-list" style="display:grid;gap:7px;max-height:300px;overflow:auto"></div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-department-settings')">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- AI SETTINGS MODAL -->
 <div class="mo" id="mo-ai-settings">
   <div class="mo-box" style="max-width:480px">
@@ -797,13 +821,14 @@
       <div class="form-grp"><label class="form-lbl">Summary</label><textarea class="form-ta" id="nt-summary" placeholder="What needs to be done? Key details, deadlines..."></textarea></div>
       <div class="form-grp"><label class="form-lbl">Proof Instructions <span style="color:var(--muted);font-weight:400;font-size:10px">(tell the recipient what to upload as proof)</span></label><input type="text" class="form-in" id="nt-proof-instructions" placeholder="e.g. Upload a photo of the completed work and signed document"></div>
       <div class="form-grp" style="position:relative">
-        <label class="form-lbl">Assign To <span style="color:var(--muted);font-size:10px;font-weight:500">(type name or email)</span></label>
+        <label class="form-lbl">Assign To <span style="color:var(--muted);font-size:10px;font-weight:500">(add one or more people)</span></label>
+        <div id="nt-assignee-chips" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px"></div>
         <div style="position:relative">
           <input type="text" class="form-in" id="nt-person" placeholder="Type name or email..." autocomplete="off"
             oninput="showAddTaskAC(this.value)" onkeydown="addTaskACNav(event)" onblur="hideAddTaskAC()">
           <button type="button" id="nt-clear-btn" onclick="clearAddTaskPerson()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted);padding:0;line-height:1">&#10005;</button>
         </div>
-        <div id="nt-email-display" style="display:none;font-size:11.5px;color:var(--muted);margin-top:3px;padding:0 2px"></div>
+        <div id="nt-email-display" style="display:none;font-size:11.5px;color:var(--muted);margin-top:3px;padding:0 2px">Select a contact or press Enter to add.</div>
         <div id="nt-ac" class="compose-ac" style="display:none;position:absolute;left:0;right:0;top:auto;z-index:9999"></div>
         <input type="hidden" id="nt-email">
       </div>
@@ -915,6 +940,7 @@ let customDepartments = [];
 let customNotes = [];
 let sharedDataActive = false;
 let selectedTaskIds = new Set();
+let ntAssignees = [];
 let curTaskId = null, curWeek = 0, curSearch = "", curPplSel = null, curDeptSel = null, curPplFilter = "", directoryMode = "people";
 let CH = {};
 const PROOF_RETURN_KEY='dpeg_proof_return_search';
@@ -1938,6 +1964,7 @@ async function saveDepartmentAssignmentSetting(){
   initSelects();
   if(directoryMode==='people')renderPplList(curPplFilter);
   if(directoryMode==='departments')renderDeptList();
+  renderDepartmentSettingsList();
   syncBadges();
   if(document.getElementById("page-master")?.classList.contains("active"))renderMaster();
   if(document.getElementById("page-dashboard")?.classList.contains("active")){syncPulse();renderCharts();renderActivity();}
@@ -2761,6 +2788,87 @@ function peopleOptions(){
   });
   return [...map.values()].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
 }
+function openDepartmentSettings(){
+  initSelects();
+  renderDepartmentSettingsList();
+  document.getElementById('mo-department-settings')?.classList.add('open');
+}
+function renderDepartmentSettingsList(){
+  const el=document.getElementById('department-settings-list');
+  if(!el)return;
+  const people=departmentAssignmentContacts().filter(p=>p.name||p.email).slice(0,80);
+  if(!people.length){el.innerHTML='<div style="padding:20px;text-align:center;font-size:12px;color:var(--muted)">No saved contacts yet. Sync contacts or assign a person above.</div>';return;}
+  el.innerHTML=people.map((p,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 170px;gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--border);border-radius:7px;background:#fff">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+        ${av(p.name||p.email||'?',28)}
+        <div style="min-width:0">
+          <div style="font-size:12.5px;font-weight:700;color:var(--body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name||p.email)}</div>
+          <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.email||'No email saved')}</div>
+        </div>
+      </div>
+      <select class="form-sel" style="padding:6px 8px;font-size:12px" onchange="quickReassignDepartment(${i},this.value)">${deptOptions(p.dept||'Needs Department')}</select>
+    </div>`).join('');
+  window._departmentSettingsPeople=people;
+}
+async function quickReassignDepartment(index,dept){
+  const p=(window._departmentSettingsPeople||[])[index];
+  if(!p)return;
+  const nameEl=document.getElementById('dept-assign-name');
+  const emailEl=document.getElementById('dept-assign-email');
+  if(nameEl)nameEl.value=p.name||'';
+  if(emailEl)emailEl.value=p.email||'';
+  setDeptAssignDepartment(dept);
+  await saveDepartmentAssignmentSetting();
+}
+function renderNtAssigneeChips(){
+  const box=document.getElementById('nt-assignee-chips');
+  if(!box)return;
+  box.innerHTML=ntAssignees.map((p,i)=>`
+    <button type="button" class="chip-pill" data-email="${escapeHtml(p.email||'')}" onclick="removeNtAssignee(${i})" title="Remove ${escapeHtml(p.name||p.email||'assignee')}">
+      <span class="chip-pill-label">${escapeHtml(p.name||p.email||'Assignee')}</span>
+      <span style="font-size:10px;color:#6b7280">${escapeHtml(p.dept||'')}</span>
+      <span class="chip-x">&#215;</span>
+    </button>`).join('');
+}
+function addNtAssignee(person){
+  const name=String(person?.name||'').trim().replace(/\s+/g,' ');
+  const email=normEmail(person?.email||'');
+  if(!name&&!email)return;
+  const key=email||name.toLowerCase();
+  if(ntAssignees.some(p=>(p.email&&email&&normEmail(p.email)===email)||(!email&&String(p.name||'').toLowerCase()===name.toLowerCase()))){
+    toast('Assignee already added');
+    return;
+  }
+  const dept=String(person?.dept||personDept(email,name)||document.getElementById('nt-dept')?.value||'Needs Department').trim();
+  ntAssignees.push({name:name||email.split('@')[0],email,dept});
+  renderNtAssigneeChips();
+  clearAddTaskPerson(false);
+}
+function findDepartmentAssignmentContact(text){
+  const raw=String(text||'').trim().toLowerCase();
+  if(!raw)return null;
+  return departmentAssignmentContacts().find(p=>
+    (raw.includes('@')&&normEmail(p.email)===normEmail(raw)) ||
+    String(p.name||'').trim().toLowerCase()===raw
+  )||null;
+}
+function removeNtAssignee(index){
+  ntAssignees.splice(index,1);
+  renderNtAssigneeChips();
+}
+function addTypedNtAssignee(){
+  const input=document.getElementById('nt-person');
+  const raw=String(input?.value||'').trim();
+  if(!raw)return false;
+  const contact=findDepartmentAssignmentContact(raw)||{};
+  addNtAssignee({
+    name:contact.name||(raw.includes('@')?raw.split('@')[0]:raw),
+    email:contact.email||(raw.includes('@')?raw:''),
+    dept:contact.dept||personDept(contact.email||(raw.includes('@')?raw:''),contact.name||raw)
+  });
+  return true;
+}
 function showAddTaskAC(val){
   const ac=document.getElementById('nt-ac');if(!ac)return;
   const input=document.getElementById('nt-person');
@@ -2769,8 +2877,8 @@ function showAddTaskAC(val){
   if(clearBtn)clearBtn.style.display=token?'block':'none';
   if(!token){ac.style.display='none';return;}
   const seen=new Set();
-  const matches=Object.values(staffConfig).filter(p=>p?.email&&p?.name)
-    .filter(p=>{const k=normEmail(p.email||'');if(!k||seen.has(k))return false;seen.add(k);
+  const matches=departmentAssignmentContacts().filter(p=>p?.email||p?.name)
+    .filter(p=>{const k=normEmail(p.email||'')||String(p.name||'').toLowerCase();if(!k||seen.has(k))return false;seen.add(k);
       return (p.name||'').toLowerCase().includes(token)||k.includes(token)||(p.role||'').toLowerCase().includes(token)||(p.dept||'').toLowerCase().includes(token);
     }).slice(0,8);
   if(!matches.length){ac.style.display='none';return;}
@@ -2789,17 +2897,17 @@ function showAddTaskAC(val){
   ac.style.display='block';
 }
 function selectAddTaskAC(name,email,dept){
-  document.getElementById('nt-person').value=name;
-  document.getElementById('nt-email').value=email;
-  if(dept)document.getElementById('nt-dept').value=dept;
-  const disp=document.getElementById('nt-email-display');
-  if(disp){disp.textContent=email;disp.style.display=email?'block':'none';}
-  const clearBtn=document.getElementById('nt-clear-btn');if(clearBtn)clearBtn.style.display='block';
-  document.getElementById('nt-ac').style.display='none';
+  addNtAssignee({name,email,dept});
+  const ac=document.getElementById('nt-ac');if(ac)ac.style.display='none';
 }
 function hideAddTaskAC(){setTimeout(()=>{const ac=document.getElementById('nt-ac');if(ac)ac.style.display='none';},180);}
 function addTaskACNav(e){
   const ac=document.getElementById('nt-ac');
+  if((e.key==='Enter'||e.key==='Tab')&&(!ac||ac.style.display==='none')){
+    const added=addTypedNtAssignee();
+    if(added)e.preventDefault();
+    return;
+  }
   if(!ac||ac.style.display==='none')return;
   const items=ac.querySelectorAll('.compose-ac-item');if(!items.length)return;
   const focused=ac.querySelector('.ac-focused');
@@ -2808,13 +2916,13 @@ function addTaskACNav(e){
   else if((e.key==='Enter'||e.key==='Tab')&&focused){e.preventDefault();focused.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));}
   else if(e.key==='Escape'){ac.style.display='none';}
 }
-function clearAddTaskPerson(){
+function clearAddTaskPerson(focus=true){
   document.getElementById('nt-person').value='';
   document.getElementById('nt-email').value='';
   const disp=document.getElementById('nt-email-display');if(disp)disp.style.display='none';
   const clearBtn=document.getElementById('nt-clear-btn');if(clearBtn)clearBtn.style.display='none';
   document.getElementById('nt-ac').style.display='none';
-  document.getElementById('nt-person').focus();
+  if(focus)document.getElementById('nt-person').focus();
 }
 function setDeadlineBtn(btn,days){
   document.querySelectorAll('.deadline-btn').forEach(b=>b.classList.remove('active'));
@@ -3494,26 +3602,42 @@ function openAdd(){
   document.getElementById("nt-date").value='';
   document.getElementById("nt-date").style.display='none';
   document.querySelectorAll('.deadline-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  ntAssignees=[];
+  renderNtAssigneeChips();
+  clearAddTaskPerson(false);
   document.getElementById("mo-add").classList.add("open");
 }
 async function addTask(){
   const title=document.getElementById("nt-title").value.trim();
   if(!title){toast("Please enter a task title");return;}
-  const personInput=document.getElementById("nt-person").value.trim();
-  const emailHidden=document.getElementById("nt-email").value.trim();
-  const email=emailHidden||(personInput.includes('@')?personInput:'');
-  const person=personInput.includes('@')&&!emailHidden?(findPersonByEmail(personInput)?.name||personInput.split('@')[0]):personInput||"Unassigned";
-  const dept=document.getElementById("nt-dept").value;
-  const task={id:Date.now(),title,summary:document.getElementById("nt-summary").value||"",proofInstructions:document.getElementById("nt-proof-instructions")?.value.trim()||"",person,email,dept,date:document.getElementById("nt-date").value,status:document.getElementById("nt-status").value,priority:document.getElementById("nt-priority").value,wednesday:false,followup:"",weekOffset:0};
-  tasks.unshift(task);
-  saveStaffDeptForTask(task,dept);
+  addTypedNtAssignee();
+  const fallbackDept=document.getElementById("nt-dept").value;
+  const assignees=ntAssignees.length?ntAssignees:[{name:"Unassigned",email:"",dept:fallbackDept}];
+  const summary=document.getElementById("nt-summary").value||"";
+  const proofInstructions=document.getElementById("nt-proof-instructions")?.value.trim()||"";
+  const date=document.getElementById("nt-date").value;
+  const status=document.getElementById("nt-status").value;
+  const priority=document.getElementById("nt-priority").value;
+  const groupId=assignees.length>1?`grp-${Date.now()}-${Math.random().toString(36).slice(2,7)}`:'';
+  const baseId=Date.now();
+  const newTasks=assignees.map((a,i)=>{
+    const email=normEmail(a.email||"");
+    const person=String(a.name||email.split('@')[0]||"Unassigned").trim();
+    const configured=personDept(email,person);
+    const dept=(a.dept&&a.dept!=="Needs Department")?a.dept:(configured&&configured!=="Needs Department"?configured:fallbackDept);
+    return {id:baseId+i,title,summary,proofInstructions,person,email,dept,date,status,priority,wednesday:false,followup:"",weekOffset:0,assignmentGroupId:groupId,assignmentGroupSize:assignees.length};
+  });
+  tasks.unshift(...newTasks);
+  newTasks.forEach(t=>saveStaffDeptForTask(t,t.dept));
   closeMo("mo-add");
   ["nt-title","nt-summary","nt-proof-instructions"].forEach(i=>{if(document.getElementById(i))document.getElementById(i).value="";});
+  ntAssignees=[];
+  renderNtAssigneeChips();
   clearAddTaskPerson();
   refreshAll();
-  sendTaskNotification(task).catch(()=>{});
-  await createToDoTask(task).catch(()=>{});
-  toast(`Task saved${email?`. To Do assigned to ${email}`:""}`);
+  newTasks.forEach(t=>sendTaskNotification(t).catch(()=>{}));
+  await Promise.allSettled(newTasks.map(t=>createToDoTask(t)));
+  toast(`${newTasks.length} task${newTasks.length>1?'s':''} saved${newTasks.some(t=>t.email)?' and assigned':''}`);
   await saveTasksToOneDrive();
 }
 
@@ -6768,6 +6892,7 @@ async function checkAndLoadProofNotifications(){
         timestamp:pn.updatedAt||pn.submittedAt||new Date().toISOString(),
         status:'pending',
         recipientEmail:pn.recipientEmail||'',
+        assignmentGroupId:task.assignmentGroupId||'',
       };
       if(existingLocal){
         Object.assign(existingLocal,localData);
@@ -7194,6 +7319,7 @@ function goToNotificationTask(id){
 function renderNotificationProofs(n){
   const proofs=Array.isArray(n.proofs)?n.proofs:[];
   const note=String(n.note||'').trim();
+  const relatedHtml=renderRelatedProofSubmissions(n);
   const noteHtml=note?`<div style="margin:7px 0;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:5px">
     <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#166534;margin-bottom:4px">Submitted note</div>
     <div style="font-size:12px;color:#14532d;line-height:1.5;white-space:pre-wrap">${escapeHtml(note)}</div>
@@ -7207,7 +7333,28 @@ function renderNotificationProofs(n){
     </div>`).join('')}
   </div>`:'<div style="margin:6px 0;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:6px 8px">No proof files were attached.</div>';
   const threadHtml=renderProofThread(n);
-  return noteHtml+threadHtml+filesHtml;
+  return relatedHtml+noteHtml+threadHtml+filesHtml;
+}
+
+function renderRelatedProofSubmissions(n){
+  const groupId=String(n.assignmentGroupId||tasks.find(t=>String(t.id)===String(n.taskId))?.assignmentGroupId||'');
+  if(!groupId)return '';
+  const groupTasks=tasks.filter(t=>String(t.assignmentGroupId||'')===groupId);
+  if(groupTasks.length<2)return '';
+  const rows=groupTasks.map(t=>{
+    const notif=notifications.find(x=>x.type==='proof_submitted'&&String(x.taskId)===String(t.id));
+    const state=notif?notif.status||'pending':(nstt(t.status)==='Done'?'submitted':'waiting');
+    const color=state==='approved'?'#15803d':state==='dismissed'?'#991b1b':state==='waiting'?'#6b7280':'#92400e';
+    const label=state==='approved'?'Approved':state==='dismissed'?'Dismissed':state==='waiting'?'Waiting':'Pending review';
+    return `<button type="button" onclick="goToNotificationTask(${notif?notif.id:JSON.stringify('')})" ${notif?'':'disabled'} style="display:flex;align-items:center;gap:6px;border:1px solid #e5e7eb;background:${String(t.id)===String(n.taskId)?'#f0fdf4':'#fff'};border-radius:999px;padding:4px 8px;font-size:11px;color:#374151;${notif?'cursor:pointer':'opacity:.7'}">
+      <span style="font-weight:800;color:#111">${escapeHtml(t.person||t.email||'Assignee')}</span>
+      <span style="font-weight:700;color:${color}">${label}</span>
+    </button>`;
+  }).join('');
+  return `<div style="margin:7px 0;padding:8px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px">
+    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Related assignees for this task</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap">${rows}</div>
+  </div>`;
 }
 
 async function askNotificationFollowup(id){
