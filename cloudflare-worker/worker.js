@@ -84,8 +84,9 @@ async function createProofShortUrl(request, env, targetUrl) {
 }
 
 async function handleProofRedirect(request, env, code) {
-  if (!env.DPEG_DATA || !code) return new Response('Proof link not found', { status: 404, headers: CORS });
-  const record = await env.DPEG_DATA.get(`${PROOF_LINK_PREFIX}${code}`, 'json');
+  const cleanCode = String(code || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 12);
+  if (!env.DPEG_DATA || !cleanCode) return new Response('Proof link not found', { status: 404, headers: CORS });
+  const record = await env.DPEG_DATA.get(`${PROOF_LINK_PREFIX}${cleanCode}`, 'json');
   if (!record?.targetUrl) return new Response('Proof link expired or not found', { status: 404, headers: CORS });
   return Response.redirect(record.targetUrl, 302);
 }
@@ -727,7 +728,7 @@ export default {
       return new Response(null, { status: 204, headers: CORS });
     }
     const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
-    const proofMatch = path.match(/^\/p\/([A-Za-z0-9_-]+)$/);
+    const proofMatch = path.match(/^\/p\/([A-Za-z0-9_%-]+)/);
     if (proofMatch && request.method === 'GET') return handleProofRedirect(request, env, proofMatch[1]);
     if (path === '/data') return handleData(request, env);
     if (path === '/notify') return handleNotify(request, env);
