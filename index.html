@@ -3664,7 +3664,7 @@ async function addTask(){
   renderNtAssigneeChips();
   clearAddTaskPerson();
   refreshAll();
-  newTasks.forEach(t=>sendTaskNotification(t).catch(()=>{}));
+  await Promise.allSettled(newTasks.map(t=>sendTaskNotification(t)));
   await Promise.allSettled(newTasks.map(t=>createToDoTask(t)));
   toast(`${newTasks.length} task${newTasks.length>1?'s':''} saved${newTasks.some(t=>t.email)?' and assigned':''}`);
   await saveTasksToOneDrive();
@@ -6575,34 +6575,79 @@ async function createToDoTask(task){
   }
 }
 
+// Send a message via draft (POST /me/messages → send). Returns {messageId, conversationId}.
+// Requires Mail.ReadWrite scope (getDraftAccessToken).
+async function sendMailAndGetId(token, message){
+  const draftRes=await fetch('https://graph.microsoft.com/v1.0/me/messages',{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify(message),
+  });
+  if(!draftRes.ok)throw new Error(`Draft create failed (${draftRes.status})`);
+  const draft=await draftRes.json();
+  const sendRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}/send`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`},
+  });
+  if(!sendRes.ok)throw new Error(`Draft send failed (${sendRes.status})`);
+  return {messageId:draft.id,conversationId:draft.conversationId};
+}
+
+// Reply to the task's original notification email in the same thread.
+// Falls back to a new email if no stored messageId (old tasks).
+async function replyToTaskEmail(task, htmlContent, addr){
+  const address=String(addr||task.email||'').trim().toLowerCase();
+  if(!address.includes('@'))return;
+  const token=await getDraftAccessToken();
+  if(task.notifMessageId){
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${task.notifMessageId}/reply`,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({message:{toRecipients:[{emailAddress:{address}}],body:{contentType:'HTML',content:htmlContent}}}),
+    });
+    if(!res.ok)throw new Error(`Reply failed (${res.status})`);
+  }else{
+    // Old task without stored messageId — send standalone
+    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({message:{subject:`Re: Task Assigned: ${task.title||'(no subject)'}`,body:{contentType:'HTML',content:htmlContent},toRecipients:[{emailAddress:{address}}]},saveToSentItems:true}),
+    });
+  }
+}
+
 async function sendTaskNotification(task){
   if(!task.email)return;
   const addr=(task.email||'').trim().toLowerCase();
   if(!addr||!addr.includes('@'))return;
   if(!addr.includes('@dhananipeg.com')&&!addr.includes('@dpeg'))return;
   try{
-    const token=await getAccessToken();
+    const token=await getDraftAccessToken();
     const assignedBy=currentUser?.name||currentUser?.email||'DPEG Manager';
     const dueDate=task.deadline||((task.deadline===undefined)?task.date:'');
-    const sentDate=new Date().toISOString().split('T')[0];
     const summaryClean=(task.summary||'').replace(/[•*▾▲◆]/g,'').trim().slice(0,600);
     const attHtml=Array.isArray(task.attachmentNames)&&task.attachmentNames.length
       ?`<p><strong>Attachments:</strong> ${task.attachmentNames.map(n=>escapeHtml(n)).join(', ')}</p>`:'';
-    const htmlBody=`<div style="font-family:Arial,sans-serif;max-width:600px">
-      <h2 style="color:#0E3416">You have been assigned a task</h2>
-      <p><strong>Task:</strong> ${escapeHtml(task.title||'')}</p>
-      ${summaryClean?`<p><strong>Summary:</strong> ${escapeHtml(summaryClean)}</p>`:''}
-      <p><strong>Assigned by:</strong> ${escapeHtml(assignedBy)}</p>
-      <p><strong>Date:</strong> ${escapeHtml(sentDate)}</p>
-      ${dueDate?`<p><strong>Deadline:</strong> ${escapeHtml(dueDate)}</p>`:''}
-      <p><strong>Priority:</strong> ${escapeHtml(task.priority||'Normal')}</p>
-      ${attHtml}
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
-      <p style="color:#9ca3af;font-size:12px">DPEG Task Manager — automated notification</p>
+    const htmlBody=`<div style="font-family:Arial,sans-serif;max-width:600px;color:#111">
+      <div style="background:#0E3416;color:#fff;padding:14px 18px;border-radius:6px 6px 0 0">
+        <div style="font-size:15px;font-weight:700">You have been assigned a task</div>
+        <div style="font-size:12px;opacity:.8;margin-top:2px">DPEG Task Manager</div>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:16px 18px">
+        <p style="margin:0 0 10px"><strong>Task:</strong> ${escapeHtml(task.title||'')}</p>
+        ${summaryClean?`<p style="margin:0 0 10px"><strong>Summary:</strong> ${escapeHtml(summaryClean)}</p>`:''}
+        <p style="margin:0 0 6px"><strong>Assigned by:</strong> ${escapeHtml(assignedBy)}</p>
+        ${dueDate?`<p style="margin:0 0 6px"><strong>Deadline:</strong> ${escapeHtml(dueDate)}</p>`:''}
+        <p style="margin:0 0 6px"><strong>Priority:</strong> ${escapeHtml(task.priority||'Normal')}</p>
+        ${attHtml}
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0">
+        <p style="color:#9ca3af;font-size:11px;margin:0">All follow-ups and updates for this task will appear as replies to this email.</p>
+      </div>
     </div>`;
     const subject=`Task Assigned: ${task.title||'(no subject)'}`;
-    const message={subject,body:{contentType:'HTML',content:htmlBody},toRecipients:[{emailAddress:{address:addr}}]};
-    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
+    const msg={subject,body:{contentType:'HTML',content:htmlBody},toRecipients:[{emailAddress:{address:addr}}]};
+    const {messageId}=await sendMailAndGetId(token,msg);
+    task.notifMessageId=messageId;
   }catch(err){
     console.warn('Task notification failed:',err.message);
   }
@@ -6669,23 +6714,17 @@ async function sendTaskUpdateNotification(task,changes){
   if(!addr||!addr.includes('@'))return;
   if(!addr.includes('@dhananipeg.com')&&!addr.includes('@dpeg'))return;
   try{
-    const token=await getAccessToken();
     const updatedBy=currentUser?.name||currentUser?.email||'DPEG Manager';
     const changesHtml=changes.map(c=>`<li style="margin-bottom:4px;font-size:13px">${escapeHtml(c)}</li>`).join('');
-    const htmlBody=`<div style="font-family:Arial,sans-serif;max-width:600px">
-      <h2 style="color:#0E3416;margin-bottom:4px">Task Updated</h2>
-      <p style="color:#6b7280;font-size:13px;margin-bottom:12px">A task assigned to you has been updated.</p>
-      <p><strong>Task:</strong> ${escapeHtml(task.title||'')}</p>
-      <p><strong>Updated by:</strong> ${escapeHtml(updatedBy)}</p>
-      <p style="margin-bottom:6px"><strong>Changes:</strong></p>
-      <ul style="margin:0 0 12px;padding-left:20px">${changesHtml}</ul>
-      ${task.followup?`<p><strong>Note from manager:</strong> ${escapeHtml(task.followup)}</p>`:''}
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
-      <p style="color:#9ca3af;font-size:12px">DPEG Task Manager — automated notification</p>
+    const htmlBody=`<div style="font-family:Arial,sans-serif;max-width:600px;color:#111">
+      <div style="background:#1e40af;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Task Update — ${escapeHtml(task.title||'')}</div>
+      <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:14px 16px">
+        <p style="margin:0 0 8px"><strong>Updated by:</strong> ${escapeHtml(updatedBy)}</p>
+        ${changesHtml?`<p style="margin:0 0 4px"><strong>Changes:</strong></p><ul style="margin:0 0 10px;padding-left:20px">${changesHtml}</ul>`:''}
+        ${task.followup?`<div style="background:#f0fdf4;border-left:3px solid #16a34a;padding:8px 12px;margin-top:8px"><strong>Note from manager:</strong><br>${escapeHtml(task.followup)}</div>`:''}
+      </div>
     </div>`;
-    const subject=`Task Updated: ${task.title||'(no subject)'}`;
-    const message={subject,body:{contentType:'HTML',content:htmlBody},toRecipients:[{emailAddress:{address:addr}}]};
-    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
+    await replyToTaskEmail(task,htmlBody,addr);
   }catch(err){
     console.warn('Task update notification failed:',err.message);
   }
@@ -7073,23 +7112,18 @@ async function sendProofFollowupEmail(recipientEmail,task,question){
   const addr=String(recipientEmail||task?.email||'').trim();
   if(!addr||!addr.includes('@'))return;
   try{
-    const token=await getAccessToken();
     const link=buildProofSubmitLinkForTask(task,{recipientEmail:addr,taskTitle:task?.title||'Assigned task'});
     const sender=currentUser?.name||currentUser?.email||'DPEG Task Manager';
-    const subject=`Follow-up question: ${task?.title||'Assigned task'}`;
     const html=`<div style="font-family:Arial,sans-serif;max-width:620px;color:#111">
-      <h2 style="color:#0E3416;margin-bottom:8px">Follow-up question</h2>
-      <p><strong>Task:</strong> ${escapeHtml(task?.title||'Assigned task')}</p>
-      <p><strong>Asked by:</strong> ${escapeHtml(sender)}</p>
-      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;margin:12px 0">
-        <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:4px">Question</div>
-        <div style="font-size:14px;line-height:1.5;color:#111">${escapeHtml(question).replace(/\n/g,'<br>')}</div>
+      <div style="background:#d97706;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Follow-up Question — ${escapeHtml(task?.title||'Assigned task')}</div>
+      <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:14px 16px">
+        <p style="margin:0 0 8px"><strong>Asked by:</strong> ${escapeHtml(sender)}</p>
+        <div style="background:#fffbeb;border-left:3px solid #d97706;padding:10px 12px;margin:10px 0;font-size:14px;line-height:1.5">${escapeHtml(question).replace(/\n/g,'<br>')}</div>
+        <p style="margin:10px 0 4px"><a href="${escapeHtml(link)}" style="display:inline-block;padding:8px 16px;background:#0E3416;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;font-weight:600">Open proof form to reply →</a></p>
+        <p style="color:#9ca3af;font-size:11px;margin:8px 0 0">You can also reply via the link in your Microsoft To Do task.</p>
       </div>
-      <p><a href="${escapeHtml(link)}" style="color:#0E3416;font-weight:700">Open proof form to reply</a></p>
-      <p style="color:#6b7280;font-size:12px">You can also open the proof link from your Microsoft To Do task.</p>
     </div>`;
-    const message={subject,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:addr}}]};
-    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
+    await replyToTaskEmail(task,html,addr);
   }catch(err){
     console.warn('Follow-up email failed:',err.message);
   }
@@ -7163,24 +7197,25 @@ async function approveProof(notifId,taskId){
   }catch(err){toast('Could not approve: '+err.message);}
 }
 
-async function sendProofDeclineEmail(recipientEmail,taskTitle,reason,senderName){
+async function sendProofDeclineEmail(recipientEmail,taskTitle,reason,senderName,task){
+  const addr=String(recipientEmail||'').trim();
+  if(!addr||!addr.includes('@'))return;
   try{
-    const token=await getAccessToken();
-    const subject=`Proof declined: ${taskTitle||'Task'}`;
     const html=`<div style="font-family:Arial,sans-serif;max-width:600px;color:#111">
-      <h2 style="color:#b91c1c;margin-bottom:8px">Proof Declined</h2>
-      <p><strong>Task:</strong> ${escapeHtml(taskTitle||'Task')}</p>
-      <p><strong>Declined by:</strong> ${escapeHtml(senderName||'The assignor')}</p>
-      <p><strong>Reason:</strong> ${escapeHtml(reason||'No reason provided')}</p>
-      <p>Please review the feedback, upload updated proof, and resubmit using the link in your To Do task.</p>
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
-      <p style="color:#9ca3af;font-size:12px">DPEG Task Manager</p>
+      <div style="background:#b91c1c;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Proof Declined — Resubmission Required</div>
+      <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:14px 16px">
+        <p style="margin:0 0 8px"><strong>Task:</strong> ${escapeHtml(taskTitle||'Task')}</p>
+        <p style="margin:0 0 8px"><strong>Declined by:</strong> ${escapeHtml(senderName||'The assignor')}</p>
+        <div style="background:#fff1f2;border-left:3px solid #b91c1c;padding:10px 12px;margin:10px 0;font-size:14px;line-height:1.5"><strong>Reason:</strong> ${escapeHtml(reason||'No reason provided')}</div>
+        <p style="margin:10px 0 0">Please review the feedback above and resubmit your proof using the link in your Microsoft To Do task.</p>
+      </div>
     </div>`;
-    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
-      method:'POST',
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({message:{subject,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:recipientEmail}}]},saveToSentItems:false}),
-    });
+    if(task){
+      await replyToTaskEmail(task,html,addr);
+    }else{
+      const token=await getDraftAccessToken();
+      await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:{subject:`Proof declined: ${taskTitle||'Task'}`,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:addr}}]},saveToSentItems:true})});
+    }
   }catch(err){console.warn('Proof decline email failed:',err.message);}
 }
 
@@ -7201,7 +7236,7 @@ async function dismissProof(notifId,taskId){
     delete t._proofNotif;
     closeMo('mo-detail');refreshAll();
     await saveTasksToOneDrive();
-    await sendProofDeclineEmail(n.recipientEmail||'',t.title||'',reason,currentUser?.name||'');
+    await sendProofDeclineEmail(n.recipientEmail||'',t.title||'',reason,currentUser?.name||'',t);
     toast('Proof declined — email sent to recipient');
   }catch(err){toast('Could not decline: '+err.message);}
 }
