@@ -1517,12 +1517,11 @@ async function renderProofFollowupBox(params){
       <button class="btn btn-primary btn-sm" id="proof-followup-btn" onclick="submitProofFollowupAnswer('${escapeHtml(n.id)}')" style="background:#92400e;border-color:#92400e">Send Reply</button>
       <span id="proof-followup-status" style="font-size:12px;color:#6b7280"></span>
     </div>`
-    :`<div style="margin-top:8px;font-size:12px;color:#166534;font-weight:600;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px">✓ Reply sent — if you have additional files to share, use the form below.</div>`}
+    :`<div style="margin-top:8px;font-size:12px;color:#166534;font-weight:600;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px">✓ Reply sent — waiting for the manager to review.</div>`}
   </div>`;
 
-  // State 3 (unanswered question): hide submit form so focus is on the reply
-  // State 4 (already answered): show submit form so recipient can submit additional proof
-  if(formArea)formArea.style.display=needsAnswer?'none':'';
+  // Always hide the original submit form once a follow-up thread is active
+  if(formArea)formArea.style.display='none';
 
   if(needsAnswer){
     pendingFollowupFiles=[];
