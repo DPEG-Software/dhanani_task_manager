@@ -7323,7 +7323,7 @@ function updateNotifBadge(){
 
 function markNotifSeen(id){
   const n=notifications.find(x=>x.id===id);
-  if(n&&!n.seen){n.seen=true;saveNotifications().catch(()=>{});renderNotifications();}
+  if(n&&n.seen===false){n.seen=true;saveNotifications().catch(()=>{});renderNotifications();}
 }
 
 async function approveNotification(id){
@@ -7439,8 +7439,8 @@ function renderNotifications(){
       ?`<svg width="16" height="16" fill="none" stroke="#15803d" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
       :`<svg width="16" height="16" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     const proofHtml=renderNotificationProofs(n);
-    const newTag=!n.seen?`<span style="display:inline-flex;align-items:center;padding:1px 6px;background:#dcfce7;border:1px solid #86efac;border-radius:10px;font-size:9px;font-weight:800;color:#166534;letter-spacing:.4px;margin-left:5px;vertical-align:middle">NEW</span>`:'';
-    return`<div class="card" style="padding:12px 14px${!n.seen?';border-left:3px solid #86efac':''}">
+    const newTag=n.seen===false?`<span style="display:inline-flex;align-items:center;padding:1px 6px;background:#dcfce7;border:1px solid #86efac;border-radius:10px;font-size:9px;font-weight:800;color:#166534;letter-spacing:.4px;margin-left:5px;vertical-align:middle">NEW</span>`:'';
+    return`<div class="card" style="padding:12px 14px${n.seen===false?';border-left:3px solid #86efac':''}">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <div style="flex-shrink:0;margin-top:1px">${icon}</div>
         <div style="flex:1;min-width:0">
