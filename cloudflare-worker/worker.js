@@ -120,13 +120,19 @@ function parseProofBlock(text) {
   const start = raw.indexOf(PROOF_START);
   const end = raw.indexOf(PROOF_END);
   if (start < 0 || end < 0 || end <= start) return { proofs: [], base: raw.trim() };
-  const before = raw.slice(0, start).trim();
-  const after = raw.slice(end + PROOF_END.length).trim();
+  // Strip any surrounding HTML tag that wraps the proof markers
+  const before = raw.slice(0, start).replace(/<[^>]*>\s*$/, '').trim();
+  const after = raw.slice(end + PROOF_END.length).replace(/^\s*<\/[^>]*>/, '').trim();
   return { proofs: parseProofs(raw), base: [before, after].filter(Boolean).join('\n\n') };
 }
 
 function buildProofBlock(base, proofs) {
   return `${String(base || '').trim()}\n\n${PROOF_START}\n${JSON.stringify({ proofs }, null, 2)}\n${PROOF_END}`.trim();
+}
+
+function buildHtmlProofBlock(base, proofs) {
+  const json = JSON.stringify({ proofs }, null, 2);
+  return `${String(base || '').trim()}\n<p style="display:none;font-size:0;color:transparent">${PROOF_START}${json}${PROOF_END}</p>`;
 }
 
 function decodeToken(token) {
@@ -262,14 +268,17 @@ async function handleTodo(request, env) {
     const link = await createProofShortUrl(request, env, longLink);
     const safeLink = link.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     const htmlBody = [
-      `<p><b>Assigned by:</b> ${esc(assignerLabel)}${assignedByEmail ? ` &lt;${esc(assignedByEmail)}&gt;` : ''}</p>`,
-      appTaskId ? `<p>DPEG Task ID: ${esc(appTaskId)}</p>` : '',
+      `<p><b>Assigned by:</b> ${esc(assignerLabel)}${assignedByEmail ? ` (${esc(assignedByEmail)})` : ''}</p>`,
+      appTaskId ? `<p style="color:#6b7280;font-size:12px">Task ID: ${esc(appTaskId)}</p>` : '',
+      `<hr style="border:none;border-top:1px solid #e5e7eb;margin:8px 0">`,
       `<p>${esc(cleanSummary).replace(/\n/g, '<br>')}</p>`,
-      `<p><b>Proof Submission:</b> <a href="${safeLink}">Open proof form</a></p>`,
-      `<p style="font-size:12px;color:#666">If the button is not clickable, open this short link:<br>${esc(link)}</p>`,
-    ].filter(Boolean).join('');
+      `<hr style="border:none;border-top:1px solid #e5e7eb;margin:8px 0">`,
+      `<p><b>Proof Submission</b><br>`,
+      `<a href="${safeLink}" style="display:inline-block;margin-top:4px;padding:6px 14px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:4px;font-size:13px">Submit Proof</a></p>`,
+      `<p style="font-size:11px;color:#9ca3af;margin-top:4px">Link not working? Copy and paste: ${esc(link)}</p>`,
+    ].filter(Boolean).join('\n');
     const patchedBody = {
-      content: `${htmlBody}\n${PROOF_START}\n${JSON.stringify({ proofs: [] })}\n${PROOF_END}`,
+      content: buildHtmlProofBlock(htmlBody, []),
       contentType: 'html',
     };
     await fetch(
@@ -684,12 +693,12 @@ async function handleTodoUpdate(request, env) {
     existingProofs = parsed.proofs;
   }
 
-  const extras = [
-    changes && changes.length ? `Updated: ${changes.join(' | ')}` : '',
-    followupNote ? `Follow-up note from manager: ${followupNote}` : '',
+  const extrasHtml = [
+    changes && changes.length ? `<p><b>Updated:</b> ${esc(changes.join(' | '))}</p>` : '',
+    followupNote ? `<hr style="border:none;border-top:1px solid #e5e7eb;margin:8px 0"><p><b>Follow-up note from manager:</b><br>${esc(followupNote).replace(/\n/g, '<br>')}</p>` : '',
   ].filter(Boolean).join('\n');
-  const newBase = [parsedBase, extras].filter(Boolean).join('\n\n');
-  const newContent = buildProofBlock(newBase, existingProofs);
+  const newBase = [parsedBase, extrasHtml].filter(Boolean).join('\n');
+  const newContent = buildHtmlProofBlock(newBase, existingProofs);
 
   const due = graphDueDate(date);
   const patch = {
@@ -697,6 +706,7 @@ async function handleTodoUpdate(request, env) {
     importance: String(priority || '').toLowerCase() === 'high' ? 'high' : 'normal',
   };
   if (due) patch.dueDateTime = due;
+  if (followupNote) patch.status = 'notStarted';
 
   const patchRes = await fetch(todoTaskUrl(recipient, todoListId, todoTaskId), {
     method: 'PATCH',

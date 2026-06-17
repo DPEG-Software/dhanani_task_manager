@@ -1508,9 +1508,8 @@ function renderProofFollowupFileList(fileList){
 async function uploadProofFiles(){
   const params=proofRouteParams();
   const statusEl=document.getElementById('proof-status');
-  const fileInput=document.getElementById('proof-files');
   const note=document.getElementById('proof-note')?.value.trim()||'';
-  const files=Array.from(fileInput?.files||[]);
+  const files=[...pendingProofFiles];
   const btn=document.getElementById('proof-upload-btn');
   if(!files.length&&!note){statusEl.textContent='Please add a file or write a note.';return;}
   btn.disabled=true;
@@ -1542,10 +1541,10 @@ async function uploadProofFiles(){
     await saveProofNotificationToKV(params,uploaded,note);
     if(progressWrap)progressWrap.style.display='none';
     statusEl.innerHTML=`<span style="color:#166534;font-weight:600">✓ Proof submitted! The assignor will review it in DPEG Task Manager.</span>`;
-    fileInput.value='';
+    pendingProofFiles=[];
+    renderPendingProofFileList();
     const noteEl=document.getElementById('proof-note');
     if(noteEl)noteEl.value='';
-    document.getElementById('proof-file-list').innerHTML='';
   }catch(err){
     if(progressWrap)progressWrap.style.display='none';
     statusEl.innerHTML=`<span style="color:#b91c1c">${escapeHtml(err.message||'Upload failed. Please try again.')}</span>`;
@@ -1573,7 +1572,8 @@ async function showProofUploadMode(){
         <div style="font-size:12px;color:#374151;margin-bottom:12px">Signed in as <strong>${escapeHtml(currentUser?.email||'')}</strong></div>
         ${instrHtml}
         <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Attach files <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional if a note is written below)</span></label>
-        <input id="proof-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" style="display:block;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fff;margin-bottom:8px">
+        <input id="proof-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" style="display:none">
+        <button type="button" onclick="document.getElementById('proof-files').click()" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1px dashed #d1d5db;border-radius:6px;background:#f9fafb;color:#374151;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px">+ Add files</button>
         <div id="proof-file-list" style="margin-bottom:10px;font-size:11px;color:#374151"></div>
         <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Note / message <span style="font-weight:500;text-transform:none;letter-spacing:0">(required if no file)</span></label>
         <textarea id="proof-note" placeholder="Describe the completed work or confirm verbally..." style="width:100%;min-height:72px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:12px;box-sizing:border-box"></textarea>
@@ -1590,11 +1590,14 @@ async function showProofUploadMode(){
     </div>
   </div>`;
   document.body.appendChild(screen);
+  pendingProofFiles=[];
   document.getElementById('proof-files')?.addEventListener('change',function(){
-    const list=document.getElementById('proof-file-list');
-    if(!list)return;
-    const files=Array.from(this.files||[]);
-    list.innerHTML=files.map(f=>`<div style="padding:1px 0">📄 ${escapeHtml(f.name)} <span style="color:#9ca3af">(${formatFileSize(f.size)})</span></div>`).join('');
+    const newFiles=Array.from(this.files||[]);
+    newFiles.forEach(f=>{
+      if(!pendingProofFiles.some(p=>p.name===f.name&&p.size===f.size))pendingProofFiles.push(f);
+    });
+    this.value='';
+    renderPendingProofFileList();
   });
   // Check for existing proof result
   if(params.appTaskId){
@@ -6868,6 +6871,18 @@ async function addCalendarEventToTasks(eventId){
 let notifications=[];
 let processedEmailIds=new Set(JSON.parse(localStorage.getItem('dpeg_processed_done_emails')||'[]'));
 let _notifPollTimer=null;
+let pendingProofFiles=[];
+
+function renderPendingProofFileList(){
+  const list=document.getElementById('proof-file-list');
+  if(!list)return;
+  if(!pendingProofFiles.length){list.innerHTML='';return;}
+  list.innerHTML=pendingProofFiles.map((f,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid #f3f4f6">
+    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ${escapeHtml(f.name)}</span>
+    <span style="color:#9ca3af;flex-shrink:0">${formatFileSize(f.size)}</span>
+    <button type="button" onclick="pendingProofFiles.splice(${i},1);renderPendingProofFileList()" style="border:none;background:none;color:#dc2626;font-size:14px;font-weight:700;cursor:pointer;padding:0 4px;line-height:1" title="Remove">&#10005;</button>
+  </div>`).join('');
+}
 
 // ── Proof notification system ─────────────────────────────────────────────────
 async function checkAndLoadProofNotifications(){
@@ -6885,37 +6900,54 @@ async function checkAndLoadProofNotifications(){
   let newAdded=0;
   let existingUpdated=0;
 
+  // Deduplicate by appTaskId — only the latest proof_submitted per task matters
+  const latestByTask=new Map();
   kvNotifs.filter(n=>n.type==='proof_submitted'&&n.status==='pending'&&n.senderEmail?.toLowerCase()===myEmail)
     .forEach(pn=>{
-      const task=tasks.find(t=>String(t.id)===String(pn.appTaskId));
-      if(!task)return;
-      task._proofNotif=pn;
-      const existingLocal=notifications.find(n=>n.kvNotifId===pn.id);
-      const localData={
-        type:'proof_submitted',
-        message:`${pn.recipientName||pn.recipientEmail||'Someone'} submitted proof for "${pn.taskTitle||'a task'}"`,
-        taskId:task.id,
-        proofs:Array.isArray(pn.proofs)?pn.proofs:[],
-        note:pn.note||'',
-        thread:Array.isArray(pn.thread)?pn.thread:[],
-        followupStatus:pn.followupStatus||'',
-        timestamp:pn.updatedAt||pn.submittedAt||new Date().toISOString(),
-        status:'pending',
-        recipientEmail:pn.recipientEmail||'',
-        assignmentGroupId:task.assignmentGroupId||'',
-      };
-      if(existingLocal){
-        Object.assign(existingLocal,localData);
-        existingUpdated++;
-      }else if(!existingKvIds.has(pn.id)){
-        notifications.unshift({
-          id:Date.now()+Math.random(),
-          kvNotifId:pn.id,
-          ...localData,
-        });
-        newAdded++;
-      }
+      const key=String(pn.appTaskId);
+      const existing=latestByTask.get(key);
+      const pnTime=new Date(pn.updatedAt||pn.submittedAt||0).getTime();
+      const exTime=existing?new Date(existing.updatedAt||existing.submittedAt||0).getTime():0;
+      if(!existing||pnTime>=exTime)latestByTask.set(key,pn);
     });
+
+  latestByTask.forEach((pn,taskKey)=>{
+    const task=tasks.find(t=>String(t.id)===taskKey);
+    if(!task)return;
+    task._proofNotif=pn;
+    const localData={
+      type:'proof_submitted',
+      message:`${pn.recipientName||pn.recipientEmail||'Someone'} submitted proof for "${pn.taskTitle||'a task'}"`,
+      taskId:task.id,
+      proofs:Array.isArray(pn.proofs)?pn.proofs:[],
+      note:pn.note||'',
+      thread:Array.isArray(pn.thread)?pn.thread:[],
+      followupStatus:pn.followupStatus||'',
+      timestamp:pn.updatedAt||pn.submittedAt||new Date().toISOString(),
+      status:'pending',
+      recipientEmail:pn.recipientEmail||'',
+      assignmentGroupId:task.assignmentGroupId||'',
+    };
+    // Remove any stale local notifications for this same task before adding/updating
+    const staleIndices=notifications.reduce((acc,n,i)=>{
+      if(n.type==='proof_submitted'&&String(n.taskId)===taskKey&&n.kvNotifId!==pn.id)acc.push(i);
+      return acc;
+    },[]);
+    for(let i=staleIndices.length-1;i>=0;i--)notifications.splice(staleIndices[i],1);
+
+    const existingLocal=notifications.find(n=>n.kvNotifId===pn.id);
+    if(existingLocal){
+      Object.assign(existingLocal,localData);
+      existingUpdated++;
+    }else{
+      notifications.unshift({
+        id:Date.now()+Math.random(),
+        kvNotifId:pn.id,
+        ...localData,
+      });
+      newAdded++;
+    }
+  });
 
   if(newAdded>0||existingUpdated>0){
     updateNotifBadge();
@@ -7341,7 +7373,7 @@ function renderNotificationProofs(n){
       <span style="color:#9ca3af;flex-shrink:0">${p.size?escapeHtml(formatFileSize(p.size)):''}</span>
       ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700;flex-shrink:0">Open</a>`:''}
     </div>`).join('')}
-  </div>`:'<div style="margin:6px 0;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:6px 8px">No proof files were attached.</div>';
+  </div>`:(note?'':`<div style="margin:6px 0;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:6px 8px">No proof files were attached.</div>`);
   const threadHtml=renderProofThread(n);
   return relatedHtml+noteHtml+threadHtml+filesHtml;
 }
