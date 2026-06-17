@@ -271,22 +271,18 @@ async function handleTodo(request, env) {
   if (taskData.id) {
     const longLink = proofSubmitUrl(body, defaultList.id, taskData.id);
     const link = await createProofShortUrl(request, env, longLink);
-    const bodyLines = [
-      `Assigned by: ${assignerLabel}${assignedByEmail ? ` (${assignedByEmail})` : ''}`,
-      appTaskId ? `Task ID: ${appTaskId}` : '',
-      '',
-      cleanSummary,
-      '',
-      '── Proof Submission ──',
-      `Submit your proof here:`,
-      link,
-    ].filter(s => s !== undefined && s !== null);
+    const bodyHtml = [
+      `<p><b>Assigned by:</b> ${esc(assignerLabel)}${assignedByEmail ? ` (${esc(assignedByEmail)})` : ''}</p>`,
+      appTaskId ? `<p><b>Task ID:</b> ${esc(appTaskId)}</p>` : '',
+      cleanSummary ? `<p>${esc(cleanSummary).replace(/\n/g, '<br>')}</p>` : '',
+      `<p><b>Proof Submission</b><br><a href="${esc(link)}">Submit Proof</a></p>`,
+    ].filter(Boolean).join('\n');
     await fetch(
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists/${defaultList.id}/tasks/${taskData.id}`,
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: { content: bodyLines.join('\n'), contentType: 'text' } }),
+        body: JSON.stringify({ body: { content: bodyHtml, contentType: 'html' } }),
       }
     ).catch(() => {});
   }
@@ -682,29 +678,34 @@ async function handleTodoUpdate(request, env) {
   try { appToken = await getAppToken(env); }
   catch (err) { return json({ error: 'Could not acquire app token', detail: err.message }, 502); }
 
-  // Fetch existing body and convert to clean plain text (strip HTML + proof markers)
+  // Fetch existing body — preserve HTML if already HTML, convert text to HTML if needed
   const taskRes = await fetch(
     `${todoTaskUrl(recipient, todoListId, todoTaskId)}?$select=id,body`,
     { headers: { Authorization: `Bearer ${appToken}` } }
   );
-  let baseText = '';
+  let baseHtml = '';
   if (taskRes.ok) {
     const td = await taskRes.json().catch(() => ({}));
-    const raw = td.body?.content || '';
-    // Strip proof markers first, then convert HTML to plain text
-    const { base } = parseProofBlock(raw);
-    baseText = td.body?.contentType === 'html' ? stripHtml(base) : base.trim();
+    const { base } = parseProofBlock(td.body?.content || '');
+    if ((td.body?.contentType || 'text') === 'html') {
+      baseHtml = base;
+    } else {
+      // Convert plain text to minimal HTML so appended updates stay structured
+      baseHtml = base ? '<p>' + esc(base).replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>') + '</p>' : '';
+    }
   }
 
-  const extras = [
-    changes && changes.length ? `Updated: ${changes.join(' | ')}` : '',
-    followupNote ? `Follow-up note from manager:\n${followupNote}` : '',
-  ].filter(Boolean).join('\n\n');
-  const newContent = [baseText, extras].filter(Boolean).join('\n\n');
+  // Filter out "Note: ..." entries from changes when followupNote is sent separately
+  const significantChanges = (changes || []).filter(c => !followupNote || !String(c).startsWith('Note: '));
+  const extrasHtml = [
+    significantChanges.length ? `<p><b>Updated:</b> ${esc(significantChanges.join(' | '))}</p>` : '',
+    followupNote ? `<p><b>Follow-up note from manager:</b><br>${esc(followupNote).replace(/\n/g, '<br>')}</p>` : '',
+  ].filter(Boolean).join('\n');
+  const newContent = [baseHtml, extrasHtml].filter(Boolean).join('\n');
 
   const due = graphDueDate(date);
   const patch = {
-    body: { content: newContent, contentType: 'text' },
+    body: { content: newContent, contentType: 'html' },
     importance: String(priority || '').toLowerCase() === 'high' ? 'high' : 'normal',
   };
   if (due) patch.dueDateTime = due;

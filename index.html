@@ -1478,10 +1478,30 @@ async function renderProofFollowupBox(params){
   const host=document.getElementById('proof-followup-area');
   if(!host||!params.appTaskId)return;
   const n=await checkProofFollowup(params);
-  if(!n){host.innerHTML='';return;}
+  const formArea=document.getElementById('proof-form-area');
+
+  if(!n){
+    // State 1: no proof submitted yet — show submit form normally
+    host.innerHTML='';
+    if(formArea)formArea.style.display='';
+    return;
+  }
+
+  if(!n.followupStatus){
+    // State 2: proof submitted, manager has not asked any question yet
+    host.innerHTML='';
+    if(formArea)formArea.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:14px 16px;margin-bottom:4px">
+      <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:3px">✓ Proof submitted — under review</div>
+      <div style="font-size:12px;color:#166534">The assignor will review your submission. You will be notified if they have any questions.</div>
+    </div>`;
+    return;
+  }
+
+  // State 3/4: there is an active follow-up thread
   const thread=Array.isArray(n.thread)?n.thread:[];
   const last=thread[thread.length-1];
   const needsAnswer=last?.by==='assignor';
+
   host.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:14px">
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#92400e;margin-bottom:8px">Follow-up from manager</div>
     ${renderProofThread(n)}
@@ -1497,12 +1517,13 @@ async function renderProofFollowupBox(params){
       <button class="btn btn-primary btn-sm" id="proof-followup-btn" onclick="submitProofFollowupAnswer('${escapeHtml(n.id)}')" style="background:#92400e;border-color:#92400e">Send Reply</button>
       <span id="proof-followup-status" style="font-size:12px;color:#6b7280"></span>
     </div>`
-    :`<div style="margin-top:8px;font-size:12px;color:#166534;font-weight:600;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px">✓ Your reply was sent — waiting for manager to review.</div>`}
+    :`<div style="margin-top:8px;font-size:12px;color:#166534;font-weight:600;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px">✓ Reply sent — if you have additional files to share, use the form below.</div>`}
   </div>`;
-  // Always hide the original proof form when any follow-up is active
-  const formArea=document.getElementById('proof-form-area');
-  if(formArea)formArea.style.display='none';
-  // Wire up accumulate pattern for follow-up file input
+
+  // State 3 (unanswered question): hide submit form so focus is on the reply
+  // State 4 (already answered): show submit form so recipient can submit additional proof
+  if(formArea)formArea.style.display=needsAnswer?'none':'';
+
   if(needsAnswer){
     pendingFollowupFiles=[];
     document.getElementById('proof-followup-files')?.addEventListener('change',function(){
