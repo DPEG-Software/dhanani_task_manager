@@ -2029,7 +2029,7 @@ function emailLinkButton(t,label="Open Full Email"){
 }
 function formatSummaryHTML(summary){
   if(!summary)return '<span class="sum-empty">No summary available.</span>';
-  const lines=summary.split('\n').map(l=>l.trim()).filter(l=>l.length>0).slice(0,4);
+  const lines=summary.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
   const rows=lines.map(line=>{
     const inner=line.replace(/^(?:•|â€¢)\s*/,'').trim();
     const ci=inner.indexOf(':');
