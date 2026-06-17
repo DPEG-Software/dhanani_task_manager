@@ -1484,20 +1484,26 @@ async function renderProofFollowupBox(params){
   const thread=Array.isArray(n.thread)?n.thread:[];
   const last=thread[thread.length-1];
   const needsAnswer=last?.by==='assignor';
-  host.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:7px;padding:12px 14px;margin-bottom:14px">
-    <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#92400e;margin-bottom:8px">Follow-up requested by manager</div>
+  host.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:14px">
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#92400e;margin-bottom:8px">Follow-up from manager</div>
     ${renderProofThread(n)}
-    ${needsAnswer?`<label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin:8px 0 6px">Your reply</label>
-      <textarea id="proof-followup-answer" placeholder="Reply with the number, quantity, or clarification..." style="width:100%;min-height:64px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:8px;box-sizing:border-box"></textarea>
-      <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin:2px 0 6px">Attach picture/file <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional)</span></label>
-      <input id="proof-followup-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onchange="renderProofFollowupFileList(this.files)" style="display:block;width:100%;border:1px solid #d1d5db;border-radius:6px;padding:9px;background:#fff;margin-bottom:6px;box-sizing:border-box">
-      <div id="proof-followup-file-list" style="margin-bottom:8px;font-size:11px;color:#374151"></div>
-      <div style="display:flex;gap:8px;align-items:center"><button class="btn btn-primary btn-sm" id="proof-followup-btn" onclick="submitProofFollowupAnswer('${escapeHtml(n.id)}')">Send Reply</button><span id="proof-followup-status" style="font-size:12px;color:#6b7280"></span></div>`
-      :`<div style="font-size:12px;color:#166534;font-weight:600">Your reply was sent. Waiting for review.</div>`}
+    ${needsAnswer?`<div style="border:1px solid #fcd34d;border-radius:7px;overflow:hidden;margin-top:10px;background:#fff">
+      <textarea id="proof-followup-answer" placeholder="Type your reply here..." style="display:block;width:100%;min-height:72px;border:none;padding:11px 13px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;box-sizing:border-box;outline:none;color:#111;line-height:1.5;background:#fff"></textarea>
+      <div style="border-top:1px solid #fde68a;padding:7px 10px;display:flex;align-items:center;gap:8px;background:#fefce8;flex-wrap:wrap">
+        <input id="proof-followup-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onchange="renderProofFollowupFileList(this.files)" style="display:none">
+        <button type="button" onclick="document.getElementById('proof-followup-files').click()" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px solid #fcd34d;border-radius:5px;background:#fff;color:#92400e;font-size:11.5px;font-weight:600;cursor:pointer">📎 Attach files</button>
+        <div id="proof-followup-file-list" style="flex:1;font-size:11px;color:#374151;min-width:0"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+      <button class="btn btn-primary btn-sm" id="proof-followup-btn" onclick="submitProofFollowupAnswer('${escapeHtml(n.id)}')" style="background:#92400e;border-color:#92400e">Send Reply</button>
+      <span id="proof-followup-status" style="font-size:12px;color:#6b7280"></span>
+    </div>`
+    :`<div style="margin-top:8px;font-size:12px;color:#166534;font-weight:600;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px">✓ Your reply was sent — waiting for manager to review.</div>`}
   </div>`;
-  // Hide the original proof submission form while a follow-up reply is needed
+  // Always hide the original proof form when any follow-up is active
   const formArea=document.getElementById('proof-form-area');
-  if(formArea)formArea.style.display=needsAnswer?'none':'';
+  if(formArea)formArea.style.display='none';
   scrollProofThreadsToBottom(host);
 }
 
@@ -1505,7 +1511,9 @@ function renderProofFollowupFileList(fileList){
   const list=document.getElementById('proof-followup-file-list');
   if(!list)return;
   const files=Array.from(fileList||[]);
-  list.innerHTML=files.map(f=>`<div style="padding:1px 0">File: ${escapeHtml(f.name)} <span style="color:#9ca3af">(${formatFileSize(f.size)})</span></div>`).join('');
+  list.innerHTML=files.map(f=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#fef9c3;border:1px solid #fcd34d;border-radius:4px;padding:2px 6px;font-size:10.5px;color:#92400e;white-space:nowrap;max-width:160px">
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.name)}</span>
+  </span>`).join(' ');
 }
 
 async function uploadProofFiles(){
@@ -1561,34 +1569,36 @@ async function showProofUploadMode(){
   const params=proofRouteParams();
   const screen=document.createElement('div');
   screen.id='proof-upload-screen';
-  screen.style.cssText='position:fixed;inset:0;z-index:99999;min-height:100vh;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,sans-serif;box-sizing:border-box;overflow:auto';
-  const instrHtml=params.proofInstructions?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#166534;line-height:1.5"><strong>Instructions:</strong> ${escapeHtml(params.proofInstructions)}</div>`:'';
-  screen.innerHTML=`<div style="width:min(620px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 12px 32px rgba(15,23,42,.08);overflow:hidden">
-    <div style="padding:18px 20px;border-bottom:1px solid #e5e7eb;background:#0E3416;color:#fff">
-      <div style="font-size:18px;font-weight:800;margin-bottom:3px">Submit Completion Proof</div>
-      <div style="font-size:12px;opacity:.82">${escapeHtml(params.title||'Assigned task')}</div>
+  screen.style.cssText='position:fixed;inset:0;z-index:99999;min-height:100vh;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Inter,sans-serif;box-sizing:border-box;overflow:auto';
+  const instrHtml=params.proofInstructions?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#166534;line-height:1.5"><strong>Instructions:</strong> ${escapeHtml(params.proofInstructions)}</div>`:'';
+  screen.innerHTML=`<div style="width:min(540px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.09);overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;background:#0E3416;color:#fff">
+      <div style="font-size:15px;font-weight:800;margin-bottom:2px">Submit Completion Proof</div>
+      <div style="font-size:11.5px;opacity:.8">${escapeHtml(params.title||'Assigned task')}</div>
     </div>
-    <div style="padding:20px">
+    <div style="padding:18px 20px">
       <div id="proof-result-area"></div>
       <div id="proof-followup-area"></div>
       <div id="proof-form-area">
-        <div style="font-size:12px;color:#374151;margin-bottom:12px">Signed in as <strong>${escapeHtml(currentUser?.email||'')}</strong></div>
+        <div style="font-size:11.5px;color:#6b7280;margin-bottom:12px">Signed in as <strong style="color:#374151">${escapeHtml(currentUser?.email||'')}</strong></div>
         ${instrHtml}
-        <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Attach files <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional if a note is written below)</span></label>
-        <input id="proof-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" style="display:none">
-        <button type="button" onclick="document.getElementById('proof-files').click()" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border:1px dashed #d1d5db;border-radius:6px;background:#f9fafb;color:#374151;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px">+ Add files</button>
-        <div id="proof-file-list" style="margin-bottom:10px;font-size:11px;color:#374151"></div>
-        <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#6b7280;margin-bottom:6px">Note / message <span style="font-weight:500;text-transform:none;letter-spacing:0">(required if no file)</span></label>
-        <textarea id="proof-note" placeholder="Describe the completed work or confirm verbally..." style="width:100%;min-height:72px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;margin-bottom:12px;box-sizing:border-box"></textarea>
-        <div id="proof-progress" style="display:none;margin-bottom:10px">
+        <div style="border:1px solid #d1d5db;border-radius:8px;overflow:hidden">
+          <textarea id="proof-note" placeholder="Describe what was completed, include any relevant details..." style="display:block;width:100%;min-height:90px;border:none;padding:12px 14px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;box-sizing:border-box;outline:none;color:#111;line-height:1.5"></textarea>
+          <div style="border-top:1px solid #e5e7eb;padding:8px 10px;display:flex;align-items:center;gap:8px;background:#fafafa;flex-wrap:wrap">
+            <input id="proof-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" style="display:none">
+            <button type="button" onclick="document.getElementById('proof-files').click()" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;background:#fff;color:#374151;font-size:11.5px;font-weight:600;cursor:pointer">📎 Attach files</button>
+            <div id="proof-file-list" style="flex:1;font-size:11px;color:#374151;min-width:0"></div>
+          </div>
+        </div>
+        <div id="proof-progress" style="display:none;margin-top:10px">
           <div style="font-size:11px;color:#6b7280;margin-bottom:4px" id="proof-progress-label">Uploading...</div>
-          <div style="background:#e5e7eb;border-radius:4px;height:6px"><div id="proof-progress-bar" style="background:#0E3416;height:6px;border-radius:4px;transition:width .2s;width:0%"></div></div>
+          <div style="background:#e5e7eb;border-radius:4px;height:5px"><div id="proof-progress-bar" style="background:#0E3416;height:5px;border-radius:4px;transition:width .2s;width:0%"></div></div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn btn-primary btn-sm" onclick="uploadProofFiles()" id="proof-upload-btn">Submit Proof</button>
-          <button class="btn btn-ghost btn-sm" onclick="signOut()">Sign Out</button>
+        <div id="proof-status" style="margin-top:8px;font-size:12px"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+          <button class="btn btn-primary btn-sm" onclick="uploadProofFiles()" id="proof-upload-btn" style="background:#0E3416;border-color:#0E3416">Submit Proof</button>
+          <button class="btn btn-ghost btn-sm" onclick="signOut()" style="color:#9ca3af;border-color:#e5e7eb">Sign out</button>
         </div>
-        <div id="proof-status" style="margin-top:10px;font-size:12px"></div>
       </div>
     </div>
   </div>`;
@@ -6880,11 +6890,10 @@ function renderPendingProofFileList(){
   const list=document.getElementById('proof-file-list');
   if(!list)return;
   if(!pendingProofFiles.length){list.innerHTML='';return;}
-  list.innerHTML=pendingProofFiles.map((f,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid #f3f4f6">
-    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ${escapeHtml(f.name)}</span>
-    <span style="color:#9ca3af;flex-shrink:0">${formatFileSize(f.size)}</span>
-    <button type="button" onclick="pendingProofFiles.splice(${i},1);renderPendingProofFileList()" style="border:none;background:none;color:#dc2626;font-size:14px;font-weight:700;cursor:pointer;padding:0 4px;line-height:1" title="Remove">&#10005;</button>
-  </div>`).join('');
+  list.innerHTML=pendingProofFiles.map((f,i)=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:2px 6px;font-size:10.5px;color:#166534;white-space:nowrap;max-width:160px">
+    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.name)}</span>
+    <button type="button" onclick="pendingProofFiles.splice(${i},1);renderPendingProofFileList()" style="border:none;background:none;color:#dc2626;font-size:12px;font-weight:700;cursor:pointer;padding:0;line-height:1;flex-shrink:0" title="Remove">&#10005;</button>
+  </span>`).join(' ');
 }
 
 // ── Proof notification system ─────────────────────────────────────────────────
