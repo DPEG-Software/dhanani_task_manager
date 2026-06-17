@@ -7048,7 +7048,6 @@ async function checkAndLoadProofNotifications(){
 
     const existingLocal=notifications.find(n=>n.kvNotifId===pn.id);
     if(existingLocal){
-      if(existingLocal.status==='dismissed'||existingLocal.status==='approved')return;
       // Only count as changed if meaningful fields actually differ — prevents refreshAll() every poll
       const sig=n=>[n.proofs,n.note,n.thread,n.followupStatus,n.status].map(v=>JSON.stringify(v)).join('|');
       const before=sig(existingLocal);
@@ -7281,23 +7280,14 @@ async function dismissProof(notifId,taskId){
   try{
     const fnUrl=workerBaseUrl();
     const userToken=await getAccessToken();
-    const res=await fetch(`${fnUrl}/notify`,{
+    await fetch(`${fnUrl}/notify`,{
       method:'POST',
       headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
       body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:t.recipientTodoListId||'',todoTaskId:t.recipientTodoTaskId||''}),
     });
-    if(!res.ok){const detail=await res.text().catch(()=>'');throw new Error(detail||`Worker returned ${res.status}`);}
-    const local=notifications.find(x=>x.kvNotifId===notifId||String(x.taskId)===String(taskId));
-    if(local){local.status='dismissed';local.dismissReason=String(reason||'').trim();}
-    t.status='Pending';
-    t.dismissReason=String(reason||'').trim();
-    t.lastDismissedAt=new Date().toISOString();
     delete t._proofNotif;
-    updateNotifBadge();
-    renderNotifications();
-    closeMo('mo-detail');
-    refreshAll();
-    await Promise.all([saveNotifications(),saveTasksToOneDrive()]);
+    closeMo('mo-detail');refreshAll();
+    await saveTasksToOneDrive();
     await sendProofDeclineEmail(n.recipientEmail||'',t.title||'',reason,currentUser?.name||'',t);
     toast('Proof declined — email sent to recipient');
   }catch(err){toast('Could not decline: '+err.message);}
@@ -7346,12 +7336,11 @@ async function approveNotification(id){
     try{
       const fnUrl=workerBaseUrl();
       const userToken=await getAccessToken();
-      const res=await fetch(`${fnUrl}/notify`,{
+      await fetch(`${fnUrl}/notify`,{
         method:'POST',
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
         body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||n.message||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'approved',reason:''}),
       });
-      if(!res.ok){const detail=await res.text().catch(()=>'');throw new Error(detail||`Worker returned ${res.status}`);}
       if(task){task.status='Done';task.completedAt=new Date().toISOString();task.approvedBy=currentUser?.email||'';delete task._proofNotif;if(Array.isArray(n.proofs)&&n.proofs.length)task.proofs=n.proofs;}
       n.status='approved';
       updateNotifBadge();renderNotifications();
@@ -7392,13 +7381,12 @@ async function dismissNotification(id){
     try{
       const fnUrl=workerBaseUrl();
       const userToken=await getAccessToken();
-      const res=await fetch(`${fnUrl}/notify`,{
+      await fetch(`${fnUrl}/notify`,{
         method:'POST',
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
         body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:task?.recipientTodoListId||'',todoTaskId:task?.recipientTodoTaskId||''}),
       });
-      if(!res.ok){const detail=await res.text().catch(()=>'');throw new Error(detail||`Worker returned ${res.status}`);}
-      if(task){delete task._proofNotif;task.status='Pending';task.dismissReason=String(reason||'').trim();task.lastDismissedAt=new Date().toISOString();}
+      if(task)delete task._proofNotif;
       n.status='dismissed';n.dismissReason=String(reason||'').trim();
       updateNotifBadge();renderNotifications();
       await Promise.all([saveNotifications(),saveTasksToOneDrive()]);
