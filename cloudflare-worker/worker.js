@@ -359,7 +359,7 @@ EMAIL BODY (summarise this only):
 ${emailText.replace(/\[TASK CONTEXT\][\s\S]*$/, '').trim().slice(0, 2800)}
 ${latestMessageText ? `\nLATEST MESSAGE${latestSender ? ` from ${latestSender}` : ''}${latestDate ? ` (${latestDate})` : ''}:\n${latestMessageText.slice(0, 700)}` : ''}
 
-Write 2-3 plain sentences. No bullet points, no headers. State names, amounts, properties, and deadlines explicitly.`;
+Write exactly 2 plain sentences. No bullet points, no numbered lists, no headers, no line breaks between sentences. Keep each sentence under 120 characters. State who, what, and any deadline or amount explicitly.`;
 
   const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -367,7 +367,7 @@ Write 2-3 plain sentences. No bullet points, no headers. State names, amounts, p
     body: JSON.stringify({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 350,
+      max_tokens: 160,
       temperature: 0.1,
     }),
   });
@@ -378,7 +378,10 @@ Write 2-3 plain sentences. No bullet points, no headers. State names, amounts, p
   }
 
   const groqData = await groqRes.json();
-  const summary  = groqData.choices?.[0]?.message?.content?.trim() || '';
+  // Trim to max 2 sentences in case model ignores the instruction
+  const raw = groqData.choices?.[0]?.message?.content?.trim() || '';
+  const sentences = raw.match(/[^.!?]+[.!?]+/g) || [raw];
+  const summary = sentences.slice(0, 2).join(' ').trim();
   return json({ summary });
 }
 

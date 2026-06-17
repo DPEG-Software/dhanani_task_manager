@@ -6594,26 +6594,56 @@ async function sendMailAndGetId(token, message){
 }
 
 // Reply to the task's original notification email in the same thread.
-// Falls back to a new email if no stored messageId (old tasks).
+// Uses conversationId to find the sent message and createReply so Exchange sets proper
+// In-Reply-To / References headers. Falls back to a new standalone email.
 async function replyToTaskEmail(task, htmlContent, addr){
   const address=String(addr||task.email||'').trim().toLowerCase();
   if(!address.includes('@'))return;
   const token=await getDraftAccessToken();
-  if(task.notifMessageId){
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${task.notifMessageId}/reply`,{
-      method:'POST',
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({message:{toRecipients:[{emailAddress:{address}}],body:{contentType:'HTML',content:htmlContent}}}),
-    });
-    if(!res.ok)throw new Error(`Reply failed (${res.status})`);
-  }else{
-    // Old task without stored messageId — send standalone
-    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
-      method:'POST',
-      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({message:{subject:`Re: Task Assigned: ${task.title||'(no subject)'}`,body:{contentType:'HTML',content:htmlContent},toRecipients:[{emailAddress:{address}}]},saveToSentItems:true}),
-    });
+  const convId=task.notifConversationId;
+  if(convId){
+    try{
+      // Find any sent message in this conversation — draft id is stale after send, conversationId persists
+      const filterParam=`conversationId eq '${convId}'`;
+      const searchRes=await fetch(
+        `https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$filter=${encodeURIComponent(filterParam)}&$top=1&$select=id`,
+        {headers:{Authorization:`Bearer ${token}`}}
+      );
+      if(searchRes.ok){
+        const searchData=await searchRes.json();
+        const msgId=searchData.value?.[0]?.id;
+        if(msgId){
+          // createReply creates a draft with proper In-Reply-To / References headers set by Exchange
+          const replyDraftRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${msgId}/createReply`,{
+            method:'POST',
+            headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+            body:JSON.stringify({message:{toRecipients:[{emailAddress:{address}}]}}),
+          });
+          if(replyDraftRes.ok){
+            const rd=await replyDraftRes.json();
+            await fetch(`https://graph.microsoft.com/v1.0/me/messages/${rd.id}`,{
+              method:'PATCH',
+              headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+              body:JSON.stringify({body:{contentType:'HTML',content:htmlContent}}),
+            });
+            await fetch(`https://graph.microsoft.com/v1.0/me/messages/${rd.id}/send`,{
+              method:'POST',
+              headers:{Authorization:`Bearer ${token}`},
+            });
+            return;
+          }
+        }
+      }
+    }catch(err){
+      console.warn('Thread reply failed, falling back to standalone:',err.message);
+    }
   }
+  // Fallback: standalone email for old tasks without conversationId
+  await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({message:{subject:`Re: Task Assigned: ${task.title||'(no subject)'}`,body:{contentType:'HTML',content:htmlContent},toRecipients:[{emailAddress:{address}}]},saveToSentItems:true}),
+  });
 }
 
 async function sendTaskNotification(task){
@@ -6646,8 +6676,8 @@ async function sendTaskNotification(task){
     </div>`;
     const subject=`Task Assigned: ${task.title||'(no subject)'}`;
     const msg={subject,body:{contentType:'HTML',content:htmlBody},toRecipients:[{emailAddress:{address:addr}}]};
-    const {messageId}=await sendMailAndGetId(token,msg);
-    task.notifMessageId=messageId;
+    const {conversationId}=await sendMailAndGetId(token,msg);
+    task.notifConversationId=conversationId;
   }catch(err){
     console.warn('Task notification failed:',err.message);
   }
@@ -7014,10 +7044,9 @@ async function checkAndLoadProofNotifications(){
     updateNotifBadge();
     renderNotifications();
     await saveNotifications();
+    refreshAll();
     if(newAdded>0)toast(`${newAdded} proof submission${newAdded>1?'s':''} ready for review — check Notifications`);
   }
-
-  refreshAll();
 }
 
 function renderProofPanel(t){
@@ -7661,7 +7690,7 @@ async function addTaskFromEmail(emailId){
   trackedEmailIds.add(emailId);
   refreshAll();
   if(result.created){
-    sendTaskNotification(result.task).catch(()=>{});
+    await sendTaskNotification(result.task).catch(()=>{});
     await createToDoTask(result.task).catch(()=>{});
   }
   await saveTasksToOneDrive();
