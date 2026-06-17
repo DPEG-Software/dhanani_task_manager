@@ -1435,12 +1435,11 @@ async function checkProofFollowup(params){
 async function submitProofFollowupAnswer(notifId){
   const params=proofRouteParams();
   const answerEl=document.getElementById('proof-followup-answer');
-  const fileInput=document.getElementById('proof-followup-files');
   const statusEl=document.getElementById('proof-followup-status');
   const btn=document.getElementById('proof-followup-btn');
   const message=String(answerEl?.value||'').trim();
-  const files=Array.from(fileInput?.files||[]);
-  if(!message&&!files.length){if(statusEl)statusEl.textContent='Please type your answer or attach a file.';return;}
+  const files=[...pendingFollowupFiles];
+  if(!message&&!files.length){if(statusEl)statusEl.textContent='Please type a reply or attach a file.';return;}
   if(btn)btn.disabled=true;
   if(statusEl)statusEl.textContent='Sending...';
   try{
@@ -1466,9 +1465,8 @@ async function submitProofFollowupAnswer(notifId){
     });
     if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not send answer');}
     if(answerEl)answerEl.value='';
-    if(fileInput)fileInput.value='';
-    const fileList=document.getElementById('proof-followup-file-list');
-    if(fileList)fileList.innerHTML='';
+    pendingFollowupFiles=[];
+    renderProofFollowupFileList();
     if(statusEl)statusEl.innerHTML='<span style="color:#166534;font-weight:600">✓ Reply sent. The assignor can now review it.</span>';
     await renderProofFollowupBox(params);
   }catch(err){
@@ -1490,7 +1488,7 @@ async function renderProofFollowupBox(params){
     ${needsAnswer?`<div style="border:1px solid #fcd34d;border-radius:7px;overflow:hidden;margin-top:10px;background:#fff">
       <textarea id="proof-followup-answer" placeholder="Type your reply here..." style="display:block;width:100%;min-height:72px;border:none;padding:11px 13px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;box-sizing:border-box;outline:none;color:#111;line-height:1.5;background:#fff"></textarea>
       <div style="border-top:1px solid #fde68a;padding:7px 10px;display:flex;align-items:center;gap:8px;background:#fefce8;flex-wrap:wrap">
-        <input id="proof-followup-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onchange="renderProofFollowupFileList(this.files)" style="display:none">
+        <input id="proof-followup-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" style="display:none">
         <button type="button" onclick="document.getElementById('proof-followup-files').click()" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px solid #fcd34d;border-radius:5px;background:#fff;color:#92400e;font-size:11.5px;font-weight:600;cursor:pointer">📎 Attach files</button>
         <div id="proof-followup-file-list" style="flex:1;font-size:11px;color:#374151;min-width:0"></div>
       </div>
@@ -1504,15 +1502,27 @@ async function renderProofFollowupBox(params){
   // Always hide the original proof form when any follow-up is active
   const formArea=document.getElementById('proof-form-area');
   if(formArea)formArea.style.display='none';
+  // Wire up accumulate pattern for follow-up file input
+  if(needsAnswer){
+    pendingFollowupFiles=[];
+    document.getElementById('proof-followup-files')?.addEventListener('change',function(){
+      Array.from(this.files||[]).forEach(f=>{
+        if(!pendingFollowupFiles.some(p=>p.name===f.name&&p.size===f.size))pendingFollowupFiles.push(f);
+      });
+      this.value='';
+      renderProofFollowupFileList();
+    });
+  }
   scrollProofThreadsToBottom(host);
 }
 
-function renderProofFollowupFileList(fileList){
+function renderProofFollowupFileList(){
   const list=document.getElementById('proof-followup-file-list');
   if(!list)return;
-  const files=Array.from(fileList||[]);
-  list.innerHTML=files.map(f=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#fef9c3;border:1px solid #fcd34d;border-radius:4px;padding:2px 6px;font-size:10.5px;color:#92400e;white-space:nowrap;max-width:160px">
+  if(!pendingFollowupFiles.length){list.innerHTML='';return;}
+  list.innerHTML=pendingFollowupFiles.map((f,i)=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#fef9c3;border:1px solid #fcd34d;border-radius:4px;padding:2px 6px;font-size:10.5px;color:#92400e;white-space:nowrap;max-width:160px">
     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(f.name)}</span>
+    <button type="button" onclick="pendingFollowupFiles.splice(${i},1);renderProofFollowupFileList()" style="border:none;background:none;color:#92400e;font-size:12px;font-weight:700;cursor:pointer;padding:0;line-height:1;flex-shrink:0" title="Remove">&#10005;</button>
   </span>`).join(' ');
 }
 
@@ -6885,6 +6895,7 @@ let notifications=[];
 let processedEmailIds=new Set(JSON.parse(localStorage.getItem('dpeg_processed_done_emails')||'[]'));
 let _notifPollTimer=null;
 let pendingProofFiles=[];
+let pendingFollowupFiles=[];
 
 function renderPendingProofFileList(){
   const list=document.getElementById('proof-file-list');
