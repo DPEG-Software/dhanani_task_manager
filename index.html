@@ -2009,7 +2009,7 @@ function emailLinkButton(t,label="Open Full Email"){
 }
 function formatSummaryHTML(summary){
   if(!summary)return '<span class="sum-empty">No summary available.</span>';
-  const lines=summary.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+  const lines=summary.split('\n').map(l=>l.trim()).filter(l=>l.length>0).slice(0,4);
   const rows=lines.map(line=>{
     const inner=line.replace(/^(?:•|â€¢)\s*/,'').trim();
     const ci=inner.indexOf(':');
@@ -2208,7 +2208,7 @@ function localThreadSummary(messages){
   if(actionSentence){
     bullets.push(`• Action needed: ${shortenSentence(actionSentence,195)}`);
   }else{
-    bullets.push(`• Action needed: Review this thread and determine next steps.`);
+    bullets.push(`• Action needed: Review and determine next steps.`);
   }
 
   const facts=[];
@@ -2217,10 +2217,9 @@ function localThreadSummary(messages){
   if(sqft)facts.push(sqft);
   if(pct&&!amounts.length)facts.push(pct);
   if(facts.length)bullets.push(`• Key info: ${facts.join(' · ')}`);
+  else if(involved.length)bullets.push(`• Assigned to: ${involved.slice(0,2).join(", ")}`);
 
-  if(latestSentence)bullets.push(`• Latest: ${shortenSentence(latestSentence,165)}`);
-  if(involved.length)bullets.push(`• DPEG involved: ${involved.join(", ")}`);
-  return bullets.join("\n");
+  return bullets.slice(0,4).join("\n");
 }
 // ============================================================
 // AI SETTINGS
