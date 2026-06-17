@@ -130,9 +130,14 @@ function buildProofBlock(base, proofs) {
   return `${String(base || '').trim()}\n\n${PROOF_START}\n${JSON.stringify({ proofs }, null, 2)}\n${PROOF_END}`.trim();
 }
 
-function buildHtmlProofBlock(base, proofs) {
-  const json = JSON.stringify({ proofs }, null, 2);
-  return `${String(base || '').trim()}\n<p style="display:none;font-size:0;color:transparent">${PROOF_START}${json}${PROOF_END}</p>`;
+function stripHtml(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<hr[^>]*>/gi, '\n────────────────────────\n')
+    .replace(/<\/p>/gi, '\n').replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ')
+    .replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function decodeToken(token) {
@@ -266,27 +271,22 @@ async function handleTodo(request, env) {
   if (taskData.id) {
     const longLink = proofSubmitUrl(body, defaultList.id, taskData.id);
     const link = await createProofShortUrl(request, env, longLink);
-    const safeLink = link.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-    const htmlBody = [
-      `<p><b>Assigned by:</b> ${esc(assignerLabel)}${assignedByEmail ? ` (${esc(assignedByEmail)})` : ''}</p>`,
-      appTaskId ? `<p style="color:#6b7280;font-size:12px">Task ID: ${esc(appTaskId)}</p>` : '',
-      `<hr style="border:none;border-top:1px solid #e5e7eb;margin:8px 0">`,
-      `<p>${esc(cleanSummary).replace(/\n/g, '<br>')}</p>`,
-      `<hr style="border:none;border-top:1px solid #e5e7eb;margin:8px 0">`,
-      `<p><b>Proof Submission</b><br>`,
-      `<a href="${safeLink}" style="display:inline-block;margin-top:4px;padding:6px 14px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:4px;font-size:13px">Submit Proof</a></p>`,
-      `<p style="font-size:11px;color:#9ca3af;margin-top:4px">Link not working? Copy and paste: ${esc(link)}</p>`,
-    ].filter(Boolean).join('\n');
-    const patchedBody = {
-      content: buildHtmlProofBlock(htmlBody, []),
-      contentType: 'html',
-    };
+    const bodyLines = [
+      `Assigned by: ${assignerLabel}${assignedByEmail ? ` (${assignedByEmail})` : ''}`,
+      appTaskId ? `Task ID: ${appTaskId}` : '',
+      '',
+      cleanSummary,
+      '',
+      '── Proof Submission ──',
+      `Submit your proof here:`,
+      link,
+    ].filter(s => s !== undefined && s !== null);
     await fetch(
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(recipient)}/todo/lists/${defaultList.id}/tasks/${taskData.id}`,
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${appToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: patchedBody }),
+        body: JSON.stringify({ body: { content: bodyLines.join('\n'), contentType: 'text' } }),
       }
     ).catch(() => {});
   }
@@ -682,30 +682,29 @@ async function handleTodoUpdate(request, env) {
   try { appToken = await getAppToken(env); }
   catch (err) { return json({ error: 'Could not acquire app token', detail: err.message }, 502); }
 
-  // Fetch existing body so we can preserve the proof block
+  // Fetch existing body and convert to clean plain text (strip HTML + proof markers)
   const taskRes = await fetch(
     `${todoTaskUrl(recipient, todoListId, todoTaskId)}?$select=id,body`,
     { headers: { Authorization: `Bearer ${appToken}` } }
   );
-  let parsedBase = '';
-  let existingProofs = [];
+  let baseText = '';
   if (taskRes.ok) {
     const td = await taskRes.json().catch(() => ({}));
-    const parsed = parseProofBlock(td.body?.content || '');
-    parsedBase = parsed.base;
-    existingProofs = parsed.proofs;
+    const raw = td.body?.content || '';
+    // Strip proof markers first, then convert HTML to plain text
+    const { base } = parseProofBlock(raw);
+    baseText = td.body?.contentType === 'html' ? stripHtml(base) : base.trim();
   }
 
-  const extrasHtml = [
-    changes && changes.length ? `<p><b>Updated:</b> ${esc(changes.join(' | '))}</p>` : '',
-    followupNote ? `<hr style="border:none;border-top:1px solid #e5e7eb;margin:8px 0"><p><b>Follow-up note from manager:</b><br>${esc(followupNote).replace(/\n/g, '<br>')}</p>` : '',
-  ].filter(Boolean).join('\n');
-  const newBase = [parsedBase, extrasHtml].filter(Boolean).join('\n');
-  const newContent = buildHtmlProofBlock(newBase, existingProofs);
+  const extras = [
+    changes && changes.length ? `Updated: ${changes.join(' | ')}` : '',
+    followupNote ? `Follow-up note from manager:\n${followupNote}` : '',
+  ].filter(Boolean).join('\n\n');
+  const newContent = [baseText, extras].filter(Boolean).join('\n\n');
 
   const due = graphDueDate(date);
   const patch = {
-    body: { content: newContent, contentType: 'html' },
+    body: { content: newContent, contentType: 'text' },
     importance: String(priority || '').toLowerCase() === 'high' ? 'high' : 'normal',
   };
   if (due) patch.dueDateTime = due;

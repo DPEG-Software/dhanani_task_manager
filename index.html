@@ -7028,8 +7028,11 @@ async function checkAndLoadProofNotifications(){
 
     const existingLocal=notifications.find(n=>n.kvNotifId===pn.id);
     if(existingLocal){
+      // Only count as changed if meaningful fields actually differ — prevents refreshAll() every poll
+      const sig=n=>[n.proofs,n.note,n.thread,n.followupStatus,n.status].map(v=>JSON.stringify(v)).join('|');
+      const before=sig(existingLocal);
       Object.assign(existingLocal,localData);
-      existingUpdated++;
+      if(sig(existingLocal)!==before)existingUpdated++;
     }else{
       notifications.unshift({
         id:Date.now()+Math.random(),
