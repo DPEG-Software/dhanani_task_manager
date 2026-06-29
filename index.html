@@ -1160,7 +1160,9 @@ function setSyncStatus(state, label) {
 
 async function getAccessToken() {
   try {
-    const result = await msalInstance.acquireTokenSilent({ scopes: SCOPES_GRAPH, account: currentAccount });
+    const silentPromise = msalInstance.acquireTokenSilent({ scopes: SCOPES_GRAPH, account: currentAccount });
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('silent_timeout')), 10000));
+    const result = await Promise.race([silentPromise, timeoutPromise]);
     return result.accessToken;
   } catch (err) {
     try {
