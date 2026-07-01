@@ -1,6 +1,9 @@
 // DPEG AI Summarize + To Do — Cloudflare Worker
-// POST /        → AI email summary (Groq, validated via MSAL user token)
-// POST /todo    → Create Microsoft To Do task for a DPEG recipient (app credentials)
+// POST /                 → AI email summary (Groq, validated via MSAL user token)
+// POST /todo             → Create Microsoft To Do task for a DPEG recipient (app credentials)
+// POST /assignment       → Create/update a shared task-assignment record (D1)
+// GET  /assignments      → Fetch assignments for the current user (assigned to me + by me)
+// POST /assignment-status→ Recipient updates assignment status/progress (D1)
 
 const ALLOWED_ORIGIN  = 'https://dpeg-software.github.io';
 const DPEG_TENANT_ID  = '9152bf5c-22ff-4e4a-8624-784a2d243006';
@@ -721,6 +724,147 @@ async function handleTodoUpdate(request, env) {
   return json({ success: true });
 }
 
+// ── /assignment endpoint: create/update a shared assignment record (D1) ──────
+async function handleCreateAssignment(request, env) {
+  const { error, status, claims } = validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const id = String(body.id || '').trim();
+  const title = String(body.title || '').trim();
+  const recipientEmail = extractEmailAddress(body.recipientEmail || '');
+  if (!id || !title || !recipientEmail) {
+    return json({ error: 'id, title and recipientEmail are required' }, 400);
+  }
+  if (!recipientEmail.includes('@dhananipeg.com')) {
+    return json({ error: 'Only @dhananipeg.com addresses are supported' }, 403);
+  }
+
+  const assignerEmail = extractEmailAddress(body.assignerEmail || userEmailFromClaims(claims));
+  const assignerName = String(body.assignerName || claims.name || assignerEmail || '').trim();
+  const now = new Date().toISOString();
+
+  const existing = await env.DPEG_ASSIGNMENTS
+    .prepare('SELECT created_at, status, progress_note FROM assignments WHERE id = ?')
+    .bind(id).first();
+
+  await env.DPEG_ASSIGNMENTS.prepare(
+    `INSERT OR REPLACE INTO assignments
+      (id, app_task_id, title, summary, dept, priority, due_date,
+       assigner_email, assigner_name, recipient_email, recipient_name,
+       status, progress_note, recipient_todo_list_id, recipient_todo_task_id,
+       created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    id,
+    String(body.appTaskId || ''),
+    title,
+    String(body.summary || '').slice(0, 1200),
+    String(body.dept || ''),
+    String(body.priority || 'Normal'),
+    String(body.dueDate || ''),
+    assignerEmail,
+    assignerName,
+    recipientEmail,
+    String(body.recipientName || ''),
+    existing?.status || 'Assigned',
+    existing?.progress_note ?? null,
+    String(body.recipientTodoListId || ''),
+    String(body.recipientTodoTaskId || ''),
+    existing?.created_at || now,
+    now,
+  ).run();
+
+  return json({ success: true, id });
+}
+
+// ── /assignments endpoint: fetch both directions for the current user (D1) ───
+async function handleAssignments(request, env) {
+  const { error, status, claims } = validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+
+  const url = new URL(request.url);
+  const requestedEmail = extractEmailAddress(url.searchParams.get('email') || '');
+  const tokenEmail = userEmailFromClaims(claims);
+  if (!requestedEmail || requestedEmail !== tokenEmail) {
+    return json({ error: 'You can only fetch your own assignments' }, 403);
+  }
+
+  const [toMe, byMe] = await Promise.all([
+    env.DPEG_ASSIGNMENTS.prepare(
+      'SELECT * FROM assignments WHERE recipient_email = ? ORDER BY created_at DESC'
+    ).bind(tokenEmail).all(),
+    env.DPEG_ASSIGNMENTS.prepare(
+      'SELECT * FROM assignments WHERE assigner_email = ? ORDER BY created_at DESC'
+    ).bind(tokenEmail).all(),
+  ]);
+
+  const shape = (row) => ({
+    id: row.id,
+    appTaskId: row.app_task_id,
+    title: row.title,
+    summary: row.summary,
+    dept: row.dept,
+    priority: row.priority,
+    dueDate: row.due_date,
+    assignerEmail: row.assigner_email,
+    assignerName: row.assigner_name,
+    recipientEmail: row.recipient_email,
+    recipientName: row.recipient_name,
+    status: row.status,
+    progressNote: row.progress_note,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+
+  return json({
+    assignedToMe: (toMe.results || []).map(shape),
+    assignedByMe: (byMe.results || []).map(shape),
+  });
+}
+
+// ── /assignment-status endpoint: recipient updates progress (D1) ─────────────
+const ASSIGNMENT_STATUSES = new Set(['Assigned', 'Accepted', 'In Progress', 'Done']);
+
+async function handleAssignmentStatus(request, env) {
+  const { error, status, claims } = validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const id = String(body.id || '').trim();
+  const newStatus = String(body.status || '').trim();
+  if (!id || !ASSIGNMENT_STATUSES.has(newStatus)) {
+    return json({ error: 'id and a valid status are required' }, 400);
+  }
+
+  const row = await env.DPEG_ASSIGNMENTS
+    .prepare('SELECT recipient_email FROM assignments WHERE id = ?')
+    .bind(id).first();
+  if (!row) return json({ error: 'Assignment not found' }, 404);
+
+  const tokenEmail = userEmailFromClaims(claims);
+  if (extractEmailAddress(row.recipient_email) !== tokenEmail) {
+    return json({ error: 'Only the recipient can update this assignment' }, 403);
+  }
+
+  const updatedAt = new Date().toISOString();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'UPDATE assignments SET status = ?, progress_note = ?, updated_at = ? WHERE id = ?'
+  ).bind(newStatus, body.progressNote != null ? String(body.progressNote).slice(0, 2000) : null, updatedAt, id).run();
+
+  return json({ success: true, updatedAt });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -732,6 +876,7 @@ export default {
     if (proofMatch && request.method === 'GET') return handleProofRedirect(request, env, proofMatch[1]);
     if (path === '/data') return handleData(request, env);
     if (path === '/notify') return handleNotify(request, env);
+    if (path === '/assignments') return handleAssignments(request, env);
 
     if (request.method !== 'POST') {
       return json({ error: 'Only POST allowed' }, 405);
@@ -743,6 +888,8 @@ export default {
     if (path === '/proof-task') return handleProofTask(request, env);
     if (path === '/proof-submit') return handleProofSubmit(request, env);
     if (path === '/attachment-summary') return handleAttachmentSummary(request, env);
+    if (path === '/assignment') return handleCreateAssignment(request, env);
+    if (path === '/assignment-status') return handleAssignmentStatus(request, env);
     return handleSummary(request, env);
   },
 };

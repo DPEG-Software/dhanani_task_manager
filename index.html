@@ -59,6 +59,10 @@
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke-width="2" stroke-linecap="round"/></svg>
       Action Log <span class="nb" id="nb-m">0</span>
     </button>
+    <button class="ni" onclick="nav('tasks')">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Tasks
+    </button>
     <button class="ni" onclick="nav('people')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke-width="2"/></svg>
       People &amp; Departments
@@ -225,6 +229,31 @@
             </tr>
           </thead>
           <tbody id="master-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TASKS (assignments given/received, shared across users via the Worker) -->
+  <div class="page" id="page-tasks">
+    <div class="directory-toggle">
+      <button id="tasks-received-btn" class="active" onclick="setTasksTabMode('received')">Assigned to Me</button>
+      <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Tasks by Me</button>
+    </div>
+    <div class="tbl-wrap">
+      <div style="overflow-x:hidden;max-width:100%">
+        <table>
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th style="width:160px" id="tasks-col-person">Assigned By</th>
+              <th style="width:130px">Department</th>
+              <th style="width:110px">Status</th>
+              <th style="width:80px">Priority</th>
+              <th style="width:150px">Progress</th>
+            </tr>
+          </thead>
+          <tbody id="tasks-tbody"></tbody>
         </table>
       </div>
     </div>
@@ -3611,6 +3640,7 @@ async function saveDetail(){
   closeMo("mo-detail");refreshAll();
   if(changes.length){
     updateTodoTask(t,changes).catch(()=>{});
+    if(t.assignmentId)recordAssignment(t);
     if(t.email){
       sendTaskUpdateNotification(t,changes).catch(()=>{});
       toast(`Saved — alert sent to ${t.person}`);
@@ -3883,8 +3913,8 @@ function renderCharts(){
 // ============================================================
 // NAVIGATION
 // ============================================================
-const PT={dashboard:"Dashboard",master:"Action Log",people:"People & Departments",wednesday:isWednesdayUser?"Wednesday Review":"Discussion Notes",archive:"Archive",summary:"Summary Sheet",outlook:"Outlook",notifications:"Notifications"};
-const PS={dashboard:"Real-time overview of task activity",master:"All dispatched tasks",people:"Team members and departments",wednesday:"Weekly agenda and notes",archive:"Past meeting records",summary:"Task report and CSV export",outlook:"Send and receive emails. Tasks are created automatically for emails sent to DPEG staff.",notifications:"Task completion alerts and approvals"};
+const PT={dashboard:"Dashboard",master:"Action Log",people:"People & Departments",wednesday:isWednesdayUser?"Wednesday Review":"Discussion Notes",archive:"Archive",summary:"Summary Sheet",outlook:"Outlook",notifications:"Notifications",tasks:"Tasks"};
+const PS={dashboard:"Real-time overview of task activity",master:"All dispatched tasks",people:"Team members and departments",wednesday:"Weekly agenda and notes",archive:"Past meeting records",summary:"Task report and CSV export",outlook:"Send and receive emails. Tasks are created automatically for emails sent to DPEG staff.",notifications:"Task completion alerts and approvals",tasks:"Tasks assigned to you and by you"};
 function nav(name,mode){
   if(name==="departments"){name="people";mode="departments";}
   document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
@@ -3894,11 +3924,12 @@ function nav(name,mode){
   document.getElementById("tb-sub").textContent=PS[name]||"";
   document.querySelectorAll(".ni").forEach(btn=>{
     const t=btn.textContent.trim().toLowerCase();
-    if((name==="dashboard"&&t.startsWith("dash"))||(name==="master"&&t.startsWith("action"))||(name==="people"&&(t.startsWith("people")||t.startsWith("dept")))||(name==="wednesday"&&(t.startsWith("wed")||t.startsWith("disc")))||(name==="archive"&&t.startsWith("arch"))||(name==="summary"&&t.startsWith("sum"))||(name==="outlook"&&t.startsWith("out"))||(name==="notifications"&&t.startsWith("notif")))
+    if((name==="dashboard"&&t.startsWith("dash"))||(name==="master"&&t.startsWith("action"))||(name==="people"&&(t.startsWith("people")||t.startsWith("dept")))||(name==="wednesday"&&(t.startsWith("wed")||t.startsWith("disc")))||(name==="archive"&&t.startsWith("arch"))||(name==="summary"&&t.startsWith("sum"))||(name==="outlook"&&t.startsWith("out"))||(name==="notifications"&&t.startsWith("notif"))||(name==="tasks"&&t.startsWith("tasks")))
       btn.classList.add("active");
   });
   curSearch="";document.getElementById("srch").value="";
   if(name==="master")renderMaster();
+  if(name==="tasks")renderMyTasks();
   if(name==="people"){directoryMode=mode||"people";setDirectoryMode(directoryMode);if(directoryMode==="people"){renderPplList();curPplSel=null;document.getElementById("ppl-srch").value="";curPplFilter="";}if(directoryMode==="departments"){renderDeptList();curDeptSel=null;}}
   if(name==="wednesday")renderWed();
   if(name==="archive")renderArc();
@@ -6595,6 +6626,9 @@ async function createToDoTask(task){
   }catch(err){
     console.warn('Recipient To Do (Worker) failed:',err.message);
   }
+
+  // ── 3. Shared assignment record (D1) for the in-app Tasks tab ──
+  recordAssignment(task);
 }
 
 // Send a message via draft (POST /me/messages → send). Returns {messageId, conversationId}.
@@ -7795,5 +7829,6 @@ if (typeof msal !== 'undefined' && typeof msal.PublicClientApplication === 'func
 }
 </script>
 <script src="contacts.js"></script>
+<script src="tasks-hub.js"></script>
 </body>
 </html>
