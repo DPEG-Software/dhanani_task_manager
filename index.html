@@ -430,10 +430,15 @@
       <div id="ol-mid-panel" style="width:0;min-width:0;flex-shrink:0;overflow:hidden;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;height:100%;transition:width .18s ease">
         <div style="padding:7px 10px;border-bottom:1px solid #e5e7eb;background:#fafafa;flex-shrink:0;display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap">
           <div style="font-size:12px;font-weight:700;color:#111;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="ol-folder-title">Inbox</div>
-          <div class="ol-filter-toggle" id="ol-list-filter">
-            <button id="ol-filter-all" class="active" onclick="setOlListFilter('all')" title="Show all loaded emails">All</button>
-            <button id="ol-filter-unread" onclick="setOlListFilter('unread')" title="Show unread emails">Unread</button>
-            <button id="ol-filter-flagged" onclick="setOlListFilter('flagged')" title="Show flagged emails">Flagged</button>
+          <div class="ol-filter-menu" id="ol-list-filter">
+            <button class="ol-filter-icon" id="ol-filter-icon" onclick="toggleOlFilterMenu(event)" title="Filter emails" aria-label="Filter emails">
+              <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 5h16M7 12h10M10 19h4" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <div class="ol-filter-pop" id="ol-filter-pop">
+              <button id="ol-filter-all" onclick="setOlListFilter('all')" title="Show all loaded emails">All</button>
+              <button id="ol-filter-unread" onclick="setOlListFilter('unread')" title="Show unread emails">Unread</button>
+              <button id="ol-filter-flagged" onclick="setOlListFilter('flagged')" title="Show flagged emails">Flagged</button>
+            </div>
           </div>
           <button onclick="refreshFolder()" style="border:none;background:none;cursor:pointer;color:#9ca3af;font-size:15px;line-height:1;padding:2px;transition:color .12s;flex-shrink:0" onmouseover="this.style.color='#111'" onmouseout="this.style.color='#9ca3af'" title="Refresh">&#8635;</button>
         </div>
@@ -4495,15 +4500,28 @@ function updateOlFilterButtons(){
   ['all','unread','flagged'].forEach(mode=>{
     document.getElementById(`ol-filter-${mode}`)?.classList.toggle('active',olListFilter===mode);
   });
+  document.getElementById('ol-filter-icon')?.classList.toggle('active',olListFilter!=='all');
+}
+
+function toggleOlFilterMenu(event){
+  event?.stopPropagation();
+  const pop=document.getElementById('ol-filter-pop');
+  if(pop)pop.classList.toggle('open');
 }
 
 function setOlListFilter(mode){
   olListFilter=['all','unread','flagged'].includes(mode)?mode:'all';
   localStorage.setItem('dpeg_outlook_list_filter',olListFilter);
+  document.getElementById('ol-filter-pop')?.classList.remove('open');
   updateOlFilterButtons();
   if(currentFolder==='untracked'){loadUntracked();return;}
   renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
 }
+
+document.addEventListener('click',e=>{
+  const menu=document.getElementById('ol-list-filter');
+  if(menu&&!menu.contains(e.target))document.getElementById('ol-filter-pop')?.classList.remove('open');
+});
 
 function updateFlaggedCount(){
   const all=Object.values(outlookFolderEmails||{}).flat();
@@ -4592,6 +4610,10 @@ function renderEmailRows(folder,emails){
 
 async function loadFolder(folder){
   currentFolder=folder;
+  if(folder==='flagged'&&olListFilter!=='all'){
+    olListFilter='all';
+    localStorage.setItem('dpeg_outlook_list_filter',olListFilter);
+  }
   updateOlFilterButtons();
   olMobileBackToList();
   _activeEmailEl=null;
@@ -4665,6 +4687,7 @@ async function loadMoreEmails(folder){
     const data=await res.json();
     const more=data.value||[];
     outlookFolderEmails[folder]=[...(outlookFolderEmails[folder]||[]),...more];
+    if(folder==='flagged')outlookFolderEmails[folder].sort((a,b)=>emailTimestamp(b)-emailTimestamp(a));
     outlookNextLinks[folder]=data['@odata.nextLink']||'';
     renderEmailRows(folder,outlookFolderEmails[folder]);
   }catch(err){
@@ -4680,10 +4703,16 @@ async function loadFlaggedFolder(){
     const token=await getAccessToken();
     const select='id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag';
     const filter=encodeURIComponent("flag/flagStatus eq 'flagged'");
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=100&$select=${select}&$filter=${filter}&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=100&$select=${select}&$filter=${filter}`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
-    outlookFolderEmails.flagged=data.value||[];
+    const byId=new Map();
+    Object.entries(outlookFolderEmails||{}).forEach(([folder,items])=>{
+      if(folder==='flagged')return;
+      (items||[]).forEach(e=>{if(e?.id&&outlookFlagStatus(e)==='flagged')byId.set(e.id,e);});
+    });
+    (data.value||[]).forEach(e=>{if(e?.id)byId.set(e.id,e);});
+    outlookFolderEmails.flagged=[...byId.values()].sort((a,b)=>emailTimestamp(b)-emailTimestamp(a));
     outlookNextLinks.flagged=data['@odata.nextLink']||'';
     updateFlaggedCount();
     renderEmailRows('flagged',outlookFolderEmails.flagged);
