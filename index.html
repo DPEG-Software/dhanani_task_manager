@@ -237,8 +237,8 @@
   <!-- TASKS (assignments given/received, shared across users via the Worker) -->
   <div class="page" id="page-tasks">
     <div class="directory-toggle">
-      <button id="tasks-received-btn" class="active" onclick="setTasksTabMode('received')">Assigned to Me</button>
-      <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Tasks by Me</button>
+      <button id="tasks-received-btn" class="active" onclick="setTasksTabMode('received')">Received Assignments</button>
+      <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Delegated Assignments</button>
     </div>
     <div class="tbl-wrap">
       <div style="overflow-x:hidden;max-width:100%">
@@ -246,11 +246,11 @@
           <thead>
             <tr>
               <th>Task</th>
-              <th style="width:160px" id="tasks-col-person">Assigned By</th>
               <th style="width:130px">Department</th>
-              <th style="width:110px">Status</th>
+              <th style="width:100px">Due Date</th>
               <th style="width:80px">Priority</th>
               <th style="width:150px">Progress</th>
+              <th style="width:130px">Proof Submission</th>
             </tr>
           </thead>
           <tbody id="tasks-tbody"></tbody>
@@ -1208,7 +1208,10 @@ function isProofUploadRoute(){
   return new URLSearchParams(location.search).get('proof')==='1';
 }
 
+let proofParamsOverride=null;
+
 function proofRouteParams(){
+  if(proofParamsOverride)return proofParamsOverride;
   const p=new URLSearchParams(location.search);
   return {
     appTaskId:p.get('taskId')||'',
@@ -1623,19 +1626,27 @@ async function uploadProofFiles(){
   }finally{btn.disabled=false;}
 }
 
-async function showProofUploadMode(){
-  document.querySelector('aside')?.remove();
-  const main=document.querySelector('main');
-  if(main)main.style.display='none';
+async function showProofUploadMode(paramsOverride){
+  proofParamsOverride=paramsOverride||null;
+  const fromTasksTab=!!paramsOverride;
+  if(!fromTasksTab){
+    document.querySelector('aside')?.remove();
+    const main=document.querySelector('main');
+    if(main)main.style.display='none';
+  }
   const params=proofRouteParams();
   const screen=document.createElement('div');
   screen.id='proof-upload-screen';
   screen.style.cssText='position:fixed;inset:0;z-index:99999;min-height:100vh;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Inter,sans-serif;box-sizing:border-box;overflow:auto';
   const instrHtml=params.proofInstructions?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#166534;line-height:1.5"><strong>Instructions:</strong> ${escapeHtml(params.proofInstructions)}</div>`:'';
+  const closeBtnHtml=fromTasksTab?`<button onclick="closeProofUploadScreen()" style="background:transparent;border:none;color:#fff;opacity:.8;font-size:13px;cursor:pointer;padding:2px 4px">✕ Close</button>`:'';
   screen.innerHTML=`<div style="width:min(540px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.09);overflow:hidden">
-    <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;background:#0E3416;color:#fff">
+    <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;background:#0E3416;color:#fff;display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+      <div>
       <div style="font-size:15px;font-weight:800;margin-bottom:2px">Submit Completion Proof</div>
       <div style="font-size:11.5px;opacity:.8">${escapeHtml(params.title||'Assigned task')}</div>
+      </div>
+      ${closeBtnHtml}
     </div>
     <div style="padding:18px 20px">
       <div id="proof-result-area"></div>
@@ -1687,6 +1698,12 @@ async function showProofUploadMode(){
       }
     }
   }
+}
+
+function closeProofUploadScreen(){
+  proofParamsOverride=null;
+  document.getElementById('proof-upload-screen')?.remove();
+  renderMyTasks();
 }
 
 async function loadTasksFromOneDrive() {

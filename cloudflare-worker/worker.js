@@ -757,13 +757,13 @@ async function handleCreateAssignment(request, env) {
       (id, app_task_id, title, summary, dept, priority, due_date,
        assigner_email, assigner_name, recipient_email, recipient_name,
        status, progress_note, recipient_todo_list_id, recipient_todo_task_id,
-       created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       proof_instructions, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     id,
     String(body.appTaskId || ''),
     title,
-    String(body.summary || '').slice(0, 1200),
+    String(body.summary || '').slice(0, 4000),
     String(body.dept || ''),
     String(body.priority || 'Normal'),
     String(body.dueDate || ''),
@@ -775,6 +775,7 @@ async function handleCreateAssignment(request, env) {
     existing?.progress_note ?? null,
     String(body.recipientTodoListId || ''),
     String(body.recipientTodoTaskId || ''),
+    String(body.proofInstructions || ''),
     existing?.created_at || now,
     now,
   ).run();
@@ -819,6 +820,7 @@ async function handleAssignments(request, env) {
     recipientName: row.recipient_name,
     status: row.status,
     progressNote: row.progress_note,
+    proofInstructions: row.proof_instructions,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });

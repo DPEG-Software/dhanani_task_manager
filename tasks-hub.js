@@ -3,14 +3,36 @@
 
   let tasksTabMode = 'received'; // 'received' | 'given'
   let tasksTabCache = { assignedToMe: [], assignedByMe: [] };
+  const tasksTabOpenGroups = { received: new Set(), given: new Set() };
 
   function fnBaseUrl() {
     return (localStorage.getItem('dpeg_ai_fn_url') || WORKER_URL).replace(/\/?$/, '');
   }
 
-  function assignmentBadge(status) {
-    const cls = status === 'Done' ? 'bd' : 'bp';
-    return `<span class="badge ${cls}">${escapeHtml(status || 'Assigned')}</span>`;
+  function groupKey(name, email) {
+    return String(email || name || 'unassigned').toLowerCase();
+  }
+
+  function groupLabel(name, email) {
+    return String(name || email || 'Unassigned').trim();
+  }
+
+  function groupAssignments(list, received) {
+    const grouped = new Map();
+    list.forEach(a => {
+      const name = received ? a.assignerName : a.recipientName;
+      const email = received ? a.assignerEmail : a.recipientEmail;
+      const key = groupKey(name, email);
+      if (!grouped.has(key)) grouped.set(key, { key, name: groupLabel(name, email), items: [] });
+      grouped.get(key).items.push(a);
+    });
+    return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function assignmentDescription(summary) {
+    const text = String(summary || '').trim();
+    if (!text) return '';
+    return `<div style="margin-top:7px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:11.5px;line-height:1.55;color:var(--sub);white-space:pre-wrap;max-height:180px;overflow:auto">${escapeHtml(text)}</div>`;
   }
 
   // Create/update a shared assignment record in D1 via the Worker.
@@ -27,7 +49,7 @@
           id: task.assignmentId,
           appTaskId: String(task.id || ''),
           title: task.title || 'Task',
-          summary: (task.summary || '').slice(0, 1200),
+          summary: (task.summary || '').slice(0, 4000),
           dept: task.dept || '',
           priority: task.priority || 'Normal',
           dueDate: task.deadline || task.date || '',
@@ -37,6 +59,7 @@
           recipientName: task.person || '',
           recipientTodoListId: task.recipientTodoListId || '',
           recipientTodoTaskId: task.recipientTodoTaskId || '',
+          proofInstructions: task.proofInstructions || '',
         }),
       });
     } catch (err) {
@@ -48,8 +71,6 @@
     tasksTabMode = mode;
     document.getElementById('tasks-received-btn')?.classList.toggle('active', mode === 'received');
     document.getElementById('tasks-given-btn')?.classList.toggle('active', mode === 'given');
-    const col = document.getElementById('tasks-col-person');
-    if (col) col.textContent = mode === 'received' ? 'Assigned By' : 'Assigned To';
     renderTasksTabList();
   };
 
@@ -81,21 +102,67 @@
       tb.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="es-text">No tasks yet</div></div></td></tr>`;
       return;
     }
-    tb.innerHTML = list.map(a => {
-      const otherName = received ? a.assignerName : a.recipientName;
-      const progressCell = received
-        ? `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${ASSIGNMENT_STATUSES.map(s => `<option value="${s}" ${s === a.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`
-        : '';
-      return `<tr>
-        <td style="padding:10px 14px"><div style="font-size:13px;font-weight:600;color:var(--body)">${escapeHtml(a.title || '')}</div></td>
-        <td style="padding:10px 10px"><div style="display:flex;align-items:center;gap:6px">${av(otherName, 22)}<span style="font-size:12px">${escapeHtml(otherName || '')}</span></div></td>
-        <td style="padding:10px 8px"><span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span></td>
-        <td style="padding:10px 8px">${assignmentBadge(a.status)}</td>
-        <td style="padding:10px 8px">${pBadge(a.priority)}</td>
-        <td style="padding:10px 8px">${progressCell}</td>
-      </tr>`;
+    const openGroups = tasksTabOpenGroups[tasksTabMode];
+    tb.innerHTML = groupAssignments(list, received).map(group => {
+      const open = openGroups.has(group.key);
+      const noun = group.items.length === 1 ? 'task' : 'tasks';
+      const groupStatus = 'Assigned';
+      const rows = open ? group.items.map(a => {
+        const progressCell = received
+          ? `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${ASSIGNMENT_STATUSES.map(s => `<option value="${s}" ${s === a.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`
+          : `<span style="font-size:12px;color:var(--muted)">${escapeHtml(a.status || 'Assigned')}</span>`;
+        const proofCell = received
+          ? `<button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`
+          : '';
+        return `<tr>
+          <td style="padding:10px 14px"><div style="font-size:13px;font-weight:600;color:var(--body)">${escapeHtml(a.title || '')}</div>${assignmentDescription(a.summary)}</td>
+          <td style="padding:10px 8px"><span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span></td>
+          <td style="padding:10px 8px">${fmtD(a.dueDate)}</td>
+          <td style="padding:10px 8px">${pBadge(a.priority)}</td>
+          <td style="padding:10px 8px">${progressCell}</td>
+          <td style="padding:10px 8px">${proofCell}</td>
+        </tr>`;
+      }).join('') : '';
+      const safeGroupKey = escapeHtml(JSON.stringify(group.key));
+      return `<tr onclick="toggleTasksGroup(${safeGroupKey})" style="background:var(--sage3);cursor:pointer">
+        <td colspan="6" style="padding:10px 14px">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <span style="font-size:13px;color:var(--muted);width:14px;display:inline-flex;justify-content:center">${open ? '-' : '+'}</span>
+            ${av(group.name, 24)}
+            <div style="min-width:0;flex:1">
+              <div style="font-size:13px;font-weight:800;color:var(--body)">${escapeHtml(group.name)}: ${groupStatus}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:1px">${group.items.length} ${noun}</div>
+            </div>
+          </div>
+        </td>
+      </tr>${rows}`;
     }).join('');
   }
+
+  window.toggleTasksGroup = function toggleTasksGroup(key) {
+    const openGroups = tasksTabOpenGroups[tasksTabMode];
+    if (openGroups.has(key)) openGroups.delete(key);
+    else openGroups.add(key);
+    renderTasksTabList();
+  };
+
+  // Opens the existing full-screen proof-submission UI (showProofUploadMode)
+  // directly, without navigating away from the Tasks tab.
+  window.openProofFromTasksTab = function openProofFromTasksTab(id) {
+    const a = (tasksTabCache.assignedToMe || []).find(x => x.id === id);
+    if (!a) return;
+    showProofUploadMode({
+      appTaskId: a.appTaskId || '',
+      recipientEmail: currentUser?.email || '',
+      assignedByName: a.assignerName || '',
+      assignedByEmail: a.assignerEmail || '',
+      title: a.title || '',
+      proofInstructions: a.proofInstructions || '',
+      proofShareUrl: '',
+      todoListId: '',
+      todoTaskId: '',
+    });
+  };
 
   window.updateAssignmentStatus = async function updateAssignmentStatus(id, status) {
     try {
