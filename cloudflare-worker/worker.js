@@ -20,6 +20,7 @@ const ADMIN_EMAILS = new Set(['systemmanager1@dhananipeg.com', 'propertymanageme
 const PROOF_START = 'DPEG_PROOF_START';
 const PROOF_END = 'DPEG_PROOF_END';
 const PROOF_LINK_PREFIX = 'proof-link:';
+let assignmentProofColumnsReady = false;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -109,6 +110,64 @@ function parseProofs(text) {
 
 function userEmailFromClaims(claims) {
   return extractEmailAddress(claims.preferred_username || claims.upn || claims.email || '');
+}
+
+async function ensureAssignmentProofColumns(env) {
+  if (!env.DPEG_ASSIGNMENTS || assignmentProofColumnsReady) return;
+  const columns = [
+    ['proof_status', "TEXT DEFAULT 'none'"],
+    ['proof_submitted_at', 'TEXT'],
+    ['proof_reviewed_at', 'TEXT'],
+    ['proof_notification_id', 'TEXT'],
+  ];
+  for (const [name, type] of columns) {
+    try {
+      await env.DPEG_ASSIGNMENTS.prepare(`ALTER TABLE assignments ADD COLUMN ${name} ${type}`).run();
+    } catch (err) {
+      if (!String(err?.message || '').toLowerCase().includes('duplicate column')) throw err;
+    }
+  }
+  assignmentProofColumnsReady = true;
+}
+
+async function updateAssignmentProofState(env, details) {
+  if (!env.DPEG_ASSIGNMENTS) return;
+  await ensureAssignmentProofColumns(env);
+  const now = new Date().toISOString();
+  const appTaskId = String(details.appTaskId || '').trim();
+  const recipientEmail = extractEmailAddress(details.recipientEmail || '');
+  const senderEmail = extractEmailAddress(details.senderEmail || '');
+  const proofStatus = String(details.proofStatus || '').trim();
+  if (!appTaskId || !proofStatus) return;
+
+  const submittedAt = proofStatus === 'submitted' ? now : null;
+  const reviewedAt = proofStatus === 'approved' || proofStatus === 'declined' ? now : null;
+  const notificationId = String(details.notificationId || '');
+  await env.DPEG_ASSIGNMENTS.prepare(
+    `UPDATE assignments
+       SET proof_status = ?,
+           proof_submitted_at = COALESCE(?, proof_submitted_at),
+           proof_reviewed_at = CASE WHEN ? = 'submitted' THEN NULL ELSE COALESCE(?, proof_reviewed_at) END,
+           proof_notification_id = COALESCE(NULLIF(?, ''), proof_notification_id),
+           status = CASE WHEN ? = 'approved' THEN 'Done' ELSE status END,
+           updated_at = ?
+     WHERE app_task_id = ?
+       AND (? = '' OR recipient_email = ?)
+       AND (? = '' OR assigner_email = ?)`
+  ).bind(
+    proofStatus,
+    submittedAt,
+    proofStatus,
+    reviewedAt,
+    notificationId,
+    proofStatus,
+    now,
+    appTaskId,
+    recipientEmail,
+    recipientEmail,
+    senderEmail,
+    senderEmail,
+  ).run();
 }
 
 function todoTaskUrl(userEmail, listId, taskId) {
@@ -580,6 +639,12 @@ async function handleNotify(request, env) {
       createdAt: new Date().toISOString(),
       seen: false,
     });
+    await updateAssignmentProofState(env, {
+      appTaskId: body.appTaskId,
+      recipientEmail: body.recipientEmail,
+      proofStatus: body.result === 'approved' ? 'approved' : 'declined',
+      notificationId: body.notifId,
+    });
     // If declined, reset the recipient's To Do task back to notStarted
     if (body.result === 'declined' && body.todoListId && body.todoTaskId && body.recipientEmail) {
       try {
@@ -598,8 +663,9 @@ async function handleNotify(request, env) {
       } catch {}
     }
   } else if (body.type === 'proof_submitted') {
+    const proofNotificationId = `pn-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
     notifications.push({
-      id: `pn-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      id: proofNotificationId,
       type: 'proof_submitted',
       appTaskId: String(body.appTaskId || ''),
       taskTitle: String(body.taskTitle || ''),
@@ -613,6 +679,13 @@ async function handleNotify(request, env) {
       submittedAt: new Date().toISOString(),
       status: 'pending',
       seen: false,
+    });
+    await updateAssignmentProofState(env, {
+      appTaskId: body.appTaskId,
+      recipientEmail: body.recipientEmail,
+      senderEmail: body.senderEmail,
+      proofStatus: 'submitted',
+      notificationId: proofNotificationId,
     });
   } else if (body.type === 'proof_followup_question') {
     const idx = notifications.findIndex(n => n.id === body.notifId && n.type === 'proof_submitted' && n.status === 'pending');
@@ -729,6 +802,7 @@ async function handleCreateAssignment(request, env) {
   const { error, status, claims } = validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
 
   let body;
   try { body = await request.json(); }
@@ -749,16 +823,16 @@ async function handleCreateAssignment(request, env) {
   const now = new Date().toISOString();
 
   const existing = await env.DPEG_ASSIGNMENTS
-    .prepare('SELECT created_at, status, progress_note FROM assignments WHERE id = ?')
+    .prepare('SELECT created_at, status, progress_note, proof_status, proof_submitted_at, proof_reviewed_at, proof_notification_id FROM assignments WHERE id = ?')
     .bind(id).first();
 
   await env.DPEG_ASSIGNMENTS.prepare(
     `INSERT OR REPLACE INTO assignments
       (id, app_task_id, title, summary, dept, priority, due_date,
        assigner_email, assigner_name, recipient_email, recipient_name,
-       status, progress_note, recipient_todo_list_id, recipient_todo_task_id,
+       status, progress_note, proof_status, proof_submitted_at, proof_reviewed_at, proof_notification_id, recipient_todo_list_id, recipient_todo_task_id,
        proof_instructions, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(
     id,
     String(body.appTaskId || ''),
@@ -773,6 +847,10 @@ async function handleCreateAssignment(request, env) {
     String(body.recipientName || ''),
     existing?.status || 'Assigned',
     existing?.progress_note ?? null,
+    existing?.proof_status || 'none',
+    existing?.proof_submitted_at ?? null,
+    existing?.proof_reviewed_at ?? null,
+    existing?.proof_notification_id ?? null,
     String(body.recipientTodoListId || ''),
     String(body.recipientTodoTaskId || ''),
     String(body.proofInstructions || ''),
@@ -788,6 +866,7 @@ async function handleAssignments(request, env) {
   const { error, status, claims } = validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
 
   const url = new URL(request.url);
@@ -820,6 +899,10 @@ async function handleAssignments(request, env) {
     recipientName: row.recipient_name,
     status: row.status,
     progressNote: row.progress_note,
+    proofStatus: row.proof_status || 'none',
+    proofSubmittedAt: row.proof_submitted_at,
+    proofReviewedAt: row.proof_reviewed_at,
+    proofNotificationId: row.proof_notification_id,
     proofInstructions: row.proof_instructions,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -838,6 +921,7 @@ async function handleAssignmentStatus(request, env) {
   const { error, status, claims } = validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
 
   let body;
   try { body = await request.json(); }

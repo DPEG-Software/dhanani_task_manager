@@ -47,6 +47,55 @@
       .join(' · ');
   }
 
+  function proofState(a) {
+    return String(a?.proofStatus || 'none').toLowerCase();
+  }
+
+  function proofBadge(status) {
+    const s = String(status || 'none').toLowerCase();
+    const styles = {
+      submitted: ['Proof submitted', '#fffbeb', '#f59e0b', '#92400e'],
+      approved: ['Proof approved', '#f0fdf4', '#86efac', '#166534'],
+      declined: ['Proof declined', '#fff1f2', '#fca5a5', '#b91c1c'],
+    };
+    const cfg = styles[s];
+    if (!cfg) return '';
+    return `<span style="display:inline-flex;align-items:center;white-space:nowrap;padding:2px 8px;background:${cfg[1]};border:1px solid ${cfg[2]};border-radius:10px;font-size:10.5px;font-weight:800;color:${cfg[3]}">${cfg[0]}</span>`;
+  }
+
+  function proofSummary(items) {
+    const counts = {};
+    items.forEach(item => {
+      const status = proofState(item);
+      if (status === 'none') return;
+      counts[status] = (counts[status] || 0) + 1;
+    });
+    return ['submitted', 'approved', 'declined']
+      .filter(status => counts[status])
+      .map(status => `${counts[status]} proof ${status}`)
+      .join(' · ');
+  }
+
+  function proofCell(a, received) {
+    const status = proofState(a);
+    const badge = proofBadge(status);
+    if (received) {
+      if (status === 'submitted') {
+        return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:5px">${badge}<span style="font-size:11px;color:var(--muted)">Under review</span></div>`;
+      }
+      if (status === 'approved') return badge;
+      if (status === 'declined') {
+        return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">${badge}<button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button></div>`;
+      }
+      return `<button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`;
+    }
+    if (!badge) return '';
+    const reviewButton = status === 'submitted'
+      ? `<button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review</button>`
+      : '';
+    return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">${badge}${reviewButton}</div>`;
+  }
+
   // Create/update a shared assignment record in D1 via the Worker.
   // Fire-and-forget: failures are logged only, never block To Do/OneDrive writes.
   window.recordAssignment = async function recordAssignment(task) {
@@ -125,22 +174,21 @@
       const open = openGroups.has(group.key);
       const noun = group.items.length === 1 ? 'task' : 'tasks';
       const progressSummary = statusSummary(group.items);
+      const proofGroupSummary = proofSummary(group.items);
       const rows = open ? group.items.map(a => {
         const progressCell = received
           ? `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${ASSIGNMENT_STATUSES.map(s => `<option value="${s}" ${s === a.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`
           : `<span style="font-size:12px;color:var(--muted)">${escapeHtml(a.status || 'Assigned')}</span>`;
-        const proofCell = received
-          ? `<button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`
-          : '';
         return `<tr>
           <td style="padding:10px 14px"><div style="font-size:13px;font-weight:600;color:var(--body)">${escapeHtml(a.title || '')}</div>${assignmentDescription(a.summary)}</td>
           <td style="padding:10px 8px"><span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span></td>
           <td style="padding:10px 8px">${fmtD(a.dueDate)}</td>
           <td style="padding:10px 8px">${pBadge(a.priority)}</td>
           <td style="padding:10px 8px">${progressCell}</td>
-          <td style="padding:10px 8px">${proofCell}</td>
+          <td style="padding:10px 8px">${proofCell(a, received)}</td>
         </tr>`;
       }).join('') : '';
+      const summaryText = [progressSummary, proofGroupSummary].filter(Boolean).join(' · ');
       const safeGroupKey = escapeHtml(JSON.stringify(group.key));
       return `<tr onclick="toggleTasksGroup(${safeGroupKey})" style="background:var(--sage3);cursor:pointer">
         <td colspan="6" style="padding:10px 14px">
@@ -150,7 +198,7 @@
             <div style="min-width:0;flex:1">
               <div style="font-size:13px;font-weight:800;color:var(--body)">${escapeHtml(group.name)}</div>
             </div>
-            <div style="font-size:11px;color:var(--sub);font-weight:700;white-space:nowrap">${group.items.length} ${noun}${progressSummary ? ` · ${escapeHtml(progressSummary)}` : ''}</div>
+            <div style="font-size:11px;color:var(--sub);font-weight:700;white-space:nowrap">${group.items.length} ${noun}${summaryText ? ` · ${escapeHtml(summaryText)}` : ''}</div>
           </div>
         </td>
       </tr>${rows}`;
@@ -180,6 +228,36 @@
       todoListId: '',
       todoTaskId: '',
     });
+  };
+
+  window.openProofReviewFromTasksTab = async function openProofReviewFromTasksTab(id) {
+    const a = (tasksTabCache.assignedByMe || []).find(x => x.id === id);
+    if (!a) return;
+    if (typeof checkAndLoadProofNotifications === 'function') {
+      await checkAndLoadProofNotifications().catch(err => console.warn('Proof notification refresh failed:', err.message));
+    }
+    if (typeof nav === 'function') nav('notifications');
+    toast('Open Notifications to review the submitted proof');
+  };
+
+  window.updateTasksTabProofState = function updateTasksTabProofState(appTaskId, proofStatus) {
+    const key = String(appTaskId || '');
+    if (!key) return;
+    const now = new Date().toISOString();
+    const changedRows = [
+      ...(tasksTabCache.assignedToMe || []).filter(a => String(a.appTaskId || '') === key),
+      ...(tasksTabCache.assignedByMe || []).filter(a => String(a.appTaskId || '') === key),
+    ];
+    changedRows.forEach(row => {
+      row.proofStatus = proofStatus;
+      if (proofStatus === 'submitted') {
+        row.proofSubmittedAt = now;
+        row.proofReviewedAt = null;
+      }
+      if (proofStatus === 'approved' || proofStatus === 'declined') row.proofReviewedAt = now;
+      if (proofStatus === 'approved') row.status = 'Done';
+    });
+    renderTasksTabList();
   };
 
   window.updateAssignmentStatus = async function updateAssignmentStatus(id, status) {

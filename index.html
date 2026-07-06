@@ -1617,6 +1617,7 @@ async function uploadProofFiles(){
     }
     if(progressLabel)progressLabel.textContent='Saving...';
     await saveProofNotificationToKV(params,uploaded,note);
+    window.updateTasksTabProofState?.(params.appTaskId||'', 'submitted');
     if(progressWrap)progressWrap.style.display='none';
     statusEl.innerHTML=`<span style="color:#166534;font-weight:600">✓ Proof submitted! The assignor will review it in DPEG Task Manager.</span>`;
     pendingProofFiles=[];
@@ -7298,6 +7299,7 @@ async function approveProof(notifId,taskId){
       headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
       body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'approved',reason:''}),
     });
+    window.updateTasksTabProofState?.(String(taskId), 'approved');
     t.status='Done';t.completedAt=new Date().toISOString();t.approvedBy=currentUser?.email||'';
     delete t._proofNotif;
     closeMo('mo-detail');refreshAll();toast('Proof approved — task marked Done');
@@ -7341,6 +7343,7 @@ async function dismissProof(notifId,taskId){
       headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
       body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:t.recipientTodoListId||'',todoTaskId:t.recipientTodoTaskId||''}),
     });
+    window.updateTasksTabProofState?.(String(taskId), 'declined');
     delete t._proofNotif;
     closeMo('mo-detail');refreshAll();
     await saveTasksToOneDrive();
@@ -7397,6 +7400,7 @@ async function approveNotification(id){
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
         body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||n.message||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'approved',reason:''}),
       });
+      window.updateTasksTabProofState?.(String(n.taskId||''), 'approved');
       if(task){task.status='Done';task.completedAt=new Date().toISOString();task.approvedBy=currentUser?.email||'';delete task._proofNotif;if(Array.isArray(n.proofs)&&n.proofs.length)task.proofs=n.proofs;}
       n.status='approved';
       updateNotifBadge();renderNotifications();
@@ -7442,6 +7446,7 @@ async function dismissNotification(id){
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
         body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:task?.recipientTodoListId||'',todoTaskId:task?.recipientTodoTaskId||''}),
       });
+      window.updateTasksTabProofState?.(String(n.taskId||''), 'declined');
       if(task)delete task._proofNotif;
       n.status='dismissed';n.dismissReason=String(reason||'').trim();
       updateNotifBadge();renderNotifications();
