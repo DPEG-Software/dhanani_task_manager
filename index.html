@@ -391,6 +391,13 @@
             <span>Drafts</span>
           </div>
           <div style="height:1px;background:#e5e7eb;margin:5px 2px"></div>
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#9ca3af;padding:5px 6px 3px">Smart Views</div>
+          <div id="ol-folder-flagged" class="ol-folder" onclick="loadFolder('flagged')" title="Flagged Items">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M4 22V4"/><path d="M4 4h12l-1.5 5L16 14H4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Flagged</span>
+            <span id="ol-flagged-count" style="margin-left:auto;background:#fffbeb;color:#92400e;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;display:none"></span>
+          </div>
+          <div style="height:1px;background:#e5e7eb;margin:5px 2px"></div>
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#9ca3af;padding:5px 6px 3px">Tracking</div>
           <div id="ol-folder-untracked" class="ol-folder" onclick="loadFolder('untracked')" title="Untracked">
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><circle cx="12" cy="12" r="9" stroke-width="2"/><path d="M12 8v4M12 16h.01" stroke-width="2" stroke-linecap="round"/></svg>
@@ -421,8 +428,13 @@
 
       <!-- MIDDLE: Email List -->
       <div id="ol-mid-panel" style="width:0;min-width:0;flex-shrink:0;overflow:hidden;border-right:1px solid #e5e7eb;display:flex;flex-direction:column;height:100%;transition:width .18s ease">
-        <div style="padding:7px 10px;border-bottom:1px solid #e5e7eb;background:#fafafa;flex-shrink:0;display:flex;align-items:center;gap:6px;min-width:0">
+        <div style="padding:7px 10px;border-bottom:1px solid #e5e7eb;background:#fafafa;flex-shrink:0;display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap">
           <div style="font-size:12px;font-weight:700;color:#111;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="ol-folder-title">Inbox</div>
+          <div class="ol-filter-toggle" id="ol-list-filter">
+            <button id="ol-filter-all" class="active" onclick="setOlListFilter('all')" title="Show all loaded emails">All</button>
+            <button id="ol-filter-unread" onclick="setOlListFilter('unread')" title="Show unread emails">Unread</button>
+            <button id="ol-filter-flagged" onclick="setOlListFilter('flagged')" title="Show flagged emails">Flagged</button>
+          </div>
           <button onclick="refreshFolder()" style="border:none;background:none;cursor:pointer;color:#9ca3af;font-size:15px;line-height:1;padding:2px;transition:color .12s;flex-shrink:0" onmouseover="this.style.color='#111'" onmouseout="this.style.color='#9ca3af'" title="Refresh">&#8635;</button>
         </div>
         <div style="flex:1;overflow-y:auto;overflow-x:hidden" id="ol-email-list">
@@ -4191,11 +4203,13 @@ let emailCache = {};
 let trackedEmailIds = new Set();
 let outlookFolderEmails = {};
 let outlookNextLinks = {};
+let olListFilter = localStorage.getItem('dpeg_outlook_list_filter') || 'all';
+if(!['all','unread','flagged'].includes(olListFilter))olListFilter='all';
 let deletedFolderID = null;
 let pinnedEmailIds = new Set(JSON.parse(localStorage.getItem('dpeg_pinned_email_ids')||'[]'));
 
 const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts',deleted:'deleteditems',deleteditems:'deleteditems'};
-const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',untracked:'Untracked Emails',deleted:'Deleted Items',deleteditems:'Deleted Items',calendar:'Calendar'};
+const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',flagged:'Flagged Items',untracked:'Untracked Emails',deleted:'Deleted Items',deleteditems:'Deleted Items',calendar:'Calendar'};
 
 function buildTrackedSet(){
   trackedEmailIds = new Set(tasks.flatMap(t=>[t.emailId,t.lastMessageId,t.conversationId]).filter(Boolean));
@@ -4470,6 +4484,38 @@ function groupEmailsByConversation(emails){
   });
 }
 
+function applyOlListFilter(emails,folder=currentFolder){
+  const list=emails||[];
+  if(olListFilter==='unread')return list.filter(e=>!e.isRead);
+  if(olListFilter==='flagged')return list.filter(e=>outlookFlagStatus(e)==='flagged');
+  return list;
+}
+
+function updateOlFilterButtons(){
+  ['all','unread','flagged'].forEach(mode=>{
+    document.getElementById(`ol-filter-${mode}`)?.classList.toggle('active',olListFilter===mode);
+  });
+}
+
+function setOlListFilter(mode){
+  olListFilter=['all','unread','flagged'].includes(mode)?mode:'all';
+  localStorage.setItem('dpeg_outlook_list_filter',olListFilter);
+  updateOlFilterButtons();
+  if(currentFolder==='untracked'){loadUntracked();return;}
+  renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
+}
+
+function updateFlaggedCount(){
+  const all=Object.values(outlookFolderEmails||{}).flat();
+  const ids=new Set();
+  all.forEach(e=>{if(e?.id&&outlookFlagStatus(e)==='flagged')ids.add(e.id);});
+  const el=document.getElementById('ol-flagged-count');
+  if(el){
+    el.textContent=ids.size?String(ids.size):'';
+    el.style.display=ids.size?'':'none';
+  }
+}
+
 async function readConversationOrEmail(emailId,folder,el){
   if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
   if(el){el.classList.add('active');_activeEmailEl=el;}
@@ -4484,8 +4530,19 @@ async function readConversationOrEmail(emailId,folder,el){
 function renderEmailRows(folder,emails){
   const listEl=document.getElementById('ol-email-list');
   if(!listEl)return;
-  if(!emails||!emails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails</div></div>';return;}
-  const groups=groupEmailsByConversation(emails);
+  updateOlFilterButtons();
+  updateFlaggedCount();
+  const loadedEmails=emails||[];
+  if(!loadedEmails.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No emails</div></div>';return;}
+  const filteredEmails=applyOlListFilter(loadedEmails,folder);
+  if(!filteredEmails.length){
+    const labels={unread:'No unread emails',flagged:'No flagged emails',all:'No emails'};
+    const hint=outlookNextLinks[folder]?'Load more to check older messages':'Try a different filter';
+    const more=outlookNextLinks[folder]?`<button class="btn btn-ghost btn-sm" style="margin-top:10px;justify-content:center;font-size:11px" onclick="loadMoreEmails('${folder}')">Load more</button>`:'';
+    listEl.innerHTML=`<div class="empty-state"><div class="es-text">${labels[olListFilter]||'No emails'}</div><div class="es-sub">${hint}</div>${more}</div>`;
+    return;
+  }
+  const groups=groupEmailsByConversation(filteredEmails);
   let lastGroup='';
   const rows=groups.map(g=>{
     const e=g.latest;
@@ -4529,12 +4586,13 @@ function renderEmailRows(folder,emails){
   }).join('');
   const footer=outlookNextLinks[folder]
     ?`<div style="padding:10px;border-top:1px solid #f0f0f0"><button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;font-size:11px" onclick="loadMoreEmails('${folder}')">Load more</button></div>`
-    :`<div style="padding:8px 10px;border-top:1px solid #f0f0f0;font-size:10px;color:#9ca3af;text-align:center">${emails.length} emails</div>`;
+    :`<div style="padding:8px 10px;border-top:1px solid #f0f0f0;font-size:10px;color:#9ca3af;text-align:center">${filteredEmails.length}${filteredEmails.length!==loadedEmails.length?` of ${loadedEmails.length}`:''} emails${groups.length!==filteredEmails.length?` · ${groups.length} conversations`:''}</div>`;
   listEl.innerHTML=rows+footer;
 }
 
 async function loadFolder(folder){
   currentFolder=folder;
+  updateOlFilterButtons();
   olMobileBackToList();
   _activeEmailEl=null;
   buildTrackedSet();
@@ -4549,6 +4607,7 @@ async function loadFolder(folder){
   const listEl=document.getElementById('ol-email-list');
   if(!listEl)return;
   listEl.innerHTML=`<div class="empty-state"><div class="es-text">Loading...</div></div>`;
+  if(folder==='flagged'){await loadFlaggedFolder();return;}
   if(folder==='untracked'){await loadUntracked();return;}
   try{
     const token=await getAccessToken();
@@ -4614,6 +4673,26 @@ async function loadMoreEmails(folder){
   }
 }
 
+async function loadFlaggedFolder(){
+  const listEl=document.getElementById('ol-email-list');
+  if(!listEl)return;
+  try{
+    const token=await getAccessToken();
+    const select='id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag';
+    const filter=encodeURIComponent("flag/flagStatus eq 'flagged'");
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$top=100&$select=${select}&$filter=${filter}&$orderby=receivedDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Failed');
+    const data=await res.json();
+    outlookFolderEmails.flagged=data.value||[];
+    outlookNextLinks.flagged=data['@odata.nextLink']||'';
+    updateFlaggedCount();
+    renderEmailRows('flagged',outlookFolderEmails.flagged);
+  }catch(err){
+    console.error('Load flagged emails error:',err);
+    listEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load flagged emails</div></div>';
+  }
+}
+
 async function loadUntracked(){
   const listEl=document.getElementById('ol-email-list');
   try{
@@ -4638,8 +4717,14 @@ async function loadUntracked(){
     const uc=document.getElementById('ol-untracked-count');
     if(uc){uc.textContent=untrackedCount>0?untrackedCount:'';uc.style.display=untrackedCount>0?'':'none';}
     if(!untracked.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">All caught up</div><div class="es-sub">All emails to DPEG staff are tracked</div></div>';return;}
+    const visibleUntracked=applyOlListFilter(untracked,'untracked');
+    if(!visibleUntracked.length){
+      const labels={unread:'No unread untracked emails',flagged:'No flagged untracked emails',all:'No untracked emails'};
+      listEl.innerHTML=`<div class="empty-state"><div class="es-text">${labels[olListFilter]||'No untracked emails'}</div><div class="es-sub">Try a different filter</div></div>`;
+      return;
+    }
     listEl.innerHTML=`<div style="padding:10px 14px;background:var(--amber-bg);border-bottom:1px solid var(--amber-bd)"><div style="font-size:11.5px;font-weight:600;color:var(--amber)">${untracked.length} email${untracked.length!==1?'s':''} sent to DPEG staff not yet in Action Log</div></div>`+
-    untracked.map(e=>{
+    visibleUntracked.map(e=>{
       const to=e.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
       const dt=new Date(e.sentDateTime);
       const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
@@ -5587,8 +5672,14 @@ async function toggleOutlookFlag(emailId,ev){
     if(!res.ok)throw new Error('Flag update failed');
     email.flag={...(email.flag||{}),flagStatus:next};
     if(emailCache[emailId])emailCache[emailId].flag=email.flag;
-    const cached=(outlookFolderEmails[currentFolder]||[]).find(e=>e.id===emailId);
-    if(cached)cached.flag=email.flag;
+    Object.keys(outlookFolderEmails||{}).forEach(folder=>{
+      const cached=(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId);
+      if(cached)cached.flag=email.flag;
+    });
+    if(currentFolder==='flagged'&&next!=='flagged'){
+      outlookFolderEmails.flagged=(outlookFolderEmails.flagged||[]).filter(e=>e.id!==emailId);
+    }
+    updateFlaggedCount();
     if(currentFolder==='untracked')loadUntracked();
     else renderEmailRows(currentFolder,outlookFolderEmails[currentFolder]||[]);
     if(currentEmailId===emailId)readEmail(emailId,currentFolder==='untracked'?'sent':currentFolder);
