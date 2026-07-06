@@ -35,6 +35,18 @@
     return `<div style="margin-top:7px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:11.5px;line-height:1.55;color:var(--sub);white-space:pre-wrap;max-height:180px;overflow:auto">${escapeHtml(text)}</div>`;
   }
 
+  function statusSummary(items) {
+    const counts = {};
+    items.forEach(item => {
+      const status = item.status || 'Assigned';
+      counts[status] = (counts[status] || 0) + 1;
+    });
+    return ASSIGNMENT_STATUSES
+      .filter(status => counts[status])
+      .map(status => `${counts[status]} ${status}`)
+      .join(' · ');
+  }
+
   // Create/update a shared assignment record in D1 via the Worker.
   // Fire-and-forget: failures are logged only, never block To Do/OneDrive writes.
   window.recordAssignment = async function recordAssignment(task) {
@@ -71,6 +83,12 @@
     tasksTabMode = mode;
     document.getElementById('tasks-received-btn')?.classList.toggle('active', mode === 'received');
     document.getElementById('tasks-given-btn')?.classList.toggle('active', mode === 'given');
+    const desc = document.getElementById('tasks-tab-description');
+    if (desc) {
+      desc.textContent = mode === 'received'
+        ? 'Tasks assigned by others to you are present here.'
+        : 'Tasks assigned by you to others are present here.';
+    }
     renderTasksTabList();
   };
 
@@ -106,7 +124,7 @@
     tb.innerHTML = groupAssignments(list, received).map(group => {
       const open = openGroups.has(group.key);
       const noun = group.items.length === 1 ? 'task' : 'tasks';
-      const groupStatus = 'Assigned';
+      const progressSummary = statusSummary(group.items);
       const rows = open ? group.items.map(a => {
         const progressCell = received
           ? `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${ASSIGNMENT_STATUSES.map(s => `<option value="${s}" ${s === a.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`
@@ -130,9 +148,9 @@
             <span style="font-size:13px;color:var(--muted);width:14px;display:inline-flex;justify-content:center">${open ? '-' : '+'}</span>
             ${av(group.name, 24)}
             <div style="min-width:0;flex:1">
-              <div style="font-size:13px;font-weight:800;color:var(--body)">${escapeHtml(group.name)}: ${groupStatus}</div>
-              <div style="font-size:11px;color:var(--muted);margin-top:1px">${group.items.length} ${noun}</div>
+              <div style="font-size:13px;font-weight:800;color:var(--body)">${escapeHtml(group.name)}</div>
             </div>
+            <div style="font-size:11px;color:var(--sub);font-weight:700;white-space:nowrap">${group.items.length} ${noun}${progressSummary ? ` · ${escapeHtml(progressSummary)}` : ''}</div>
           </div>
         </td>
       </tr>${rows}`;
@@ -173,12 +191,16 @@
         body: JSON.stringify({ id, status }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const row = (tasksTabCache.assignedToMe || []).find(a => a.id === id);
-      if (row) row.status = status;
-      toast('Status updated');
+      const changedRows = [
+        ...(tasksTabCache.assignedToMe || []).filter(a => a.id === id),
+        ...(tasksTabCache.assignedByMe || []).filter(a => a.id === id),
+      ];
+      changedRows.forEach(row => { row.status = status; });
+      renderTasksTabList();
+      toast('Progress updated');
     } catch (err) {
       console.warn('Update assignment status failed:', err.message);
-      toast('Could not update status — try again');
+      toast('Could not update progress — try again');
       renderTasksTabList(); // revert the <select> to the last-known-good cached value
     }
   };
