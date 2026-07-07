@@ -6308,9 +6308,16 @@ function forwardedMessageText(email){
 
 function repliedMessageText(email){
   const from=email?.from?.emailAddress;
+  const toLine=forwardRecipientsLine('To',email?.toRecipients||[]);
+  const ccLine=forwardRecipientsLine('CC',email?.ccRecipients||[]);
+  const dateLine=forwardThreadDate(email);
   const lines=[
     '——— Original Message ———',
     forwardPersonLine('From',from),
+    dateLine?`Sent: ${dateLine}`:'',
+    toLine,
+    ccLine,
+    `Subject: ${email?.subject||''}`,
   ].filter(Boolean);
   return `${lines.join('\n')}\n\n${emailFullText(email)}`.trimEnd();
 }
@@ -6385,13 +6392,6 @@ function forwardRecipientsLine(label,recipients){
   return list.length?`${label}: ${list.join(', ')}`:'';
 }
 
-function forwardThreadMessageText(m){
-  const isHtml=(m?.body?.contentType||'').toLowerCase()==='html';
-  const content=m?.body?.content||m?.bodyPreview||'';
-  if(isHtml)return plainizeEmailBody(stripEmailHtml(threadMessageBody(m,true)));
-  return plainizeEmailBody(threadMessageBody(m,false)||content);
-}
-
 async function getMessagesForForwardAll(emailId){
   const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,conversationId,webLink,hasAttachments';
   let email=emailCache[emailId];
@@ -6420,21 +6420,12 @@ async function forwardFullThread(emailId){
   try{
     const messages=await getMessagesForForwardAll(emailId);
     if(!messages.length){toast('Could not load thread to forward');return;}
-    const subjectBase=threadViewState?.subject||messages[messages.length-1]?.subject||messages[0]?.subject||'(no subject)';
-    const subject=subjectBase.startsWith('Fw:')?subjectBase:`Fw: ${subjectBase}`;
-    const parts=messages.map(m=>{
-      const lines=[
-        '——— Forwarded Message ———',
-        forwardPersonLine('From',m.from),
-        forwardRecipientsLine('To',m.toRecipients),
-        forwardRecipientsLine('CC',m.ccRecipients),
-        forwardThreadDate(m)?`Date: ${forwardThreadDate(m)}`:'',
-        `Subject: ${m.subject||subjectBase}`
-      ].filter(Boolean);
-      return `${lines.join('\n')}\n\n${forwardThreadMessageText(m)}`.trim();
-    });
-    const body=`\n\n——— Forwarded Conversation ———\nSubject: ${subjectBase}\nMessages: ${messages.length}\n\n${parts.join('\n\n')}`;
-    openCompose('',subject,body,'Forward All',null);
+    // Forward the thread's newest message through the native Outlook forward path
+    // (createForward) rather than rebuilding text by hand: Outlook already nests
+    // every earlier reply inside the latest message's own HTML body, so a native
+    // forward of it carries the full conversation, images, and attachments intact.
+    const latest=messages[messages.length-1];
+    await forwardEmail(latest.id);
   }catch(err){
     console.error('Forward all error:',err);
     toast('Could not prepare full thread forward');
