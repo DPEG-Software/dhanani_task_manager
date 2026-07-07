@@ -4956,9 +4956,15 @@ function buildThreadHTML(messages){
     const cc=(m.ccRecipients||[]).length?renderExpandablePeople(m.ccRecipients||[],`thread-cc-${m.id}`,2):'';
     const dt=new Date(m.receivedDateTime||m.sentDateTime);
     const isHtml=m.body?.contentType==='html';
-    const displayBody=threadMessageBody(m,isHtml);
-    const bIdx=isHtml?(window._emailFrameBodies.push(displayBody)-1):-1;
     const isLatest=i===0;
+    // Only strip quoted/forwarded history from older messages, whose content is
+    // already shown in full by a newer message above. The latest message is the
+    // one the user actually opened to read — a forwarded email's real content
+    // (images, formatting) often sits right after the "Forwarded message" header
+    // as a sibling, not nested inside it, so stripping it here would delete the
+    // entire point of the email.
+    const displayBody=isLatest?(m.body?.content||m.bodyPreview||''):threadMessageBody(m,isHtml);
+    const bIdx=isHtml?(window._emailFrameBodies.push(displayBody)-1):-1;
     const preview=escapeHtml((m.bodyPreview||'').slice(0,140).replace(/\s+/g,' '));
     const msgId=`tv-${m.id.replace(/[^a-zA-Z0-9]/g,'_')}`;
     return `<div class="tv-msg${isLatest?' tv-msg--latest':''}" id="${msgId}">
