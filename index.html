@@ -4003,6 +4003,19 @@ function initOlPanels(){
   if(lp)lp.style.width='0';
   if(mp)mp.style.width='0';
   updateOlDividerIcons();
+  setupEmailListInfiniteScroll();
+}
+
+function setupEmailListInfiniteScroll(){
+  const listEl=document.getElementById('ol-email-list');
+  if(!listEl||listEl._infiniteScrollBound)return;
+  listEl._infiniteScrollBound=true;
+  listEl.addEventListener('scroll',()=>{
+    if(listEl.scrollTop+listEl.clientHeight<listEl.scrollHeight-200)return;
+    const folder=currentFolder;
+    if(!folder||!outlookNextLinks[folder]||_loadingMoreEmails[folder])return;
+    loadMoreEmails(folder);
+  });
 }
 
 function toggleOlLeft(){
@@ -4215,6 +4228,8 @@ let emailCache = {};
 let trackedEmailIds = new Set();
 let outlookFolderEmails = {};
 let outlookNextLinks = {};
+let outlookFolderTotals = {};
+let _loadingMoreEmails = {};
 let olListFilter = localStorage.getItem('dpeg_outlook_list_filter') || 'all';
 if(!['all','unread','flagged'].includes(olListFilter))olListFilter='all';
 let deletedFolderID = null;
@@ -4609,9 +4624,10 @@ function renderEmailRows(folder,emails){
       <div id="list-ai-sum-${safeId}" style="display:none;margin-top:5px;padding:6px 9px;background:#faf8ff;border-left:2px solid #7c3aed;border-radius:0 4px 4px 0;font-size:11px;color:#4b5563;line-height:1.5"></div>
     </div>`;
   }).join('');
+  const outlookTotal=outlookFolderTotals[folder];
   const footer=outlookNextLinks[folder]
-    ?`<div style="padding:10px;border-top:1px solid #f0f0f0"><button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;font-size:11px" onclick="loadMoreEmails('${folder}')">Load more</button></div>`
-    :`<div style="padding:8px 10px;border-top:1px solid #f0f0f0;font-size:10px;color:#9ca3af;text-align:center">${filteredEmails.length}${filteredEmails.length!==loadedEmails.length?` of ${loadedEmails.length}`:''} emails${groups.length!==filteredEmails.length?` · ${groups.length} conversations`:''}</div>`;
+    ?`<div id="ol-list-loadmore" style="padding:10px;border-top:1px solid #f0f0f0;text-align:center;font-size:11px;color:#9ca3af">${_loadingMoreEmails[folder]?'Loading more…':(outlookTotal?`${loadedEmails.length} of ${outlookTotal} loaded — scroll for more`:'Scroll for more')}</div>`
+    :`<div style="padding:8px 10px;border-top:1px solid #f0f0f0;font-size:10px;color:#9ca3af;text-align:center">${filteredEmails.length}${filteredEmails.length!==loadedEmails.length?` of ${loadedEmails.length}`:''} emails${groups.length!==filteredEmails.length?` · ${groups.length} conversations`:''}${outlookTotal?` (Outlook: ${outlookTotal})`:''}</div>`;
   listEl.innerHTML=rows+footer;
 }
 
@@ -4641,12 +4657,21 @@ async function loadFolder(folder){
   try{
     const token=await getAccessToken();
     const orderField=folder==='sent'?'sentDateTime':'receivedDateTime';
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag&$orderby=${orderField} desc`,{headers:{Authorization:`Bearer ${token}`}});
+    const [res,totalRes]=await Promise.all([
+      fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag&$orderby=${orderField} desc`,{headers:{Authorization:`Bearer ${token}`}}),
+      fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}?$select=totalItemCount`,{headers:{Authorization:`Bearer ${token}`}}).catch(()=>null)
+    ]);
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
     outlookFolderEmails[folder]=emails;
     outlookNextLinks[folder]=data['@odata.nextLink']||'';
+    if(totalRes&&totalRes.ok){
+      const totalData=await totalRes.json();
+      outlookFolderTotals[folder]=totalData.totalItemCount;
+    }else{
+      delete outlookFolderTotals[folder];
+    }
     if(folder==='inbox'){
       const unread=emails.filter(e=>!e.isRead).length;
       const ce=document.getElementById('ol-inbox-count');
@@ -4685,8 +4710,12 @@ async function loadFolder(folder){
 
 async function loadMoreEmails(folder){
   const next=outlookNextLinks[folder];
-  if(!next)return;
+  if(!next||_loadingMoreEmails[folder])return;
+  _loadingMoreEmails[folder]=true;
   const listEl=document.getElementById('ol-email-list');
+  const loadingEl=document.getElementById('ol-list-loadmore');
+  if(loadingEl)loadingEl.textContent='Loading more…';
+  const scrollPos=listEl?.scrollTop||0;
   try{
     const token=await getAccessToken();
     const res=await fetch(next,{headers:{Authorization:`Bearer ${token}`}});
@@ -4696,9 +4725,12 @@ async function loadMoreEmails(folder){
     outlookFolderEmails[folder]=[...(outlookFolderEmails[folder]||[]),...more];
     if(folder==='flagged')outlookFolderEmails[folder].sort((a,b)=>emailTimestamp(b)-emailTimestamp(a));
     outlookNextLinks[folder]=data['@odata.nextLink']||'';
+    _loadingMoreEmails[folder]=false;
     renderEmailRows(folder,outlookFolderEmails[folder]);
+    if(listEl)listEl.scrollTop=scrollPos;
   }catch(err){
     console.error('Load more email error:',err);
+    _loadingMoreEmails[folder]=false;
     if(listEl)listEl.insertAdjacentHTML('beforeend','<div style="padding:10px 14px;font-size:11px;color:#b91c1c;text-align:center">Could not load more emails</div>');
   }
 }
