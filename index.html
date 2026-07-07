@@ -2149,6 +2149,13 @@ function stripEmailHtml(html){
   });
   return div.textContent||div.innerText||"";
 }
+function plainizeEmailBody(text){
+  return String(text||"")
+    .replace(/\r/g,"")
+    .replace(/[ \t]+\n/g,"\n")
+    .replace(/\n{3,}/g,"\n\n")
+    .trim();
+}
 function cleanEmailText(text){
   return String(text||"")
     .replace(/\r/g,"\n")
@@ -5813,21 +5820,16 @@ function renderComposeAttachments(){
       </div>`).join('')}`;
 }
 
-function replyEmail(emailId){
-  const email=emailCache[emailId];if(!email)return;
+async function replyEmail(emailId){
+  const email=await ensureFullEmailForCompose(emailId);if(!email)return;
   const to=email.from?.emailAddress?.address||'';
   const subject=email.subject?.startsWith('Re:')?email.subject:`Re: ${email.subject}`;
-  const orig=`
-
-——— Original Message ———
-From: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}
-
-${email.bodyPreview}`;
+  const orig=`\n\n${repliedMessageText(email)}`;
   openCompose(to,subject,orig,'Reply',emailId);
 }
 
-function replyAllEmail(emailId){
-  const email=emailCache[emailId];if(!email)return;
+async function replyAllEmail(emailId){
+  const email=await ensureFullEmailForCompose(emailId);if(!email)return;
   const me=normEmail(currentUser?.email||currentAccount?.username||'');
   const sender=email.from?.emailAddress?.address||'';
   const uniq=[];
@@ -5845,12 +5847,7 @@ function replyAllEmail(emailId){
     ccList.push(e);
   });
   const subject=email.subject?.startsWith('Re:')?email.subject:`Re: ${email.subject}`;
-  const orig=`
-
-——— Original Message ———
-From: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}
-
-${email.bodyPreview}`;
+  const orig=`\n\n${repliedMessageText(email)}`;
   openCompose(uniq.join(', '),subject,orig,'Reply All',emailId);
   document.getElementById('compose-cc').value=ccList.join(', ');
   showRecipientPreview();
@@ -6078,7 +6075,9 @@ async function sendDraftMessage(token,message,toAttach=[],inlineAttachments=[]){
 }
 
 async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,toAttach=[],composed=null){
-  const prepared=composed||prepareComposedEmail(body);
+  const markerIndex=String(body||'').search(/\n\s*(?:---|———)\s*Forwarded Message\s*(?:---|———)/i);
+  const commentBody=markerIndex>=0?String(body||'').slice(0,markerIndex).trim():body;
+  const prepared=markerIndex>=0?prepareComposedEmail(commentBody):(composed||prepareComposedEmail(body));
   const createRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/createForward`,{
     method:'POST',
     headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
@@ -6121,7 +6120,9 @@ async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipien
 }
 
 async function sendReplyOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,body,importance,toAttach=[],composed=null){
-  const prepared=composed||prepareComposedEmail(body);
+  const markerIndex=String(body||'').search(/\n\s*(?:---|———)\s*Original Message\s*(?:---|———)/i);
+  const commentBody=markerIndex>=0?String(body||'').slice(0,markerIndex).trim():body;
+  const prepared=markerIndex>=0?prepareComposedEmail(commentBody):(composed||prepareComposedEmail(body));
   const createRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}/createReply`,{
     method:'POST',
     headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
@@ -6268,10 +6269,56 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
 let _pendingForwardFn=null;
 function proceedForward(){closeMo('mo-fwd-gap');if(_pendingForwardFn){const fn=_pendingForwardFn;_pendingForwardFn=null;fn();}}
 
+async function ensureFullEmailForCompose(emailId){
+  let email=emailCache[emailId];
+  if(email?.body?.content)return email;
+  const token=await getAccessToken();
+  const select='id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,bodyPreview,isRead,conversationId,webLink,importance,hasAttachments,flag';
+  const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}?$select=${select}`,{headers:{Authorization:`Bearer ${token}`}});
+  if(!res.ok)return email||null;
+  email=await res.json();
+  emailCache[emailId]=email;
+  return email;
+}
+
+function emailFullText(email){
+  const body=email?.body?.content||'';
+  if(body){
+    const type=String(email?.body?.contentType||'').toLowerCase();
+    return type==='html'?plainizeEmailBody(stripEmailHtml(body)):plainizeEmailBody(body);
+  }
+  return plainizeEmailBody(email?.bodyPreview||'');
+}
+
+function forwardedMessageText(email){
+  const from=email?.from?.emailAddress;
+  const toLine=forwardRecipientsLine('To',email?.toRecipients||[]);
+  const ccLine=forwardRecipientsLine('CC',email?.ccRecipients||[]);
+  const dateLine=forwardThreadDate(email);
+  const lines=[
+    '--- Forwarded Message ---',
+    forwardPersonLine('From',from),
+    toLine,
+    ccLine,
+    dateLine?`Date: ${dateLine}`:'',
+    `Subject: ${email?.subject||''}`,
+  ].filter(Boolean);
+  return `\n\n${lines.join('\n')}\n\n${emailFullText(email)}`.trimEnd();
+}
+
+function repliedMessageText(email){
+  const from=email?.from?.emailAddress;
+  const lines=[
+    '——— Original Message ———',
+    forwardPersonLine('From',from),
+  ].filter(Boolean);
+  return `${lines.join('\n')}\n\n${emailFullText(email)}`.trimEnd();
+}
+
 async function forwardEmail(emailId){
-  const email=emailCache[emailId];if(!email)return;
+  const email=await ensureFullEmailForCompose(emailId);if(!email)return;
   const subject=email.subject?.startsWith('Fw:')?email.subject:`Fw: ${email.subject}`;
-  const orig=`\n\n——— Forwarded Message ———\nFrom: ${email.from?.emailAddress?.name||email.from?.emailAddress?.address}\nSubject: ${email.subject}\n\n${email.bodyPreview}`;
+  const orig=`\n\n${forwardedMessageText(email)}`;
   const doForward=()=>openCompose('',subject,orig,'Forward',emailId);
   if(!email.conversationId){doForward();return;}
   try{
@@ -6341,8 +6388,8 @@ function forwardRecipientsLine(label,recipients){
 function forwardThreadMessageText(m){
   const isHtml=(m?.body?.contentType||'').toLowerCase()==='html';
   const content=m?.body?.content||m?.bodyPreview||'';
-  if(isHtml)return cleanEmailText(stripEmailHtml(threadMessageBody(m,true)));
-  return cleanEmailText(threadMessageBody(m,false)||content);
+  if(isHtml)return plainizeEmailBody(stripEmailHtml(threadMessageBody(m,true)));
+  return plainizeEmailBody(threadMessageBody(m,false)||content);
 }
 
 async function getMessagesForForwardAll(emailId){
