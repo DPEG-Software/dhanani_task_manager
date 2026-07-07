@@ -4659,21 +4659,23 @@ async function loadFolder(folder){
     const orderField=folder==='sent'?'sentDateTime':'receivedDateTime';
     const [res,totalRes]=await Promise.all([
       fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag&$orderby=${orderField} desc`,{headers:{Authorization:`Bearer ${token}`}}),
-      fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}?$select=totalItemCount`,{headers:{Authorization:`Bearer ${token}`}}).catch(()=>null)
+      fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}?$select=totalItemCount,unreadItemCount`,{headers:{Authorization:`Bearer ${token}`}}).catch(()=>null)
     ]);
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
     const emails=data.value||[];
     outlookFolderEmails[folder]=emails;
     outlookNextLinks[folder]=data['@odata.nextLink']||'';
+    let realUnread=null;
     if(totalRes&&totalRes.ok){
       const totalData=await totalRes.json();
       outlookFolderTotals[folder]=totalData.totalItemCount;
+      realUnread=totalData.unreadItemCount;
     }else{
       delete outlookFolderTotals[folder];
     }
     if(folder==='inbox'){
-      const unread=emails.filter(e=>!e.isRead).length;
+      const unread=realUnread!=null?realUnread:emails.filter(e=>!e.isRead).length;
       const ce=document.getElementById('ol-inbox-count');
       if(ce){ce.textContent=unread>0?unread:'';ce.style.display=unread>0?'':'none';}
       const nb=document.getElementById('nb-inbox');
