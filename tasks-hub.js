@@ -94,7 +94,10 @@
     const labels = ['Assigned', 'Accepted', 'In Progress', declined ? 'Declined' : 'Submitted', 'Done'];
     return `<div class="assign-stepper">${labels.map((label, i) => {
       const isDeclinedDot = declined && i === 3;
-      const state = isDeclinedDot ? 'is-declined' : i < index ? 'is-complete' : i === index ? 'is-current' : '';
+      // The terminal stage (Done) is a finished state, not an in-flight one —
+      // render it solid/complete rather than the "current" in-progress ring.
+      const isFinal = i === labels.length - 1;
+      const state = isDeclinedDot ? 'is-declined' : i < index ? 'is-complete' : i === index ? (isFinal ? 'is-complete' : 'is-current') : '';
       const dot = `<div class="assign-step ${state}"><span class="assign-step-dot"></span><span class="assign-step-label">${label}</span></div>`;
       if (i === labels.length - 1) return dot;
       const lineComplete = !declined && i < index;
@@ -116,16 +119,16 @@
         return `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`;
       }
-      if (proof === 'submitted') return `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>`;
-      if (proof === 'declined') return `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — check your email, then</span>
+      if (proof === 'submitted') return `<span style="font-size:clamp(11.5px,.45vw + 9px,14px);color:var(--muted);font-weight:700">Submitted — waiting on approval</span>`;
+      if (proof === 'declined') return `<span style="font-size:clamp(11.5px,.45vw + 9px,14px);color:var(--ruby);font-weight:700">Declined — check your email, then</span>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button>`;
-      if (proof === 'approved') return `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
+      if (proof === 'approved') return `<span style="font-size:clamp(11.5px,.45vw + 9px,14px);color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
       return '';
     }
     if (proof === 'submitted') return `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review Proof</button>`;
-    if (proof === 'declined') return `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — awaiting resubmission</span>`;
-    if (proof === 'approved') return `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
-    return `<span style="font-size:11.5px;color:var(--muted);font-weight:600">In progress</span>`;
+    if (proof === 'declined') return `<span style="font-size:clamp(11.5px,.45vw + 9px,14px);color:var(--ruby);font-weight:700">Declined — awaiting resubmission</span>`;
+    if (proof === 'approved') return `<span style="font-size:clamp(11.5px,.45vw + 9px,14px);color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
+    return `<span style="font-size:clamp(11.5px,.45vw + 9px,14px);color:var(--muted);font-weight:600">In progress</span>`;
   }
 
   function assignmentCard(a, received) {
@@ -189,22 +192,37 @@
     renderTasksTabList();
   };
 
-  window.renderMyTasks = async function renderMyTasks() {
+  function assignmentsSignature(cache) {
+    const sig = list => (list || [])
+      .map(a => [a.id, a.status, a.proofStatus, a.summary, a.dueDate, a.title, a.dept, a.priority].join('|'))
+      .join(';');
+    return `${sig(cache?.assignedToMe)}::${sig(cache?.assignedByMe)}`;
+  }
+
+  // silent=true is used by the background poll: fetches quietly and only
+  // touches the DOM if something actually changed, so a card the user has
+  // expanded doesn't flash/collapse on every refresh cycle.
+  window.renderMyTasks = async function renderMyTasks(silent) {
     const tb = document.getElementById('tasks-tbody');
     if (!tb || !currentUser?.email) return;
-    tb.innerHTML = `<div class="empty-state"><div class="es-text">Loading...</div></div>`;
+    if (!silent) tb.innerHTML = `<div class="empty-state"><div class="es-text">Loading...</div></div>`;
+    let nextCache;
     try {
       const userToken = await getAccessToken();
       const res = await fetch(`${fnBaseUrl()}/assignments?email=${encodeURIComponent(currentUser.email)}`, {
         headers: { Authorization: `Bearer ${userToken}` },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      tasksTabCache = await res.json();
+      nextCache = await res.json();
     } catch (err) {
       console.warn('Load assignments failed:', err.message);
-      tb.innerHTML = `<div class="empty-state"><div class="es-text">Couldn't load Tasks tab</div><div class="es-sub">Check your connection and reopen this tab to retry</div></div>`;
+      if (!silent) {
+        tb.innerHTML = `<div class="empty-state"><div class="es-text">Couldn't load Tasks tab</div><div class="es-sub">Check your connection and reopen this tab to retry</div></div>`;
+      }
       return;
     }
+    if (silent && assignmentsSignature(nextCache) === assignmentsSignature(tasksTabCache)) return;
+    tasksTabCache = nextCache;
     renderTasksTabList();
   };
 

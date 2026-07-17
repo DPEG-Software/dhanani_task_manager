@@ -3997,8 +3997,17 @@ function setupEmailListInfiniteScroll(){
   listEl._infiniteScrollBound=true;
   listEl.addEventListener('scroll',()=>{
     if(listEl.scrollTop+listEl.clientHeight<listEl.scrollHeight-200)return;
+    // Search results page independently of currentFolder — currentFolder still
+    // reflects whichever real folder the user was in before searching, and a
+    // lot of other logic (mark-as-read, delete, back-navigation) depends on
+    // that staying accurate, so search must not overwrite it.
+    if(_olSearchActive){
+      if(outlookNextLinks.search&&!_loadingMoreEmails.search)loadMoreEmails('search');
+      return;
+    }
     const folder=currentFolder;
     if(!folder||!outlookNextLinks[folder]||_loadingMoreEmails[folder])return;
+    if(folder==='untracked'){loadMoreUntracked();return;}
     loadMoreEmails(folder);
   });
 }
@@ -4093,13 +4102,17 @@ async function searchEmails(query){
   listEl.innerHTML='<div class="empty-state"><div class="es-text">Searching...</div></div>';
   try{
     const token=await getAccessToken();
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$search="${encodeURIComponent(query)}"&$top=20&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag`,{headers:{Authorization:`Bearer ${token}`}});
+    const res=await fetch(`https://graph.microsoft.com/v1.0/me/messages?$search="${encodeURIComponent(query)}"&$top=100&$select=id,subject,from,toRecipients,receivedDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Search failed');
     const data=await res.json();
     const results=data.value||[];
+    outlookFolderEmails.search=results;
+    outlookNextLinks.search=data['@odata.nextLink']||'';
     if(titleEl)titleEl.textContent=`Results (${results.length})`;
     if(!results.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">No results</div><div class="es-sub">Try different keywords</div></div>';return;}
-    renderEmailRows('inbox',results);
+    // Rendered under its own 'search' key (not 'inbox') so pagination/load-more
+    // tracks the search results instead of corrupting the real inbox's cursor.
+    renderEmailRows('search',results);
   }catch(err){
     if(titleEl)titleEl.textContent='Search';
     if(listEl)listEl.innerHTML='<div class="empty-state"><div class="es-text">Search failed</div></div>';
@@ -4748,6 +4761,57 @@ async function loadFlaggedFolder(){
   }
 }
 
+function isUntrackedDpegEmail(e){
+  const isDpeg=e.toRecipients?.some(r=>r.emailAddress?.address?.toLowerCase().includes('@dhananipeg.com'));
+  const isTracked=trackedEmailIds.has(e.id)||trackedEmailIds.has(e.conversationId);
+  return isDpeg&&!isTracked;
+}
+function sortUntracked(list){
+  return [...list].sort((a,b)=>{
+    const ap=isEmailPinned(a)?0:1;
+    const bp=isEmailPinned(b)?0:1;
+    if(ap!==bp)return ap-bp;
+    return emailTimestamp(b)-emailTimestamp(a);
+  });
+}
+function renderUntrackedList(){
+  const listEl=document.getElementById('ol-email-list');
+  if(!listEl)return;
+  const untracked=outlookFolderEmails.untracked||[];
+  const untrackedCount=untracked.length;
+  const uc=document.getElementById('ol-untracked-count');
+  if(uc){uc.textContent=untrackedCount>0?untrackedCount:'';uc.style.display=untrackedCount>0?'':'none';}
+  if(!untracked.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">All caught up</div><div class="es-sub">All emails to DPEG staff are tracked</div></div>';return;}
+  const visibleUntracked=applyOlListFilter(untracked,'untracked');
+  if(!visibleUntracked.length){
+    const labels={unread:'No unread untracked emails',flagged:'No flagged untracked emails',all:'No untracked emails'};
+    listEl.innerHTML=`<div class="empty-state"><div class="es-text">${labels[olListFilter]||'No untracked emails'}</div><div class="es-sub">Try a different filter</div></div>`;
+    return;
+  }
+  listEl.innerHTML=`<div style="padding:10px 14px;background:var(--amber-bg);border-bottom:1px solid var(--amber-bd)"><div style="font-size:11.5px;font-weight:600;color:var(--amber)">${untracked.length} email${untracked.length!==1?'s':''} sent to DPEG staff not yet in Action Log</div></div>`+
+  visibleUntracked.map(e=>{
+    const to=e.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
+    const dt=new Date(e.sentDateTime);
+    const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const isHigh=String(e.importance||'normal').toLowerCase()==='high';
+    const isFlagged=outlookFlagStatus(e)==='flagged';
+    const isPinned=isEmailPinned(e);
+    const hasAtt=!!e.hasAttachments;
+    const safeId=escapeHtml(e.id||'');
+    const sumBtn=listAISummaryButtonHTML('sent');
+    const hoverActions=outlookHoverActionsHTML(e);
+    return `<div class="ol-email-item${isFlagged?' flagged':''}${isPinned?' pinned':''}" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readEmail(this.dataset.emailId,'sent',this)" style="display:flex;align-items:flex-start;gap:8px">
+      <div style="flex:1;min-width:0">
+        <div class="ol-email-top"><div class="ol-email-sender">To: ${escapeHtml(to)}</div><span style="display:flex;align-items:center;gap:3px;flex-shrink:0">${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;border:1px solid #fecaca;white-space:nowrap;flex-shrink:0">!</span>`:''}${sumBtn}${hoverActions}<div class="ol-email-date">${dateStr}</div></span></div>
+        <div class="ol-email-subject">${escapeHtml(e.subject||'(no subject)')}</div>
+        <div class="ol-email-preview">${escapeHtml(e.bodyPreview||'')}</div>
+        ${hasAtt?`<div class="ol-email-attachments"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attachment</span></div>`:''}
+        <div id="list-ai-sum-${safeId}" style="display:none;margin-top:5px;padding:6px 9px;background:#faf8ff;border-left:2px solid #7c3aed;border-radius:0 4px 4px 0;font-size:11px;color:#4b5563;line-height:1.5"></div>
+      </div>
+      <button onclick="event.stopPropagation();quickAddTask(this.closest('.ol-email-item').dataset.emailId)" style="flex-shrink:0;margin-top:8px;padding:4px 8px;background:var(--ink);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add</button>
+    </div>`;
+  }).join('');
+}
 async function loadUntracked(){
   const listEl=document.getElementById('ol-email-list');
   try{
@@ -4755,54 +4819,35 @@ async function loadUntracked(){
     const res=await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$top=100&$select=id,subject,from,toRecipients,sentDateTime,bodyPreview,conversationId,importance,hasAttachments,flag&$orderby=sentDateTime desc`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
-    const emails=data.value||[];
-    // Filter to DPEG emails not yet tracked
-    const untracked=emails.filter(e=>{
-      const isDpeg=e.toRecipients?.some(r=>r.emailAddress?.address?.toLowerCase().includes('@dhananipeg.com'));
-      const isTracked=trackedEmailIds.has(e.id)||trackedEmailIds.has(e.conversationId);
-      return isDpeg&&!isTracked;
-    }).sort((a,b)=>{
-      const ap=isEmailPinned(a)?0:1;
-      const bp=isEmailPinned(b)?0:1;
-      if(ap!==bp)return ap-bp;
-      return emailTimestamp(b)-emailTimestamp(a);
-    });
-    outlookFolderEmails.untracked=untracked;
-    const untrackedCount=untracked.length;
-    const uc=document.getElementById('ol-untracked-count');
-    if(uc){uc.textContent=untrackedCount>0?untrackedCount:'';uc.style.display=untrackedCount>0?'':'none';}
-    if(!untracked.length){listEl.innerHTML='<div class="empty-state"><div class="es-text">All caught up</div><div class="es-sub">All emails to DPEG staff are tracked</div></div>';return;}
-    const visibleUntracked=applyOlListFilter(untracked,'untracked');
-    if(!visibleUntracked.length){
-      const labels={unread:'No unread untracked emails',flagged:'No flagged untracked emails',all:'No untracked emails'};
-      listEl.innerHTML=`<div class="empty-state"><div class="es-text">${labels[olListFilter]||'No untracked emails'}</div><div class="es-sub">Try a different filter</div></div>`;
-      return;
-    }
-    listEl.innerHTML=`<div style="padding:10px 14px;background:var(--amber-bg);border-bottom:1px solid var(--amber-bd)"><div style="font-size:11.5px;font-weight:600;color:var(--amber)">${untracked.length} email${untracked.length!==1?'s':''} sent to DPEG staff not yet in Action Log</div></div>`+
-    visibleUntracked.map(e=>{
-      const to=e.toRecipients?.map(r=>r.emailAddress?.name||r.emailAddress?.address).join(', ')||'';
-      const dt=new Date(e.sentDateTime);
-      const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
-      const isHigh=String(e.importance||'normal').toLowerCase()==='high';
-      const isFlagged=outlookFlagStatus(e)==='flagged';
-      const isPinned=isEmailPinned(e);
-      const hasAtt=!!e.hasAttachments;
-      const safeId=escapeHtml(e.id||'');
-      const sumBtn=listAISummaryButtonHTML('sent');
-      const hoverActions=outlookHoverActionsHTML(e);
-      return `<div class="ol-email-item${isFlagged?' flagged':''}${isPinned?' pinned':''}" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readEmail(this.dataset.emailId,'sent',this)" style="display:flex;align-items:flex-start;gap:8px">
-        <div style="flex:1;min-width:0">
-          <div class="ol-email-top"><div class="ol-email-sender">To: ${escapeHtml(to)}</div><span style="display:flex;align-items:center;gap:3px;flex-shrink:0">${isHigh?`<span style="background:#fef2f2;color:#b91c1c;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px;border:1px solid #fecaca;white-space:nowrap;flex-shrink:0">!</span>`:''}${sumBtn}${hoverActions}<div class="ol-email-date">${dateStr}</div></span></div>
-          <div class="ol-email-subject">${escapeHtml(e.subject||'(no subject)')}</div>
-          <div class="ol-email-preview">${escapeHtml(e.bodyPreview||'')}</div>
-          ${hasAtt?`<div class="ol-email-attachments"><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Attachment</span></div>`:''}
-          <div id="list-ai-sum-${safeId}" style="display:none;margin-top:5px;padding:6px 9px;background:#faf8ff;border-left:2px solid #7c3aed;border-radius:0 4px 4px 0;font-size:11px;color:#4b5563;line-height:1.5"></div>
-        </div>
-        <button onclick="event.stopPropagation();quickAddTask(this.closest('.ol-email-item').dataset.emailId)" style="flex-shrink:0;margin-top:8px;padding:4px 8px;background:var(--ink);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add</button>
-      </div>`;
-    }).join('');
+    outlookNextLinks.untracked=data['@odata.nextLink']||'';
+    outlookFolderEmails.untracked=sortUntracked((data.value||[]).filter(isUntrackedDpegEmail));
+    renderUntrackedList();
   }catch(err){
-    listEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load untracked emails</div></div>';
+    console.error('Load untracked error:',err);
+    if(listEl)listEl.innerHTML='<div class="empty-state"><div class="es-text">Could not load untracked emails</div><div class="es-sub">Check your connection</div></div>';
+  }
+}
+async function loadMoreUntracked(){
+  const next=outlookNextLinks.untracked;
+  if(!next||_loadingMoreEmails.untracked)return;
+  _loadingMoreEmails.untracked=true;
+  const listEl=document.getElementById('ol-email-list');
+  const scrollPos=listEl?.scrollTop||0;
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(next,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error('Failed');
+    const data=await res.json();
+    const more=(data.value||[]).filter(isUntrackedDpegEmail);
+    outlookFolderEmails.untracked=sortUntracked([...(outlookFolderEmails.untracked||[]),...more]);
+    outlookNextLinks.untracked=data['@odata.nextLink']||'';
+    _loadingMoreEmails.untracked=false;
+    renderUntrackedList();
+    if(listEl)listEl.scrollTop=scrollPos;
+  }catch(err){
+    console.error('Load more untracked error:',err);
+    _loadingMoreEmails.untracked=false;
+    toast('Could not load more emails — try again');
   }
 }
 
@@ -4848,12 +4893,32 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();_pwaPrompt=
 window.addEventListener('appinstalled',()=>{_pwaPrompt=null;const b=document.getElementById('pwa-install-btn');if(b)b.style.display='none';});
 function pwaInstall(){if(!_pwaPrompt)return;_pwaPrompt.prompt();_pwaPrompt.userChoice.then(()=>{_pwaPrompt=null;const b=document.getElementById('pwa-install-btn');if(b)b.style.display='none';});}
 
+// Keeps an email iframe's height matched to its real content. A single
+// measurement taken on 'load' is too early — images without cid: (so not
+// inlined as data URIs) and web fonts still finish loading/reflowing after
+// that, and the iframe was left frozen at the too-small pre-image height,
+// clipping the rest of the email. ResizeObserver keeps it in sync as those
+// finish, instead of guessing a single "safe" moment to measure.
+const _iframeSizeObservers=new WeakMap();
+function syncIframeHeight(fr){
+  try{
+    const doc=fr.contentDocument;
+    if(!doc?.body)return;
+    fr.style.height=Math.max(doc.body.scrollHeight,160)+'px';
+    if('ResizeObserver' in window && !_iframeSizeObservers.has(fr)){
+      const ro=new ResizeObserver(()=>{try{fr.style.height=Math.max(doc.body.scrollHeight,160)+'px';}catch(e){}});
+      ro.observe(doc.body);
+      _iframeSizeObservers.set(fr,ro);
+    }
+  }catch(e){}
+}
+
 function tvToggle(msgId){
   const body=document.getElementById(msgId+'-body');
   if(!body)return;
   const wasHidden=body.classList.contains('tv-body--collapsed');
   body.classList.toggle('tv-body--collapsed');
-  if(wasHidden){body.querySelectorAll('iframe').forEach(fr=>{try{if(fr.contentDocument?.body)fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});}
+  if(wasHidden){body.querySelectorAll('iframe').forEach(fr=>syncIframeHeight(fr));}
 }
 
 let threadViewState={subject:'',messages:[],backEmailId:'',backFolder:'inbox',webLink:'',showBack:false,actionsHTML:''};
@@ -4943,7 +5008,7 @@ async function hydrateThreadFramesAndAttachments(token){
   readerEl.querySelectorAll('iframe[data-bidx]').forEach(function(fr){
     var c=window._emailFrameBodies[+fr.dataset.bidx];
     if(c){
-      fr.addEventListener('load',function(){try{fr.style.height=Math.max(fr.contentDocument.body.scrollHeight,160)+'px';}catch(e){}});
+      fr.addEventListener('load',function(){syncIframeHeight(fr);});
       resolveInlineImages(useToken,fr.dataset.msgid,c).then(function(resolved){fr.srcdoc=resolved;});
     }
   });
@@ -7929,8 +7994,9 @@ function startNotifPolling(){
   _notifPollTimer=setInterval(()=>{
     pollToDoCompletions();
     checkAndLoadProofNotifications().catch(()=>{});
-    // Keep the Tasks tab's status/proof stages live without a manual reopen
-    if(document.getElementById('page-tasks')?.classList.contains('active'))renderMyTasks();
+    // Keep the Tasks tab's status/proof stages live without a manual reopen —
+    // silent=true so it only redraws the DOM when something actually changed
+    if(document.getElementById('page-tasks')?.classList.contains('active'))renderMyTasks(true);
   },15000); // proof submissions should appear quickly
 }
 
