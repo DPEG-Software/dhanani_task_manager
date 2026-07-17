@@ -13,6 +13,26 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(()=>{});}</script>
+<script>
+// Scale the whole app (text, spacing, icons — everything, via CSS zoom) to the
+// actual window size, so it looks right whether the window is on a large
+// external monitor or dragged to a laptop screen — not just bigger/smaller
+// text in isolated components.
+(function(){
+  var BASELINE_WIDTH=1440;   // window width where zoom=1 (no scaling)
+  var MIN_ZOOM=0.82,MAX_ZOOM=1.3;
+  var MOBILE_BREAKPOINT=760; // below this, the app's dedicated mobile layout takes over — leave it alone
+  var timer=null;
+  function apply(){
+    var w=window.outerWidth||window.innerWidth;
+    if(w<=MOBILE_BREAKPOINT){document.documentElement.style.zoom='';return;}
+    var factor=Math.min(MAX_ZOOM,Math.max(MIN_ZOOM,w/BASELINE_WIDTH));
+    document.documentElement.style.zoom=factor;
+  }
+  window.addEventListener('resize',function(){clearTimeout(timer);timer=setTimeout(apply,150);});
+  apply();
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <!-- Microsoft Authentication Library -->

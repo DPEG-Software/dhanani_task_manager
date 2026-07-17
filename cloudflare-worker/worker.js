@@ -917,7 +917,8 @@ async function handleAssignments(request, env) {
 // ── /assignment-status endpoint: recipient updates progress (D1) ─────────────
 // 'Done' is deliberately excluded — it is only ever set server-side by the
 // proof-approval path (see the proof_status sync above), never chosen manually.
-const ASSIGNMENT_STATUSES = new Set(['Assigned', 'Accepted', 'In Progress']);
+// 'Accepted' was removed from the flow (Assigned → In Progress → Submitted → Done).
+const ASSIGNMENT_STATUSES = new Set(['Assigned', 'In Progress']);
 
 async function handleAssignmentStatus(request, env) {
   const { error, status, claims } = validateUserToken(request);
