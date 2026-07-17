@@ -33,6 +33,7 @@
 [data-theme="dark"] .tv-msg-actions button:hover{background:var(--sage3);border-color:var(--sage);color:var(--ink)}
 [data-theme="dark"] .act-item{border-bottom-color:var(--border)}
 [data-theme="dark"] .nb.red{background:#7f1d1d;color:#fca5a5;border-color:#991b1b}
+[data-theme="dark"] .wed-sum-clip:not(.expanded)::after{background:linear-gradient(transparent,var(--white))}
 [data-theme="dark"] .p-high{background:#7f1d1d;color:#fca5a5}
 [data-theme="dark"] .p-low{background:var(--bg);color:var(--muted)}
 [data-theme="dark"] .acct-option.danger:hover{background:#7f1d1d}
@@ -334,6 +335,34 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
 .wed-card-body{padding:8px 10px}
 .wed-card-meta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;font-size:11px;color:var(--muted);font-weight:600}
 .wed-card-summary{font-size:12px;color:var(--sub);line-height:1.5;margin-bottom:7px}
+/* ASSIGNMENT CARDS (Tasks tab — Received/Delegated Assignments) */
+.assign-group{margin-bottom:12px}
+.assign-group-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--sage3);border:1px solid var(--border);border-radius:var(--rlg);cursor:pointer;transition:background .1s}
+.assign-group-head:hover{background:var(--sage2)}
+.assign-group-toggle{font-size:13px;color:var(--muted);width:14px;flex-shrink:0;display:inline-flex;justify-content:center}
+.assign-group-name{font-size:13px;font-weight:800;color:var(--body)}
+.assign-group-summary{margin-left:auto;font-size:11px;color:var(--sub);font-weight:700;white-space:nowrap}
+.assign-cards{display:grid;gap:10px;margin-top:10px}
+.assign-cards .wed-card{margin:0}
+.assign-card-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--muted);font-weight:600}
+.assign-due{white-space:nowrap}
+.assign-due.is-overdue{color:var(--ruby);font-weight:700}
+.assign-desc-wrap{margin:8px 0}
+.assign-desc{font-size:12.5px;line-height:1.6;color:var(--sub);white-space:pre-wrap}
+.assign-stepper{display:flex;align-items:flex-start;gap:0;margin:10px 0 2px;overflow-x:auto}
+.assign-step{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:50px}
+.assign-step-dot{width:10px;height:10px;border-radius:50%;background:var(--white);border:2px solid var(--border);flex-shrink:0}
+.assign-step-label{font-size:9px;font-weight:800;color:var(--muted);white-space:nowrap;letter-spacing:.3px;text-transform:uppercase}
+.assign-step-line{flex:1;height:2px;background:var(--border);min-width:14px;margin:4px 2px 0}
+.assign-step.is-complete .assign-step-dot{background:var(--fern);border-color:var(--fern)}
+.assign-step.is-complete .assign-step-label{color:var(--forest)}
+.assign-step-line.is-complete{background:var(--fern)}
+.assign-step.is-current .assign-step-dot{background:var(--white);border-color:var(--fern);box-shadow:0 0 0 3px var(--sage2)}
+.assign-step.is-current .assign-step-label{color:var(--forest)}
+.assign-step.is-declined .assign-step-dot{background:var(--ruby);border-color:var(--ruby)}
+.assign-step.is-declined .assign-step-label{color:var(--ruby)}
+.assign-decline-note{margin-top:8px;padding:7px 10px;background:var(--ruby-bg);border:1px solid var(--ruby-bd);border-radius:var(--r);font-size:11.5px;color:var(--ruby);line-height:1.5}
+.assign-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap}
 .email-link-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);background:#fff;color:var(--forest);border-radius:6px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;margin-top:8px}
 .email-link-btn:hover{background:var(--sage3);border-color:var(--sage)}
 .ag-ta{width:100%;padding:8px 10px;border:1px solid var(--sage);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:12.5px;color:var(--body);outline:none;transition:border .15s;resize:vertical;min-height:42px;line-height:1.45;background:#fff}

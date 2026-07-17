@@ -1,5 +1,6 @@
 (function () {
-  const ASSIGNMENT_STATUSES = ['Assigned', 'Accepted', 'In Progress', 'Done'];
+  const LIVE_STAGES = ['Assigned', 'Accepted', 'In Progress', 'Submitted', 'Done'];
+  const MANUAL_STATUSES = ['Assigned', 'Accepted', 'In Progress'];
 
   let tasksTabMode = 'received'; // 'received' | 'given'
   let tasksTabCache = { assignedToMe: [], assignedByMe: [] };
@@ -29,71 +30,118 @@
     return [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  function assignmentDescription(summary) {
-    const text = String(summary || '').trim();
-    if (!text) return '';
-    return `<div style="margin-top:7px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:11.5px;line-height:1.55;color:var(--sub);white-space:pre-wrap;max-height:180px;overflow:auto">${escapeHtml(text)}</div>`;
+  function safeDomId(id) {
+    return 'assign-desc-' + String(id).replace(/[^a-zA-Z0-9_-]/g, '_');
   }
 
-  function statusSummary(items) {
-    const counts = {};
-    items.forEach(item => {
-      const status = item.status || 'Assigned';
-      counts[status] = (counts[status] || 0) + 1;
-    });
-    return ASSIGNMENT_STATUSES
-      .filter(status => counts[status])
-      .map(status => `${counts[status]} ${status}`)
-      .join(' · ');
+  // Renders the description as readable, paragraph-preserved prose, clamped
+  // with a "Show more" toggle for long forwarded-email content instead of an
+  // inner scrollbar box.
+  function assignmentDescription(summary, assignmentId) {
+    const text = String(summary || '').trim();
+    if (!text) return '';
+    const clipId = safeDomId(assignmentId);
+    const long = text.length > 320;
+    return `<div class="assign-desc-wrap">
+      <div class="assign-desc wed-sum-clip" id="${clipId}">${escapeHtml(text)}</div>
+      ${long ? `<button type="button" class="wed-expand-btn" onclick="toggleAssignDescExpand('${clipId}',this)">Show more</button>` : ''}
+    </div>`;
   }
+
+  window.toggleAssignDescExpand = function toggleAssignDescExpand(clipId, btn) {
+    const el = document.getElementById(clipId);
+    if (!el) return;
+    const expanded = el.classList.toggle('expanded');
+    if (btn) btn.textContent = expanded ? 'Show less' : 'Show more';
+  };
 
   function proofState(a) {
     return String(a?.proofStatus || 'none').toLowerCase();
   }
 
-  function proofBadge(status) {
-    const s = String(status || 'none').toLowerCase();
-    const styles = {
-      submitted: ['Proof submitted', '#fffbeb', '#f59e0b', '#92400e'],
-      approved: ['Proof approved', '#f0fdf4', '#86efac', '#166534'],
-      declined: ['Proof declined', '#fff1f2', '#fca5a5', '#b91c1c'],
-    };
-    const cfg = styles[s];
-    if (!cfg) return '';
-    return `<span style="display:inline-flex;align-items:center;white-space:nowrap;padding:2px 8px;background:${cfg[1]};border:1px solid ${cfg[2]};border-radius:10px;font-size:10.5px;font-weight:800;color:${cfg[3]}">${cfg[0]}</span>`;
+  // Derives the single live stage (0-4, LIVE_STAGES index) an assignment is
+  // in. Proof is the source of truth once submitted — it always overrides
+  // the recipient-controlled `status` field, so "Done" can only ever be
+  // reached through approval, never picked directly from the dropdown.
+  function assignmentStage(a) {
+    const proof = proofState(a);
+    if (proof === 'approved') return { index: 4, declined: false };
+    if (proof === 'declined') return { index: 3, declined: true };
+    if (proof === 'submitted') return { index: 3, declined: false };
+    const idx = MANUAL_STATUSES.indexOf(a.status);
+    return { index: idx < 0 ? 0 : idx, declined: false };
   }
 
-  function proofSummary(items) {
+  function stageLabel(a) {
+    const { index, declined } = assignmentStage(a);
+    return declined ? 'Declined' : LIVE_STAGES[index];
+  }
+
+  function stageSummary(items) {
     const counts = {};
     items.forEach(item => {
-      const status = proofState(item);
-      if (status === 'none') return;
-      counts[status] = (counts[status] || 0) + 1;
+      const label = stageLabel(item);
+      counts[label] = (counts[label] || 0) + 1;
     });
-    return ['submitted', 'approved', 'declined']
-      .filter(status => counts[status])
-      .map(status => `${counts[status]} proof ${status}`)
+    return [...LIVE_STAGES, 'Declined']
+      .filter(label => counts[label])
+      .map(label => `${counts[label]} ${label}`)
       .join(' · ');
   }
 
-  function proofCell(a, received) {
-    const status = proofState(a);
-    const badge = proofBadge(status);
+  function renderStepper(a) {
+    const { index, declined } = assignmentStage(a);
+    const labels = ['Assigned', 'Accepted', 'In Progress', declined ? 'Declined' : 'Submitted', 'Done'];
+    return `<div class="assign-stepper">${labels.map((label, i) => {
+      const isDeclinedDot = declined && i === 3;
+      const state = isDeclinedDot ? 'is-declined' : i < index ? 'is-complete' : i === index ? 'is-current' : '';
+      const dot = `<div class="assign-step ${state}"><span class="assign-step-dot"></span><span class="assign-step-label">${label}</span></div>`;
+      if (i === labels.length - 1) return dot;
+      const lineComplete = !declined && i < index;
+      return dot + `<span class="assign-step-line ${lineComplete ? 'is-complete' : ''}"></span>`;
+    }).join('')}</div>`;
+  }
+
+  function dueDateBadge(a) {
+    if (!a.dueDate) return '';
+    const overdue = a.dueDate < new Date().toISOString().slice(0, 10) && stageLabel(a) !== 'Done';
+    return `<span class="assign-due${overdue ? ' is-overdue' : ''}">Due ${fmtD(a.dueDate)}${overdue ? ' (overdue)' : ''}</span>`;
+  }
+
+  function assignmentActions(a, received) {
+    const proof = proofState(a);
     if (received) {
-      if (status === 'submitted') {
-        return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:5px">${badge}<span style="font-size:11px;color:var(--muted)">Under review</span></div>`;
+      if (proof === 'none') {
+        const opts = MANUAL_STATUSES.map(s => `<option value="${s}" ${s === (a.status || 'Assigned') ? 'selected' : ''}>${s}</option>`).join('');
+        return `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
+          <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`;
       }
-      if (status === 'approved') return badge;
-      if (status === 'declined') {
-        return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">${badge}<button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button></div>`;
-      }
-      return `<button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`;
+      if (proof === 'submitted') return `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>`;
+      if (proof === 'declined') return `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — check your email, then</span>
+          <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button>`;
+      if (proof === 'approved') return `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
+      return '';
     }
-    if (!badge) return '';
-    const reviewButton = status === 'submitted'
-      ? `<button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review</button>`
-      : '';
-    return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">${badge}${reviewButton}</div>`;
+    if (proof === 'submitted') return `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review Proof</button>`;
+    if (proof === 'declined') return `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — awaiting resubmission</span>`;
+    if (proof === 'approved') return `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
+    return `<span style="font-size:11.5px;color:var(--muted);font-weight:600">In progress</span>`;
+  }
+
+  function assignmentCard(a, received) {
+    return `<div class="wed-card">
+      <div class="wed-card-head">
+        <div class="wed-card-title">${escapeHtml(a.title || '')}</div>
+        <span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span>
+        ${pBadge(a.priority)}
+      </div>
+      <div class="wed-card-body">
+        <div class="assign-card-meta">${dueDateBadge(a)}</div>
+        ${assignmentDescription(a.summary, a.id)}
+        ${renderStepper(a)}
+        <div class="assign-actions">${assignmentActions(a, received)}</div>
+      </div>
+    </div>`;
   }
 
   // Create/update a shared assignment record in D1 via the Worker.
@@ -110,7 +158,7 @@
           id: task.assignmentId,
           appTaskId: String(task.id || ''),
           title: task.title || 'Task',
-          summary: (task.summary || '').slice(0, 4000),
+          summary: (task.summary || '').slice(0, 8000),
           dept: task.dept || '',
           priority: task.priority || 'Normal',
           dueDate: task.deadline || task.date || '',
@@ -144,7 +192,7 @@
   window.renderMyTasks = async function renderMyTasks() {
     const tb = document.getElementById('tasks-tbody');
     if (!tb || !currentUser?.email) return;
-    tb.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="es-text">Loading...</div></div></td></tr>`;
+    tb.innerHTML = `<div class="empty-state"><div class="es-text">Loading...</div></div>`;
     try {
       const userToken = await getAccessToken();
       const res = await fetch(`${fnBaseUrl()}/assignments?email=${encodeURIComponent(currentUser.email)}`, {
@@ -154,7 +202,7 @@
       tasksTabCache = await res.json();
     } catch (err) {
       console.warn('Load assignments failed:', err.message);
-      tb.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="es-text">Couldn't load Tasks tab</div><div class="es-sub">Check your connection and reopen this tab to retry</div></div></td></tr>`;
+      tb.innerHTML = `<div class="empty-state"><div class="es-text">Couldn't load Tasks tab</div><div class="es-sub">Check your connection and reopen this tab to retry</div></div>`;
       return;
     }
     renderTasksTabList();
@@ -166,42 +214,27 @@
     const received = tasksTabMode === 'received';
     const list = received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []);
     if (!list.length) {
-      tb.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="es-text">No tasks yet</div></div></td></tr>`;
+      tb.innerHTML = `<div class="empty-state"><div class="es-text">No tasks yet</div></div>`;
       return;
     }
     const openGroups = tasksTabOpenGroups[tasksTabMode];
     tb.innerHTML = groupAssignments(list, received).map(group => {
       const open = openGroups.has(group.key);
       const noun = group.items.length === 1 ? 'task' : 'tasks';
-      const progressSummary = statusSummary(group.items);
-      const proofGroupSummary = proofSummary(group.items);
-      const rows = open ? group.items.map(a => {
-        const progressCell = received
-          ? `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${ASSIGNMENT_STATUSES.map(s => `<option value="${s}" ${s === a.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`
-          : `<span style="font-size:12px;color:var(--muted)">${escapeHtml(a.status || 'Assigned')}</span>`;
-        return `<tr>
-          <td style="padding:10px 14px"><div style="font-size:13px;font-weight:600;color:var(--body)">${escapeHtml(a.title || '')}</div>${assignmentDescription(a.summary)}</td>
-          <td style="padding:10px 8px"><span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span></td>
-          <td style="padding:10px 8px">${fmtD(a.dueDate)}</td>
-          <td style="padding:10px 8px">${pBadge(a.priority)}</td>
-          <td style="padding:10px 8px">${progressCell}</td>
-          <td style="padding:10px 8px">${proofCell(a, received)}</td>
-        </tr>`;
-      }).join('') : '';
-      const summaryText = [progressSummary, proofGroupSummary].filter(Boolean).join(' · ');
+      const summaryText = stageSummary(group.items);
       const safeGroupKey = escapeHtml(JSON.stringify(group.key));
-      return `<tr onclick="toggleTasksGroup(${safeGroupKey})" style="background:var(--sage3);cursor:pointer">
-        <td colspan="6" style="padding:10px 14px">
-          <div style="display:flex;align-items:center;gap:10px;min-width:0">
-            <span style="font-size:13px;color:var(--muted);width:14px;display:inline-flex;justify-content:center">${open ? '-' : '+'}</span>
-            ${av(group.name, 24)}
-            <div style="min-width:0;flex:1">
-              <div style="font-size:13px;font-weight:800;color:var(--body)">${escapeHtml(group.name)}</div>
-            </div>
-            <div style="font-size:11px;color:var(--sub);font-weight:700;white-space:nowrap">${group.items.length} ${noun}${summaryText ? ` · ${escapeHtml(summaryText)}` : ''}</div>
-          </div>
-        </td>
-      </tr>${rows}`;
+      const cards = open
+        ? `<div class="assign-cards">${group.items.map(a => assignmentCard(a, received)).join('')}</div>`
+        : '';
+      return `<div class="assign-group">
+        <div class="assign-group-head" onclick="toggleTasksGroup(${safeGroupKey})">
+          <span class="assign-group-toggle">${open ? '−' : '+'}</span>
+          ${av(group.name, 24)}
+          <span class="assign-group-name">${escapeHtml(group.name)}</span>
+          <span class="assign-group-summary">${group.items.length} ${noun}${summaryText ? ` · ${escapeHtml(summaryText)}` : ''}</span>
+        </div>
+        ${cards}
+      </div>`;
     }).join('');
   }
 

@@ -837,7 +837,7 @@ async function handleCreateAssignment(request, env) {
     id,
     String(body.appTaskId || ''),
     title,
-    String(body.summary || '').slice(0, 4000),
+    String(body.summary || '').slice(0, 8000),
     String(body.dept || ''),
     String(body.priority || 'Normal'),
     String(body.dueDate || ''),
@@ -915,7 +915,9 @@ async function handleAssignments(request, env) {
 }
 
 // ── /assignment-status endpoint: recipient updates progress (D1) ─────────────
-const ASSIGNMENT_STATUSES = new Set(['Assigned', 'Accepted', 'In Progress', 'Done']);
+// 'Done' is deliberately excluded — it is only ever set server-side by the
+// proof-approval path (see the proof_status sync above), never chosen manually.
+const ASSIGNMENT_STATUSES = new Set(['Assigned', 'Accepted', 'In Progress']);
 
 async function handleAssignmentStatus(request, env) {
   const { error, status, claims } = validateUserToken(request);

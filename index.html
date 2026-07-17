@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -243,23 +244,7 @@
     <div id="tasks-tab-description" style="font-size:12px;color:var(--sub);margin:-4px 0 10px">
       Tasks assigned by others to you are present here.
     </div>
-    <div class="tbl-wrap">
-      <div style="overflow-x:hidden;max-width:100%">
-        <table>
-          <thead>
-            <tr>
-              <th>Task</th>
-              <th style="width:130px">Department</th>
-              <th style="width:100px">Due Date</th>
-              <th style="width:80px">Priority</th>
-              <th style="width:150px">Progress</th>
-              <th style="width:130px">Proof Submission</th>
-            </tr>
-          </thead>
-          <tbody id="tasks-tbody"></tbody>
-        </table>
-      </div>
-    </div>
+    <div id="tasks-tbody"></div>
   </div>
 
   <!-- PEOPLE & DEPARTMENTS -->
@@ -6254,10 +6239,14 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
       const dpegRecipients=getDpegRecipients(to,cc);
       if(dpegRecipients.length){
         let forwardedEmail=null;
+        let forwardedFullBody='';
         if(currentComposeType==='Forward'&&currentComposeEmailId){
           forwardedEmail=emailCache[currentComposeEmailId]||null;
           if(forwardedEmail){
             await attachFreeThreadSummary(forwardedEmail).catch(()=>{});
+            const rawBody=forwardedEmail.body?.content||'';
+            const isHtml=(forwardedEmail.body?.contentType||'').toLowerCase()==='html';
+            forwardedFullBody=plainizeEmailBody(rawBody?(isHtml?stripEmailHtml(rawBody):rawBody):'');
           }
         }
         for(const email of dpegRecipients){
@@ -6270,7 +6259,7 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
             emailId:forwardedEmail?.id||'',
             conversationId:forwardedEmail?.conversationId||'',
             lastMessageId:forwardedEmail?.id||'',
-            summary:[forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body,[...forwardAttachmentNames,...manualAttachmentNames].length?`Attachments: ${[...forwardAttachmentNames,...manualAttachmentNames].join(', ')}`:''].filter(Boolean).join('\n'),
+            summary:[forwardedFullBody||forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body,[...forwardAttachmentNames,...manualAttachmentNames].length?`Attachments: ${[...forwardAttachmentNames,...manualAttachmentNames].join(', ')}`:''].filter(Boolean).join('\n'),
             threadSummary:forwardedEmail?.threadSummary||'',
             attachmentNames:[...forwardAttachmentNames,...manualAttachmentNames],
             aiGenerated:!!forwardedEmail?.aiGenerated,
@@ -7940,6 +7929,8 @@ function startNotifPolling(){
   _notifPollTimer=setInterval(()=>{
     pollToDoCompletions();
     checkAndLoadProofNotifications().catch(()=>{});
+    // Keep the Tasks tab's status/proof stages live without a manual reopen
+    if(document.getElementById('page-tasks')?.classList.contains('active'))renderMyTasks();
   },15000); // proof submissions should appear quickly
 }
 
