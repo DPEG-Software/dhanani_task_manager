@@ -20,14 +20,18 @@
 // text in isolated components.
 (function(){
   var BASELINE_WIDTH=1440;   // window width where zoom=1 (no scaling)
-  var MIN_ZOOM=0.82,MAX_ZOOM=1.3;
+  var MIN_ZOOM=0.9,MAX_ZOOM=1.1; // kept subtle — a full 1.3x on a big monitor felt oversized
   var MOBILE_BREAKPOINT=760; // below this, the app's dedicated mobile layout takes over — leave it alone
   var timer=null;
   function apply(){
     var w=window.outerWidth||window.innerWidth;
-    if(w<=MOBILE_BREAKPOINT){document.documentElement.style.zoom='';return;}
+    if(w<=MOBILE_BREAKPOINT){document.documentElement.style.zoom='';window.__dpegZoomFactor=1;return;}
     var factor=Math.min(MAX_ZOOM,Math.max(MIN_ZOOM,w/BASELINE_WIDTH));
     document.documentElement.style.zoom=factor;
+    // Canvas-based charts (Chart.js) render to a fixed-resolution bitmap sized
+    // off devicePixelRatio alone, which knows nothing about CSS zoom — without
+    // this, zoom stretches the already-rasterized canvas and blurs every chart.
+    window.__dpegZoomFactor=factor;
   }
   window.addEventListener('resize',function(){clearTimeout(timer);timer=setTimeout(apply,150);});
   apply();
@@ -82,7 +86,7 @@
     </button>
     <button class="ni" onclick="nav('tasks')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Tasks
+      Tasks <span class="nb red" id="nb-tasks" style="display:none">0</span>
     </button>
     <button class="ni" onclick="nav('people')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke-width="2"/></svg>
@@ -258,8 +262,8 @@
   <!-- TASKS (assignments given/received, shared across users via the Worker) -->
   <div class="page" id="page-tasks">
     <div class="directory-toggle">
-      <button id="tasks-received-btn" class="active" onclick="setTasksTabMode('received')">Received Assignments</button>
-      <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Delegated Assignments</button>
+      <button id="tasks-received-btn" class="active" onclick="setTasksTabMode('received')">Received Assignments <span class="nb red" id="tasks-received-badge" style="margin-left:6px;display:none">0</span></button>
+      <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Delegated Assignments <span class="nb red" id="tasks-given-badge" style="margin-left:6px;display:none">0</span></button>
     </div>
     <div id="tasks-tab-description" style="font-size:12px;color:var(--sub);margin:-4px 0 10px">
       Tasks assigned by others to you are present here.
@@ -1916,6 +1920,14 @@ function fmtD(d) {
   return dt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
 }
 function nstt(s) { return s==="In Progress"?"Pending":(s||"Pending"); }
+// Overdue is computed from the due date, not a stored status string — nothing
+// in the app ever actually sets status to the literal "Overdue" value, so
+// every nstt(t.status)==="Overdue" check was silently always false.
+function isOverdueTask(t) {
+  if (nstt(t.status) === "Done" || !t.date) return false;
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  return new Date(t.date) < startOfToday;
+}
 function normEmail(email) { return String(email||"").trim().toLowerCase(); }
 function staffKey(email,name) { return normEmail(email) || String(name||"").trim().toLowerCase(); }
 function findPersonByEmail(email) {
@@ -3823,6 +3835,7 @@ function mkChart(id,type,labels,datasets,opts={}){
   const interaction=opts.interaction||{mode:"index",intersect:false};
   CH[id]=new Chart(ctx,{type,data:{labels,datasets},options:{
     responsive:true,maintainAspectRatio:false,interaction,
+    devicePixelRatio:(window.devicePixelRatio||1)*(window.__dpegZoomFactor||1),
     plugins:{
       legend:{display:!!opts.legend,position:"bottom",labels:{font:{family:"Inter",size:11,weight:"600"},padding:12,boxWidth:9,color:th.text,usePointStyle:true,pointStyle:"rectRounded"}},
       tooltip:{backgroundColor:th.tooltipBg,titleColor:"#f9fafb",bodyColor:th.tooltipBody,titleFont:{family:"Inter",size:12,weight:"700"},bodyFont:{family:"Inter",size:12},cornerRadius:8,padding:10,displayColors:!!opts.legend,filter:(item)=>!item.dataset.hidden,...(opts.tooltipCallbacks?{callbacks:opts.tooltipCallbacks}:(type==="doughnut"||type==="pie")?{callbacks:{title:items=>items.length?[items[0].label]:[],label:item=>`  ${item.parsed} tasks`}}:{})}
@@ -3843,7 +3856,7 @@ function daysSince(date){
 function executiveAttentionItems(){
   const open=tasks.filter(t=>nstt(t.status)!=="Done");
   const ranked=open.map(t=>{
-    const overdue=nstt(t.status)==="Overdue";
+    const overdue=isOverdueTask(t);
     const high=String(t.priority||"Normal").toLowerCase()==="high";
     const carry=!!t.carryForwardFrom;
     const replied=!!t.lastReplyAt&&daysSince(t.lastReplyAt)<=3;
@@ -3909,7 +3922,7 @@ function renderCharts(){
     if(!dp[t.dept])dp[t.dept]={tot:0,dn:0,ov:0};
     dp[t.dept].tot++;
     if(nstt(t.status)==="Done")dp[t.dept].dn++;
-    else if(nstt(t.status)==="Overdue")dp[t.dept].ov++;
+    else if(isOverdueTask(t))dp[t.dept].ov++;
   });
   allDepartments().forEach(d=>{if(!dp[d])dp[d]={tot:0,dn:0,ov:0};});
   const dk=allDepartments().filter(d=>dp[d].tot>0);
@@ -3928,7 +3941,7 @@ function renderCharts(){
     if(!pp[key])pp[key]={name:staffConfig[key]?.name||t.person,tot:0,dn:0,open:0,ov:0};
     pp[key].tot++;
     if(nstt(t.status)==="Done")pp[key].dn++;
-    else{pp[key].open++;if(nstt(t.status)==="Overdue")pp[key].ov++;}
+    else{pp[key].open++;if(isOverdueTask(t))pp[key].ov++;}
   });
   const pk=Object.keys(pp).filter(k=>pp[k].open>0).sort((a,b)=>pp[b].open-pp[a].open||pp[b].tot-pp[a].tot);
   if(pk.length){
@@ -3954,7 +3967,10 @@ function renderCharts(){
 
   // Status doughnut
   const sc={"Pending":0,"Done":0,"Overdue":0};
-  tasks.forEach(t=>sc[nstt(t.status)]=(sc[nstt(t.status)]||0)+1);
+  tasks.forEach(t=>{
+    const bucket=nstt(t.status)==="Done"?"Done":(isOverdueTask(t)?"Overdue":"Pending");
+    sc[bucket]++;
+  });
   mkChart("ch-status","doughnut",Object.keys(sc),[{data:Object.values(sc),backgroundColor:["#f2c17c","#8ecaa0","#ef9a9a"],hoverBackgroundColor:["#e9a85f","#6fb783","#e57373"],borderWidth:3,borderColor:th.surface,hoverOffset:8}],{legend:true,extra:{cutout:"58%"},onClick:(evt,elements)=>{if(elements.length){const s=Object.keys(sc)[elements[0].index];document.getElementById("sf-status").value=s;nav("master");}}});
 
   renderExecutiveAttention();
@@ -4170,9 +4186,18 @@ function syncPulse(){
   const now=new Date();
   const wStart=new Date(now);wStart.setDate(now.getDate()-now.getDay());wStart.setHours(0,0,0,0);
   const wEnd=new Date(wStart);wEnd.setDate(wStart.getDate()+7);
-  const added=tasks.filter(t=>{const d=new Date(t.date);return d>=wStart&&d<wEnd;}).length;
-  const closed=tasks.filter(t=>{const d=new Date(t.date);return nstt(t.status)==="Done"&&d>=wStart&&d<wEnd;}).length;
-  const overdue=tasks.filter(t=>nstt(t.status)==="Overdue").length;
+  // "Added" uses task.id (a Date.now()-based creation timestamp), not
+  // task.date (the due date) — otherwise this counted tasks due this week,
+  // not tasks actually added this week.
+  const added=tasks.filter(t=>{const d=new Date(t.id);return d>=wStart&&d<wEnd;}).length;
+  // "Completed" prefers completedAt (when it was actually marked done);
+  // falls back to the due date only for tasks completed before that field existed.
+  const closed=tasks.filter(t=>{
+    if(nstt(t.status)!=="Done")return false;
+    const d=new Date(t.completedAt||t.date);
+    return d>=wStart&&d<wEnd;
+  }).length;
+  const overdue=tasks.filter(isOverdueTask).length;
   const el1=document.getElementById("p-added");if(el1)el1.textContent=added;
   const el2=document.getElementById("p-closed");if(el2)el2.textContent=closed;
   const el3=document.getElementById("p-overdue");if(el3)el3.textContent=overdue;
@@ -8014,9 +8039,10 @@ function startNotifPolling(){
   _notifPollTimer=setInterval(()=>{
     pollToDoCompletions();
     checkAndLoadProofNotifications().catch(()=>{});
-    // Keep the Tasks tab's status/proof stages live without a manual reopen —
-    // silent=true so it only redraws the DOM when something actually changed
-    if(document.getElementById('page-tasks')?.classList.contains('active'))renderMyTasks(true);
+    // Keep the Tasks tab's status/proof stages live without a manual reopen,
+    // and keep the sidebar/tab alert badges current from any page — silent=true
+    // so it only redraws the (possibly-hidden) tab DOM when something changed
+    renderMyTasks(true);
   },15000); // proof submissions should appear quickly
 }
 

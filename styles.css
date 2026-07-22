@@ -260,6 +260,10 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
 .wed-sum-clip{max-height:80px;overflow:hidden;position:relative}
 .wed-sum-clip.expanded{max-height:none}
 .wed-sum-clip:not(.expanded)::after{content:'';position:absolute;bottom:0;left:0;right:0;height:28px;background:linear-gradient(transparent,#fff);pointer-events:none}
+/* Assignment card descriptions only fade when actually clamped (see
+   is-clamped, toggled in tasks-hub.js) — otherwise a short one-line
+   description gets an unnecessary fade smeared across it. */
+.assign-desc.wed-sum-clip:not(.is-clamped)::after{content:none}
 .wed-expand-btn{font-size:11px;color:var(--forest);background:none;border:none;cursor:pointer;padding:0;font-weight:600;margin-bottom:8px;display:inline-block;letter-spacing:.2px}
 .wed-card-compact-body{padding:7px 10px}
 

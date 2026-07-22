@@ -69,28 +69,13 @@
     const text = String(summary || '').trim();
     if (!text) return '';
     const clipId = safeDomId(assignmentId);
-    // Whether to show "Show more" is decided after render (see
-    // syncAssignDescExpandButtons) by measuring real overflow, not by
-    // guessing off character count — a short one-sentence description can
-    // still wrap past the clamp height depending on card width/zoom, and a
-    // long one can fit on one line at a wide viewport.
+    // Always show the toggle, even for a short one-line description — kept
+    // unconditional rather than measuring overflow, since that was flaky
+    // across zoom levels/card widths and still missed cases in practice.
     return `<div class="assign-desc-wrap">
       <div class="assign-desc wed-sum-clip" id="${clipId}">${escapeHtml(text)}</div>
-      <button type="button" class="wed-expand-btn" style="display:none" onclick="toggleAssignDescExpand('${clipId}',this)">Show more</button>
+      <button type="button" class="wed-expand-btn" onclick="toggleAssignDescExpand('${clipId}',this)">Show more</button>
     </div>`;
-  }
-
-  // Runs after the card list is in the DOM — shows "Show more" only for
-  // descriptions that actually overflow their clamped height right now.
-  function syncAssignDescExpandButtons(container){
-    requestAnimationFrame(()=>{
-      container.querySelectorAll('.assign-desc-wrap').forEach(wrap=>{
-        const clip=wrap.querySelector('.assign-desc');
-        const btn=wrap.querySelector('.wed-expand-btn');
-        if(!clip||!btn)return;
-        btn.style.display=clip.scrollHeight>clip.clientHeight+1?'':'none';
-      });
-    });
   }
 
   window.toggleAssignDescExpand = function toggleAssignDescExpand(clipId, btn) {
@@ -99,6 +84,18 @@
     const expanded = el.classList.toggle('expanded');
     if (btn) btn.textContent = expanded ? 'Show less' : 'Show more';
   };
+
+  // The "Show more" button always shows (per request), but the bottom fade
+  // overlay should only appear when a description is actually clamped —
+  // otherwise a short one-line description gets a fade smeared across it
+  // for no reason. Toggles a class the CSS keys off; doesn't touch the button.
+  function syncAssignDescClamped(container) {
+    requestAnimationFrame(() => {
+      container.querySelectorAll('.assign-desc').forEach(clip => {
+        clip.classList.toggle('is-clamped', clip.scrollHeight > clip.clientHeight + 1);
+      });
+    });
+  }
 
   function proofState(a) {
     return String(a?.proofStatus || 'none').toLowerCase();
@@ -274,9 +271,31 @@
     renderTasksTabList();
   };
 
+  // Alerts the receiver of a new assignment (and the assignor of a new
+  // submission, since that's also an unseen stage change) without requiring
+  // the Tasks tab to be open: a badge on the sidebar "Tasks" nav item, and
+  // one on each of the Received/Delegated toggle buttons.
+  function updateTasksNavBadges() {
+    const toMe = tasksTabCache.assignedToMe || [];
+    const byMe = tasksTabCache.assignedByMe || [];
+    const unseenCount = list => list.filter(a => !seenAssignmentStages.has(assignmentSeenKey(a))).length;
+    const receivedCount = unseenCount(toMe);
+    const givenCount = unseenCount(byMe);
+    const setBadge = (id, count) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = count > 99 ? '99+' : count;
+      el.style.display = count > 0 ? '' : 'none';
+    };
+    setBadge('nb-tasks', receivedCount + givenCount);
+    setBadge('tasks-received-badge', receivedCount);
+    setBadge('tasks-given-badge', givenCount);
+  }
+
   function renderTasksTabList() {
     const tb = document.getElementById('tasks-tbody');
     if (!tb) return;
+    updateTasksNavBadges();
     const received = tasksTabMode === 'received';
     const list = received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []);
     if (!list.length) {
@@ -304,7 +323,7 @@
         ${cards}
       </div>`;
     }).join('');
-    syncAssignDescExpandButtons(tb);
+    syncAssignDescClamped(tb);
   }
 
   window.toggleTasksGroup = function toggleTasksGroup(key) {
