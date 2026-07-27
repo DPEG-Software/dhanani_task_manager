@@ -4,6 +4,7 @@
 // POST /assignment       → Create/update a shared task-assignment record (D1)
 // GET  /assignments      → Fetch assignments for the current user (assigned to me + by me)
 // POST /assignment-status→ Recipient updates assignment status/progress (D1)
+// POST /assignment-alert → Assigner sends a one-click "update required" nudge (D1)
 
 const ALLOWED_ORIGIN  = 'https://dpeg-software.github.io';
 const DPEG_TENANT_ID  = '9152bf5c-22ff-4e4a-8624-784a2d243006';
@@ -119,6 +120,7 @@ async function ensureAssignmentProofColumns(env) {
     ['proof_submitted_at', 'TEXT'],
     ['proof_reviewed_at', 'TEXT'],
     ['proof_notification_id', 'TEXT'],
+    ['update_alert_at', 'TEXT'],
   ];
   for (const [name, type] of columns) {
     try {
@@ -150,6 +152,7 @@ async function updateAssignmentProofState(env, details) {
            proof_reviewed_at = CASE WHEN ? = 'submitted' THEN NULL ELSE COALESCE(?, proof_reviewed_at) END,
            proof_notification_id = COALESCE(NULLIF(?, ''), proof_notification_id),
            status = CASE WHEN ? = 'approved' THEN 'Done' ELSE status END,
+           update_alert_at = CASE WHEN ? = 'submitted' THEN NULL ELSE update_alert_at END,
            updated_at = ?
      WHERE app_task_id = ?
        AND (? = '' OR recipient_email = ?)
@@ -160,6 +163,7 @@ async function updateAssignmentProofState(env, details) {
     proofStatus,
     reviewedAt,
     notificationId,
+    proofStatus,
     proofStatus,
     now,
     appTaskId,
@@ -957,6 +961,7 @@ async function handleAssignments(request, env) {
     proofReviewedAt: row.proof_reviewed_at,
     proofNotificationId: row.proof_notification_id,
     proofInstructions: row.proof_instructions,
+    updateAlertAt: row.update_alert_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -1001,10 +1006,45 @@ async function handleAssignmentStatus(request, env) {
 
   const updatedAt = new Date().toISOString();
   await env.DPEG_ASSIGNMENTS.prepare(
-    'UPDATE assignments SET status = ?, progress_note = ?, updated_at = ? WHERE id = ?'
+    'UPDATE assignments SET status = ?, progress_note = ?, update_alert_at = NULL, updated_at = ? WHERE id = ?'
   ).bind(newStatus, body.progressNote != null ? String(body.progressNote).slice(0, 2000) : null, updatedAt, id).run();
 
   return json({ success: true, updatedAt });
+}
+
+// ── /assignment-alert endpoint: assigner sends a one-click "update required"
+// nudge (D1). Independent of the KV follow-up thread — just a timestamp flag
+// on the assignment row, cleared automatically once the recipient updates
+// their status or submits proof.
+async function handleAssignmentAlert(request, env) {
+  const { error, status, claims } = validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const id = String(body.id || '').trim();
+  if (!id) return json({ error: 'id is required' }, 400);
+
+  const row = await env.DPEG_ASSIGNMENTS
+    .prepare('SELECT assigner_email FROM assignments WHERE id = ?')
+    .bind(id).first();
+  if (!row) return json({ error: 'Assignment not found' }, 404);
+
+  const tokenEmail = userEmailFromClaims(claims);
+  if (extractEmailAddress(row.assigner_email) !== tokenEmail) {
+    return json({ error: 'Only the assigner can send an update-required alert' }, 403);
+  }
+
+  const updateAlertAt = new Date().toISOString();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'UPDATE assignments SET update_alert_at = ? WHERE id = ?'
+  ).bind(updateAlertAt, id).run();
+
+  return json({ success: true, updateAlertAt });
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -1032,6 +1072,7 @@ export default {
     if (path === '/attachment-summary') return handleAttachmentSummary(request, env);
     if (path === '/assignment') return handleCreateAssignment(request, env);
     if (path === '/assignment-status') return handleAssignmentStatus(request, env);
+    if (path === '/assignment-alert') return handleAssignmentAlert(request, env);
     return handleSummary(request, env);
   },
 };

@@ -203,9 +203,29 @@
     return `<button class="btn btn-ghost btn-sm assign-followup-btn" onclick="openTaskFollowup('${a.id}',${received})">Follow up${badge}</button>`;
   }
 
+  // Standalone one-click "update required" nudge — separate from the
+  // follow-up thread entirely. Bell button lives only on Delegated cards
+  // (the assignor sends it); the fixed label it produces is read on
+  // Received cards/groups. Cleared server-side once the recipient updates
+  // status or submits proof (see handleAssignmentStatus/updateAssignmentProofState).
+  const ALERT_LABEL = '! Alert: Update Requested';
+
+  function alertBellButton(a, received) {
+    if (received) return '';
+    const active = !!a.updateAlertAt;
+    return `<button type="button" class="assign-alert-btn${active ? ' is-active' : ''}" title="${active ? 'Update-required alert sent' : 'Send update-required alert'}" onclick="sendUpdateAlert('${a.id}')">${active ? '🔔' : '🔕'}</button>`;
+  }
+
+  function alertLabel(a, received) {
+    if (!received || !a.updateAlertAt) return '';
+    return `<span class="assign-alert-label">${ALERT_LABEL}</span>`;
+  }
+
   function assignmentActions(a, received) {
     const proof = proofState(a);
     const followBtn = followupButton(a, received);
+    const bellBtn = alertBellButton(a, received);
+    const alertBadge = alertLabel(a, received);
     let content;
     if (received) {
       if (proof === 'none') {
@@ -232,7 +252,7 @@
     } else {
       content = `<span style="font-size:11.5px;color:var(--muted);font-weight:600">In progress</span>`;
     }
-    return `${content}${followBtn}`;
+    return `${content}<span class="assign-actions-trailing">${alertBadge}${followBtn}${bellBtn}</span>`;
   }
 
   function assignmentCard(a, received) {
@@ -299,7 +319,7 @@
 
   function assignmentsSignature(cache) {
     const sig = list => (list || [])
-      .map(a => [a.id, a.status, a.proofStatus, a.summary, a.dueDate, a.title, a.dept, a.priority].join('|'))
+      .map(a => [a.id, a.status, a.proofStatus, a.summary, a.dueDate, a.title, a.dept, a.priority, a.updateAlertAt].join('|'))
       .join(';');
     return `${sig(cache?.assignedToMe)}::${sig(cache?.assignedByMe)}`;
   }
@@ -379,6 +399,9 @@
       const followupGroupBadge = followupTotal > 0
         ? `<span class="assign-followup-group-badge">+${followupTotal > 9 ? '9+' : followupTotal} follow-up${followupTotal > 1 ? 's' : ''}</span>`
         : '';
+      const alertGroupBadge = received && group.items.some(a => a.updateAlertAt)
+        ? `<span class="assign-alert-group-badge">${ALERT_LABEL}</span>`
+        : '';
       const cards = open
         ? `<div class="assign-cards">${group.items.map(a => assignmentCard(a, received)).join('')}</div>`
         : '';
@@ -387,6 +410,7 @@
           <span class="assign-group-toggle">${open ? '−' : '+'}</span>
           <span class="assign-avatar-wrap">${av(group.name, 24)}${newBadge}</span>
           <span class="assign-group-name">${escapeHtml(group.name)}</span>
+          ${alertGroupBadge}
           ${followupGroupBadge}
           <span class="assign-group-summary">${group.items.length} ${noun}${summaryText ? ` · ${escapeHtml(summaryText)}` : ''}</span>
         </div>
@@ -431,6 +455,29 @@
       todoListId: '',
       todoTaskId: '',
     });
+  };
+
+  // One-click "update required" nudge — Delegated cards only. Independent of
+  // the follow-up thread: just flips a timestamp flag on the assignment row.
+  window.sendUpdateAlert = async function sendUpdateAlert(id) {
+    const a = (tasksTabCache.assignedByMe || []).find(x => x.id === id);
+    if (!a) return;
+    try {
+      const userToken = await getAccessToken();
+      const res = await fetch(`${fnBaseUrl()}/assignment-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userToken}` },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { updateAlertAt } = await res.json();
+      a.updateAlertAt = updateAlertAt || new Date().toISOString();
+      renderTasksTabList();
+      toast('Update-required alert sent');
+    } catch (err) {
+      console.warn('Send update alert failed:', err.message);
+      toast('Could not send alert — try again');
+    }
   };
 
   // Opens the generic task follow-up modal (index.html: showTaskFollowupModal),
