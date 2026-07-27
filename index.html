@@ -7430,6 +7430,7 @@ async function checkAndLoadProofNotifications(){
     const localData={
       type:'proof_submitted',
       message:`${pn.recipientName||pn.recipientEmail||'Someone'} submitted proof for "${pn.taskTitle||'a task'}"`,
+      taskTitle:pn.taskTitle||task.title||'',
       taskId:task.id,
       proofs:Array.isArray(pn.proofs)?pn.proofs:[],
       note:pn.note||'',
@@ -8009,11 +8010,17 @@ function renderNotificationCard(n){
     :`<svg width="16" height="16" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const proofHtml=renderNotificationProofs(n);
   const newTag=n.seen===false?`<span style="display:inline-flex;align-items:center;padding:1px 6px;background:#dcfce7;border:1px solid #86efac;border-radius:10px;font-size:9px;font-weight:800;color:#166534;letter-spacing:.4px;margin-left:5px;vertical-align:middle">NEW</span>`:'';
+  // The task title used to only exist buried inside the prose message
+  // ("X submitted proof for 'task title'"), rendered as one flat gray
+  // sentence — easy to miss which task a card was even about. Pulled out
+  // as its own bold line so it's the first thing the eye lands on.
+  const taskTitleHtml=n.taskTitle?`<div style="font-size:13.5px;font-weight:800;color:var(--body);margin-bottom:3px">${escapeHtml(n.taskTitle)}</div>`:'';
   return`<div class="card${n.id===highlightedNotifId?' notif-highlight':''}" id="notif-card-${n.id}" style="padding:12px 14px${n.seen===false?';border-left:3px solid #86efac':''}">
     <div style="display:flex;align-items:flex-start;gap:10px">
       <div style="flex-shrink:0;margin-top:1px">${icon}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12.5px;color:var(--body);line-height:1.4;margin-bottom:4px">${escapeHtml(n.message||'')}${newTag}</div>
+        ${taskTitleHtml}
+        <div style="font-size:12.5px;color:var(--muted);line-height:1.4;margin-bottom:4px">${escapeHtml(n.message||'')}${newTag}</div>
         ${proofHtml}
         ${n.dismissReason?`<div style="margin-top:6px;font-size:11px;color:#991b1b">Dismissed reason: ${escapeHtml(n.dismissReason)}</div>`:''}
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -8041,7 +8048,15 @@ function renderNotifications(){
     return;
   }
   const groups=groupNotificationsByPerson(notifications);
-  el.innerHTML=groups.map(group=>{
+  // Live count, not a fixed number — always reflects however many are
+  // actually unseen right now, and always equals the sum of the per-group
+  // badges below it since both are computed from the same seen===false check.
+  const totalNew=notifications.filter(n=>n.seen===false).length;
+  const summaryBanner=totalNew>0?`<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:10px;background:var(--sage3);border:1px solid var(--sage);border-radius:var(--rlg)">
+    <span style="font-size:13.5px;font-weight:800;color:var(--forest)">${totalNew} new notification${totalNew===1?'':'s'}</span>
+    <span style="font-size:11px;color:var(--muted)">— divided by person below</span>
+  </div>`:'';
+  el.innerHTML=summaryBanner+groups.map(group=>{
     const open=isNotifGroupOpen(group);
     const noun=group.items.length===1?'notification':'notifications';
     const pendingCount=group.items.filter(n=>n.status==='pending').length;
@@ -8054,7 +8069,7 @@ function renderNotifications(){
       <div class="assign-group-head" onclick="toggleNotifGroup(${safeGroupKey})">
         <span class="assign-group-toggle">${open?'−':'+'}</span>
         <span class="assign-avatar-wrap">${av(group.name,24)}${newBadge}</span>
-        <span class="assign-group-name">${escapeHtml(group.name)}</span>
+        <span class="assign-group-name" style="color:var(--forest)">${escapeHtml(group.name)}</span>
         <span class="assign-group-summary">${group.items.length} ${noun} · ${summaryText}</span>
       </div>
       ${cards}
@@ -8157,7 +8172,7 @@ async function askNotificationFollowup(id){
       await checkAndLoadProofNotifications();
       renderNotifications();
     }
-    await sendProofFollowupEmail(n.recipientEmail||task?.email,task||{id:n.taskId,title:n.message,email:n.recipientEmail},message);
+    await sendProofFollowupEmail(n.recipientEmail||task?.email,task||{id:n.taskId,title:n.taskTitle||n.message,email:n.recipientEmail},message);
     toast('Follow-up question sent and emailed');
   }catch(err){toast('Could not send follow-up: '+(err.message||err));}
 }
@@ -8261,6 +8276,7 @@ async function pollToDoCompletions(manual=false){
           id:Date.now()+Math.random(),
           type:'task_completion',
           message:`${matchTask.person||'Someone'} completed "${matchTask.title||'task'}"${deadlineStr}. Marked done on ${completedOn}. Do you want to approve?`,
+          taskTitle:matchTask.title||'',
           taskId:matchTask.id,
           todoTaskId:item.todoTaskId,
           recipientEmail:item.recipientEmail||matchTask.email||'',
