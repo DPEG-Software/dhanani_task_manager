@@ -176,6 +176,15 @@
     return window._taskFollowupState ? window._taskFollowupState[key] : null;
   }
 
+  // Seen-length is keyed by assignment id *and* role, not just assignment id.
+  // On a self-assigned task (assigner === recipient) the Received and
+  // Delegated views point at the exact same D1 row/id — without the role in
+  // the key, sending a follow-up from Delegated would mark it "seen" for
+  // the Received view too, since they'd share one storage slot.
+  function followupSeenKey(a, received) {
+    return `${a.id}::${received ? 'assignee' : 'assignor'}`;
+  }
+
   // Count of thread messages from the other party since this user last
   // opened (or sent into) this task's follow-up thread. Using a count
   // rather than a boolean means two separate follow-up messages read as
@@ -184,7 +193,7 @@
     const state = followupThreadState(a);
     if (!state || !Array.isArray(state.thread) || !state.thread.length) return 0;
     const myRole = received ? 'assignee' : 'assignor';
-    const seenLen = followupSeenLengths[a.id] || 0;
+    const seenLen = followupSeenLengths[followupSeenKey(a, received)] || 0;
     return state.thread.slice(seenLen).filter(m => m && m.by !== myRole).length;
   }
 
@@ -446,9 +455,13 @@
   // the modal clears the unread count the same way expanding a group clears
   // its "new" badge. Stores the thread length seen so far (not just a flag)
   // so a later re-open can compute exactly how many new messages arrived.
-  window.markTaskFollowupSeen = function markTaskFollowupSeen(assignmentId, threadLen) {
+  // role must match the 'assignee'/'assignor' key format used by
+  // followupSeenKey above — see the comment there for why role is part of
+  // the key (self-assigned tasks share one assignment id across both views).
+  window.markTaskFollowupSeen = function markTaskFollowupSeen(assignmentId, threadLen, role) {
     if (!assignmentId) return;
-    followupSeenLengths[assignmentId] = threadLen;
+    const key = `${assignmentId}::${role === 'assignor' ? 'assignor' : 'assignee'}`;
+    followupSeenLengths[key] = threadLen;
     saveFollowupSeenLengths(followupSeenLengths);
     renderTasksTabList();
   };

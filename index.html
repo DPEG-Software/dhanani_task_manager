@@ -7652,7 +7652,7 @@ async function refreshTaskFollowupThread(){
   const thread=n&&Array.isArray(n.thread)?n.thread:[];
   body.innerHTML=thread.length?renderProofThread(n):'<div style="font-size:12px;color:var(--muted);padding:6px 0">No messages yet — send one to start the conversation.</div>';
   scrollProofThreadsToBottom(body);
-  window.markTaskFollowupSeen?.(_taskFollowupCtx.assignmentId,thread.length);
+  window.markTaskFollowupSeen?.(_taskFollowupCtx.assignmentId,thread.length,_taskFollowupCtx.role);
 }
 
 function closeTaskFollowup(){
