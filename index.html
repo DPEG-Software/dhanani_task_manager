@@ -7977,7 +7977,11 @@ function notifGroupKey(n){
   return String(n.recipientEmail||n.recipientName||'unknown').toLowerCase();
 }
 function notifGroupLabel(n){
-  return String(n.recipientName||n.recipientEmail||'Unknown').trim();
+  // recipientName is only as reliable as currentUser.name was at the moment
+  // that person submitted proof, which isn't always populated — fall back
+  // to the app's own contact directory (staffConfig/userContacts) before
+  // giving up and showing the raw email.
+  return String(n.recipientName||findPersonByEmail(n.recipientEmail)?.name||n.recipientEmail||'Unknown').trim();
 }
 function groupNotificationsByPerson(list){
   const grouped=new Map();
@@ -8059,8 +8063,17 @@ function renderNotifications(){
   el.innerHTML=summaryBanner+groups.map(group=>{
     const open=isNotifGroupOpen(group);
     const noun=group.items.length===1?'notification':'notifications';
-    const pendingCount=group.items.filter(n=>n.status==='pending').length;
-    const summaryText=pendingCount>0?`${pendingCount} pending`:'All resolved';
+    // Full breakdown, not just the pending count — "3 notifications · 1
+    // pending" left the other 2 unexplained; spell out what they actually are.
+    const statusCounts={};
+    group.items.forEach(n=>{
+      const label=n.status==='approved'?'approved':n.status==='dismissed'?'dismissed':'pending';
+      statusCounts[label]=(statusCounts[label]||0)+1;
+    });
+    const summaryText=['pending','approved','dismissed']
+      .filter(label=>statusCounts[label])
+      .map(label=>`${statusCounts[label]} ${label}`)
+      .join(' · ');
     const unseenCount=group.items.filter(n=>n.seen===false).length;
     const newBadge=unseenCount>0?`<span class="assign-new-badge">${unseenCount>9?'9+':unseenCount}</span>`:'';
     const safeGroupKey=escapeHtml(JSON.stringify(group.key));
