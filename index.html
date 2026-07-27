@@ -744,6 +744,27 @@
   </div>
 </div>
 
+<!-- TASK FOLLOW-UP MODAL (Tasks tab — Received & Delegated) -->
+<div class="mo" id="mo-task-followup">
+  <div class="mo-box" style="width:520px;max-height:88vh">
+    <div class="mo-hdr">
+      <div>
+        <div class="mo-title" id="tf-modal-title">Follow up</div>
+        <div class="mo-sub" id="tf-modal-sub"></div>
+      </div>
+      <button class="mo-x" onclick="closeTaskFollowup()">&#10005;</button>
+    </div>
+    <div class="mo-body" id="tf-modal-body" style="max-height:56vh;overflow-y:auto"></div>
+    <div class="mo-foot" style="flex-direction:column;align-items:stretch">
+      <textarea id="tf-modal-input" class="ag-ta" placeholder="Type a message..." style="min-height:64px;margin-bottom:8px"></textarea>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="tf-modal-status" style="font-size:11px;color:var(--muted);margin-right:auto"></span>
+        <button class="btn btn-primary btn-sm" id="tf-modal-send" onclick="sendTaskFollowupMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- FORWARD GAP WARNING MODAL -->
 <div class="mo" id="mo-fwd-gap">
   <div class="mo-box" style="max-width:580px">
@@ -7361,6 +7382,22 @@ async function checkAndLoadProofNotifications(){
   const myEmail=(currentUser?.email||'').toLowerCase();
   tasks.forEach(t=>delete t._proofNotif);
 
+  // Track the latest follow-up thread per (appTaskId, recipientEmail) that
+  // involves the current user (as assignor or assignee), so the Tasks tab
+  // can show an unread dot on the Follow-up button without a separate fetch.
+  window._taskFollowupState=window._taskFollowupState||{};
+  kvNotifs.filter(n=>(n.type==='proof_submitted'||n.type==='task_followup')
+      &&Array.isArray(n.thread)&&n.thread.length
+      &&(String(n.senderEmail||'').toLowerCase()===myEmail||String(n.recipientEmail||'').toLowerCase()===myEmail))
+    .forEach(n=>{
+      const key=`${n.appTaskId}::${String(n.recipientEmail||'').toLowerCase()}`;
+      const existing=window._taskFollowupState[key];
+      const updatedAt=n.updatedAt||n.submittedAt||n.createdAt||0;
+      if(!existing||new Date(updatedAt)>=new Date(existing.updatedAt||0)){
+        window._taskFollowupState[key]={notifId:n.id,appTaskId:n.appTaskId,recipientEmail:n.recipientEmail,thread:n.thread,updatedAt};
+      }
+    });
+
   const existingKvIds=new Set((notifications||[]).filter(n=>n.kvNotifId).map(n=>n.kvNotifId));
   let newAdded=0;
   let existingUpdated=0;
@@ -7556,6 +7593,122 @@ async function askProofFollowup(notifId,taskId){
     openDetail(taskId);
     toast('Follow-up question sent and emailed');
   }catch(err){toast('Could not send follow-up: '+(err.message||err));}
+}
+
+// ── Generic task follow-up (Tasks tab — Received & Delegated cards) ──────────
+// Unlike askProofFollowup/askNotificationFollowup above, this does not require
+// a proof to have been submitted first: either party can start or continue
+// the conversation about a task at any time. It reuses the same KV thread
+// schema (and renderProofThread) as the proof follow-up feature so the two
+// stay visually and structurally consistent.
+let _taskFollowupCtx=null;
+
+async function fetchTaskFollowupThread(appTaskId,recipientEmail){
+  try{
+    const fnUrl=workerBaseUrl();
+    const userToken=await getAccessToken();
+    const res=await fetch(`${fnUrl}/notify`,{headers:{Authorization:`Bearer ${userToken}`}});
+    if(!res.ok)return null;
+    const data=await res.json();
+    const notifs=Array.isArray(data.notifications)?data.notifications:[];
+    const email=String(recipientEmail||'').toLowerCase();
+    return notifs
+      .filter(n=>(n.type==='proof_submitted'||n.type==='task_followup')&&String(n.appTaskId)===String(appTaskId||'')&&String(n.recipientEmail||'').toLowerCase()===email)
+      .sort((a,b)=>new Date(b.updatedAt||b.submittedAt||b.createdAt||0)-new Date(a.updatedAt||a.submittedAt||a.createdAt||0))[0]||null;
+  }catch{return null;}
+}
+
+async function showTaskFollowupModal(params){
+  _taskFollowupCtx=params;
+  const titleEl=document.getElementById('tf-modal-title');
+  const subEl=document.getElementById('tf-modal-sub');
+  const otherName=params.role==='assignee'?(params.assignerName||params.assignerEmail):(params.recipientName||params.recipientEmail);
+  if(titleEl)titleEl.textContent=`Follow up — ${otherName||'the other party'}`;
+  if(subEl)subEl.textContent=params.title||'';
+  const input=document.getElementById('tf-modal-input');
+  if(input)input.value='';
+  const statusEl=document.getElementById('tf-modal-status');
+  if(statusEl)statusEl.textContent='';
+  document.getElementById('mo-task-followup')?.classList.add('open');
+  await refreshTaskFollowupThread();
+}
+
+async function refreshTaskFollowupThread(){
+  if(!_taskFollowupCtx)return;
+  const body=document.getElementById('tf-modal-body');
+  if(!body)return;
+  body.innerHTML='<div style="font-size:12px;color:var(--muted)">Loading conversation...</div>';
+  const n=await fetchTaskFollowupThread(_taskFollowupCtx.appTaskId,_taskFollowupCtx.recipientEmail);
+  const thread=n&&Array.isArray(n.thread)?n.thread:[];
+  body.innerHTML=thread.length?renderProofThread(n):'<div style="font-size:12px;color:var(--muted);padding:6px 0">No messages yet — send one to start the conversation.</div>';
+  scrollProofThreadsToBottom(body);
+  window.markTaskFollowupSeen?.(_taskFollowupCtx.assignmentId,thread.length);
+}
+
+function closeTaskFollowup(){
+  document.getElementById('mo-task-followup')?.classList.remove('open');
+  _taskFollowupCtx=null;
+}
+
+async function sendTaskFollowupEmail(recipientEmail,ctx,message){
+  const addr=String(recipientEmail||'').trim();
+  if(!addr||!addr.includes('@'))return;
+  try{
+    const sender=currentUser?.name||currentUser?.email||'DPEG Task Manager';
+    const appUrl=location.origin+location.pathname;
+    const html=`<div style="font-family:Arial,sans-serif;max-width:620px;color:#111">
+      <div style="background:#0E3416;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Task Follow-up — ${escapeHtml(ctx.title||'Assigned task')}</div>
+      <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:14px 16px">
+        <p style="margin:0 0 8px"><strong>From:</strong> ${escapeHtml(sender)}</p>
+        <div style="background:#f0fdf4;border-left:3px solid #0E3416;padding:10px 12px;margin:10px 0;font-size:14px;line-height:1.5">${escapeHtml(message).replace(/\n/g,'<br>')}</div>
+        <p style="color:#9ca3af;font-size:11px;margin:8px 0 0">Reply from the Tasks tab in DPEG Task Manager: <a href="${escapeHtml(appUrl)}">${escapeHtml(appUrl)}</a></p>
+      </div>
+    </div>`;
+    await replyToTaskEmail({title:ctx.title||'Assigned task',email:addr},html,addr);
+  }catch(err){
+    console.warn('Task follow-up email failed:',err.message);
+  }
+}
+
+async function sendTaskFollowupMessage(){
+  if(!_taskFollowupCtx)return;
+  const ctx=_taskFollowupCtx;
+  const input=document.getElementById('tf-modal-input');
+  const statusEl=document.getElementById('tf-modal-status');
+  const btn=document.getElementById('tf-modal-send');
+  const message=String(input?.value||'').trim();
+  if(!message){toast('Type a message first');return;}
+  if(btn)btn.disabled=true;
+  if(statusEl)statusEl.textContent='Sending...';
+  try{
+    const fnUrl=workerBaseUrl();
+    const userToken=await getAccessToken();
+    const res=await fetch(`${fnUrl}/notify`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
+      body:JSON.stringify({
+        type:'task_followup_message',
+        appTaskId:ctx.appTaskId||'',
+        taskTitle:ctx.title||'',
+        assignerEmail:ctx.assignerEmail||'',
+        recipientEmail:ctx.recipientEmail||'',
+        recipientName:ctx.recipientName||'',
+        by:ctx.role,
+        senderEmail:currentUser?.email||'',
+        senderName:currentUser?.name||'',
+        message,
+      }),
+    });
+    if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not send message');}
+    if(input)input.value='';
+    if(statusEl)statusEl.textContent='';
+    const otherEmail=ctx.role==='assignor'?ctx.recipientEmail:ctx.assignerEmail;
+    await sendTaskFollowupEmail(otherEmail,ctx,message);
+    await refreshTaskFollowupThread();
+    window.renderMyTasks?.(true);
+  }catch(err){
+    if(statusEl)statusEl.innerHTML=`<span style="color:#b91c1c">${escapeHtml(err.message||'Could not send message')}</span>`;
+  }finally{if(btn)btn.disabled=false;}
 }
 
 async function loadProofPreviews(proofs){

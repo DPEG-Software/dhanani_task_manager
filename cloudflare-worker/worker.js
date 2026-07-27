@@ -729,6 +729,59 @@ async function handleNotify(request, env) {
     notifications[idx].thread = thread;
     notifications[idx].followupStatus = 'answered';
     notifications[idx].updatedAt = new Date().toISOString();
+  } else if (body.type === 'task_followup_message') {
+    // Generic per-task follow-up, usable from the Tasks tab regardless of
+    // proof status — unlike proof_followup_question/answer above, this does
+    // not require a prior proof submission to exist.
+    const appTaskId = String(body.appTaskId || '');
+    const recipientEmail = extractEmailAddress(body.recipientEmail || '');
+    if (!appTaskId || !recipientEmail) return json({ error: 'appTaskId and recipientEmail are required' }, 400);
+    const message = String(body.message || '').trim();
+    if (!message) return json({ error: 'Message is required' }, 400);
+    const by = body.by === 'assignee' ? 'assignee' : 'assignor';
+
+    // Reuse the most recently-updated thread container for this task+recipient
+    // — a proof submission (any status) or a prior generic follow-up — so all
+    // conversation about a task lives in one place instead of forking.
+    let idx = -1;
+    let idxTime = -Infinity;
+    notifications.forEach((n, i) => {
+      if ((n.type === 'proof_submitted' || n.type === 'task_followup') &&
+          String(n.appTaskId) === appTaskId &&
+          extractEmailAddress(n.recipientEmail) === recipientEmail) {
+        const t = new Date(n.updatedAt || n.submittedAt || n.createdAt || 0).getTime();
+        if (t >= idxTime) { idx = i; idxTime = t; }
+      }
+    });
+    if (idx < 0) {
+      notifications.push({
+        id: `tf-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+        type: 'task_followup',
+        appTaskId,
+        taskTitle: String(body.taskTitle || ''),
+        senderEmail: String(body.assignerEmail || ''),
+        recipientEmail: String(body.recipientEmail || ''),
+        recipientName: String(body.recipientName || ''),
+        thread: [],
+        followupStatus: '',
+        status: 'open',
+        createdAt: new Date().toISOString(),
+        seen: false,
+      });
+      idx = notifications.length - 1;
+    }
+    const thread = Array.isArray(notifications[idx].thread) ? notifications[idx].thread : [];
+    thread.push({
+      id: `fm-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      by,
+      email: String(body.senderEmail || userEmailFromClaims(claims)),
+      name: String(body.senderName || claims.name || ''),
+      message,
+      createdAt: new Date().toISOString(),
+    });
+    notifications[idx].thread = thread;
+    notifications[idx].followupStatus = by === 'assignor' ? 'question' : 'answered';
+    notifications[idx].updatedAt = new Date().toISOString();
   } else {
     return json({ error: 'Unknown notification type' }, 400);
   }

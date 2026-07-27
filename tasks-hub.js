@@ -155,25 +155,58 @@
     return `<span class="assign-due${overdue ? ' is-overdue' : ''}">Due ${fmtD(a.dueDate)}${overdue ? ' (overdue)' : ''}</span>`;
   }
 
+  // Follow-up thread state is populated by index.html's checkAndLoadProofNotifications
+  // poll (window._taskFollowupState), keyed by appTaskId+recipientEmail so both the
+  // Received and Delegated view of the same task share one conversation.
+  function followupThreadState(a) {
+    const key = `${a.appTaskId}::${String(a.recipientEmail || '').toLowerCase()}`;
+    return window._taskFollowupState ? window._taskFollowupState[key] : null;
+  }
+
+  function hasUnreadFollowup(a, received) {
+    const state = followupThreadState(a);
+    if (!state || !Array.isArray(state.thread) || !state.thread.length) return false;
+    const myRole = received ? 'assignee' : 'assignor';
+    const last = state.thread[state.thread.length - 1];
+    if (!last || last.by === myRole) return false;
+    return !seenAssignmentStages.has(`followup::${a.id}::${state.thread.length}`);
+  }
+
+  function followupButton(a, received) {
+    const dot = hasUnreadFollowup(a, received) ? '<span class="assign-followup-dot"></span>' : '';
+    return `<button class="btn btn-ghost btn-sm assign-followup-btn" onclick="openTaskFollowup('${a.id}',${received})">Follow up${dot}</button>`;
+  }
+
   function assignmentActions(a, received) {
     const proof = proofState(a);
+    const followBtn = followupButton(a, received);
+    let content;
     if (received) {
       if (proof === 'none') {
         const opts = MANUAL_STATUSES.map(s => `<option value="${s}" ${s === (a.status || 'Assigned') ? 'selected' : ''}>${s}</option>`).join('');
-        return `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
+        content = `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`;
-      }
-      if (proof === 'submitted') return `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>
+      } else if (proof === 'submitted') {
+        content = `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Update Proof</button>`;
-      if (proof === 'declined') return `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — check your email, then</span>
+      } else if (proof === 'declined') {
+        content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — check your email, then</span>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button>`;
-      if (proof === 'approved') return `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
-      return '';
+      } else if (proof === 'approved') {
+        content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
+      } else {
+        content = '';
+      }
+    } else if (proof === 'submitted') {
+      content = `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review Proof</button>`;
+    } else if (proof === 'declined') {
+      content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — awaiting resubmission</span>`;
+    } else if (proof === 'approved') {
+      content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
+    } else {
+      content = `<span style="font-size:11.5px;color:var(--muted);font-weight:600">In progress</span>`;
     }
-    if (proof === 'submitted') return `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review Proof</button>`;
-    if (proof === 'declined') return `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — awaiting resubmission</span>`;
-    if (proof === 'approved') return `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
-    return `<span style="font-size:11.5px;color:var(--muted);font-weight:600">In progress</span>`;
+    return `${content}${followBtn}`;
   }
 
   function assignmentCard(a, received) {
@@ -361,6 +394,34 @@
       todoListId: '',
       todoTaskId: '',
     });
+  };
+
+  // Opens the generic task follow-up modal (index.html: showTaskFollowupModal),
+  // available on both Received and Delegated cards regardless of proof status.
+  window.openTaskFollowup = function openTaskFollowup(id, received) {
+    const list = received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []);
+    const a = list.find(x => x.id === id);
+    if (!a || typeof window.showTaskFollowupModal !== 'function') return;
+    window.showTaskFollowupModal({
+      assignmentId: a.id,
+      appTaskId: a.appTaskId || '',
+      title: a.title || '',
+      assignerEmail: a.assignerEmail || '',
+      assignerName: a.assignerName || '',
+      recipientEmail: a.recipientEmail || '',
+      recipientName: a.recipientName || '',
+      role: received ? 'assignee' : 'assignor',
+    });
+  };
+
+  // Called by showTaskFollowupModal once the thread has loaded, so opening
+  // the modal clears the unread dot the same way expanding a group clears
+  // its "new" badge.
+  window.markTaskFollowupSeen = function markTaskFollowupSeen(assignmentId, threadLen) {
+    if (!assignmentId) return;
+    seenAssignmentStages.add(`followup::${assignmentId}::${threadLen}`);
+    saveSeenStages(seenAssignmentStages);
+    renderTasksTabList();
   };
 
   window.openProofReviewFromTasksTab = async function openProofReviewFromTasksTab(id) {
