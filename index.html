@@ -7397,6 +7397,16 @@ async function checkAndLoadProofNotifications(){
         window._taskFollowupState[key]={notifId:n.id,appTaskId:n.appTaskId,recipientEmail:n.recipientEmail,thread:n.thread,updatedAt};
       }
     });
+  // renderMyTasks(true) below only redraws the Tasks tab when the D1
+  // assignment row itself changed (status/proof) — a new follow-up message
+  // only touches this KV thread state, so without this it would silently
+  // never repaint until the user manually leaves and reopens the tab.
+  const followupSig=Object.keys(window._taskFollowupState).sort()
+    .map(k=>{const s=window._taskFollowupState[k];return `${k}:${s.thread.length}:${s.updatedAt}`;}).join('|');
+  if(followupSig!==window._taskFollowupStateSig){
+    window._taskFollowupStateSig=followupSig;
+    window.renderTasksTabList?.();
+  }
 
   const existingKvIds=new Set((notifications||[]).filter(n=>n.kvNotifId).map(n=>n.kvNotifId));
   let newAdded=0;

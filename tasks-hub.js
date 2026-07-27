@@ -343,6 +343,11 @@
     setBadge('tasks-given-badge', givenCount);
   }
 
+  // Exposed so index.html's notification poll can force a repaint when only
+  // the KV follow-up thread changed — renderMyTasks(true) alone won't redraw,
+  // since its D1-row signature check has nothing to compare there (see
+  // checkAndLoadProofNotifications's followup-signature diff).
+  window.renderTasksTabList = renderTasksTabList;
   function renderTasksTabList() {
     const tb = document.getElementById('tasks-tbody');
     if (!tb) return;
