@@ -218,7 +218,11 @@
 
   function alertLabel(a, received) {
     if (!received || !a.updateAlertAt) return '';
-    return `<span class="assign-alert-label">${ALERT_LABEL}</span>`;
+    // Auto-clears once the recipient submits/updates proof or the assigner
+    // resolves it (approve/decline) — but neither happens if an alert lands
+    // while a proof is already sitting in review, so give the recipient an
+    // explicit way to dismiss it themselves rather than being stuck.
+    return `<span class="assign-alert-label">${ALERT_LABEL}<button type="button" class="assign-alert-dismiss" title="Dismiss alert" onclick="event.stopPropagation();dismissUpdateAlert('${a.id}')">&times;</button></span>`;
   }
 
   function assignmentActions(a, received) {
@@ -477,6 +481,30 @@
     } catch (err) {
       console.warn('Send update alert failed:', err.message);
       toast('Could not send alert — try again');
+    }
+  };
+
+  // Manual dismiss for the recipient (or the assigner, retracting their own
+  // alert) — see the comment on alertLabel for why this can't rely solely
+  // on the automatic clear-on-status-change path.
+  window.dismissUpdateAlert = async function dismissUpdateAlert(id) {
+    const a = (tasksTabCache.assignedToMe || []).find(x => x.id === id)
+      || (tasksTabCache.assignedByMe || []).find(x => x.id === id);
+    if (!a) return;
+    try {
+      const userToken = await getAccessToken();
+      const res = await fetch(`${fnBaseUrl()}/assignment-alert-clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userToken}` },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      a.updateAlertAt = null;
+      renderTasksTabList();
+      toast('Alert dismissed');
+    } catch (err) {
+      console.warn('Dismiss alert failed:', err.message);
+      toast('Could not dismiss alert — try again');
     }
   };
 

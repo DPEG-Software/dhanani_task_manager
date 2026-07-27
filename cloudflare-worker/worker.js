@@ -5,6 +5,7 @@
 // GET  /assignments      → Fetch assignments for the current user (assigned to me + by me)
 // POST /assignment-status→ Recipient updates assignment status/progress (D1)
 // POST /assignment-alert → Assigner sends a one-click "update required" nudge (D1)
+// POST /assignment-alert-clear → Either party dismisses that alert (D1)
 
 const ALLOWED_ORIGIN  = 'https://dpeg-software.github.io';
 const DPEG_TENANT_ID  = '9152bf5c-22ff-4e4a-8624-784a2d243006';
@@ -152,7 +153,7 @@ async function updateAssignmentProofState(env, details) {
            proof_reviewed_at = CASE WHEN ? = 'submitted' THEN NULL ELSE COALESCE(?, proof_reviewed_at) END,
            proof_notification_id = COALESCE(NULLIF(?, ''), proof_notification_id),
            status = CASE WHEN ? = 'approved' THEN 'Done' ELSE status END,
-           update_alert_at = CASE WHEN ? = 'submitted' THEN NULL ELSE update_alert_at END,
+           update_alert_at = CASE WHEN ? IN ('submitted','approved','declined') THEN NULL ELSE update_alert_at END,
            updated_at = ?
      WHERE app_task_id = ?
        AND (? = '' OR recipient_email = ?)
@@ -1060,6 +1061,43 @@ async function handleAssignmentAlert(request, env) {
   return json({ success: true, updateAlertAt });
 }
 
+// ── /assignment-alert-clear endpoint: manually dismiss an alert (D1). Either
+// party can clear it — the recipient acknowledging it, or the assigner
+// retracting it — since the automatic clear-on-submit/approve/decline path
+// above doesn't cover every case (e.g. an alert sent while proof is already
+// sitting in review, with no status change left for the recipient to make).
+async function handleAssignmentAlertClear(request, env) {
+  const { error, status, claims } = validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const id = String(body.id || '').trim();
+  if (!id) return json({ error: 'id is required' }, 400);
+
+  const row = await env.DPEG_ASSIGNMENTS
+    .prepare('SELECT assigner_email, recipient_email FROM assignments WHERE id = ?')
+    .bind(id).first();
+  if (!row) return json({ error: 'Assignment not found' }, 404);
+
+  const tokenEmail = userEmailFromClaims(claims);
+  const isAssigner = extractEmailAddress(row.assigner_email) === tokenEmail;
+  const isRecipient = extractEmailAddress(row.recipient_email) === tokenEmail;
+  if (!isAssigner && !isRecipient) {
+    return json({ error: 'Only the assigner or recipient can dismiss this alert' }, 403);
+  }
+
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'UPDATE assignments SET update_alert_at = NULL WHERE id = ?'
+  ).bind(id).run();
+
+  return json({ success: true });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -1086,6 +1124,7 @@ export default {
     if (path === '/assignment') return handleCreateAssignment(request, env);
     if (path === '/assignment-status') return handleAssignmentStatus(request, env);
     if (path === '/assignment-alert') return handleAssignmentAlert(request, env);
+    if (path === '/assignment-alert-clear') return handleAssignmentAlertClear(request, env);
     return handleSummary(request, env);
   },
 };
