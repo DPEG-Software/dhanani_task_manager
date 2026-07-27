@@ -744,20 +744,33 @@ async function handleNotify(request, env) {
     if (!message) return json({ error: 'Message is required' }, 400);
     const by = body.by === 'assignee' ? 'assignee' : 'assignor';
 
-    // Reuse the most recently-updated thread container for this task+recipient
-    // — a proof submission (any status) or a prior generic follow-up — so all
-    // conversation about a task lives in one place instead of forking.
-    let idx = -1;
-    let idxTime = -Infinity;
-    notifications.forEach((n, i) => {
-      if ((n.type === 'proof_submitted' || n.type === 'task_followup') &&
-          String(n.appTaskId) === appTaskId &&
-          extractEmailAddress(n.recipientEmail) === recipientEmail) {
-        const t = new Date(n.updatedAt || n.submittedAt || n.createdAt || 0).getTime();
-        if (t >= idxTime) { idx = i; idxTime = t; }
-      }
-    });
+    // The conversation lives in a single, permanent task_followup record per
+    // (appTaskId, recipientEmail) — created once and reused forever. A proof
+    // resubmission creates a brand-new proof_submitted record with a fresher
+    // timestamp than the existing conversation, so picking "most recently
+    // updated" would silently fork the thread onto that empty new record and
+    // orphan the real history. Once a task_followup exists, it always wins.
+    let idx = notifications.findIndex(n =>
+      n.type === 'task_followup' &&
+      String(n.appTaskId) === appTaskId &&
+      extractEmailAddress(n.recipientEmail) === recipientEmail
+    );
     if (idx < 0) {
+      // First message ever for this task+recipient — seed from the most
+      // recent proof_submitted's thread (if any) so earlier Ask-Follow-up
+      // conversation from the proof-review flow isn't lost, then this
+      // record becomes the permanent home for all future messages.
+      let seedThread = [];
+      let seedTime = -Infinity;
+      notifications.forEach(n => {
+        if (n.type === 'proof_submitted' &&
+            String(n.appTaskId) === appTaskId &&
+            extractEmailAddress(n.recipientEmail) === recipientEmail &&
+            Array.isArray(n.thread) && n.thread.length) {
+          const t = new Date(n.updatedAt || n.submittedAt || n.createdAt || 0).getTime();
+          if (t >= seedTime) { seedThread = n.thread; seedTime = t; }
+        }
+      });
       notifications.push({
         id: `tf-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
         type: 'task_followup',
@@ -766,7 +779,7 @@ async function handleNotify(request, env) {
         senderEmail: String(body.assignerEmail || ''),
         recipientEmail: String(body.recipientEmail || ''),
         recipientName: String(body.recipientName || ''),
-        thread: [],
+        thread: [...seedThread],
         followupStatus: '',
         status: 'open',
         createdAt: new Date().toISOString(),

@@ -520,6 +520,9 @@
       await checkAndLoadProofNotifications().catch(err => console.warn('Proof notification refresh failed:', err.message));
     }
     if (typeof nav === 'function') nav('notifications');
+    // Scrolls to and flashes the exact notification card so the user doesn't
+    // have to hunt for it among every other pending notification.
+    window.highlightProofNotificationForTask?.(a.appTaskId);
     toast('Open Notifications to review the submitted proof');
   };
 
