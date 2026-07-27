@@ -22,6 +22,19 @@
   let seenAssignmentStages = loadSeenStages();
   function assignmentSeenKey(a) { return `${a.id}::${stageLabel(a)}`; }
 
+  // Follow-up "seen" tracking is separate from the stage-badge Set above,
+  // since it needs to remember *how many* thread messages were already seen
+  // (to compute an unread count), not just a single seen/unseen flag.
+  const FOLLOWUP_SEEN_STORAGE_KEY = 'dpeg_followup_seen_lengths';
+  function loadFollowupSeenLengths() {
+    try { return JSON.parse(localStorage.getItem(FOLLOWUP_SEEN_STORAGE_KEY) || '{}'); }
+    catch { return {}; }
+  }
+  function saveFollowupSeenLengths(map) {
+    try { localStorage.setItem(FOLLOWUP_SEEN_STORAGE_KEY, JSON.stringify(map)); } catch {}
+  }
+  let followupSeenLengths = loadFollowupSeenLengths();
+
   function fnBaseUrl() {
     return (localStorage.getItem('dpeg_ai_fn_url') || WORKER_URL).replace(/\/?$/, '');
   }
@@ -163,18 +176,22 @@
     return window._taskFollowupState ? window._taskFollowupState[key] : null;
   }
 
-  function hasUnreadFollowup(a, received) {
+  // Count of thread messages from the other party since this user last
+  // opened (or sent into) this task's follow-up thread. Using a count
+  // rather than a boolean means two separate follow-up messages read as
+  // "2", not just "unread".
+  function followupUnreadCount(a, received) {
     const state = followupThreadState(a);
-    if (!state || !Array.isArray(state.thread) || !state.thread.length) return false;
+    if (!state || !Array.isArray(state.thread) || !state.thread.length) return 0;
     const myRole = received ? 'assignee' : 'assignor';
-    const last = state.thread[state.thread.length - 1];
-    if (!last || last.by === myRole) return false;
-    return !seenAssignmentStages.has(`followup::${a.id}::${state.thread.length}`);
+    const seenLen = followupSeenLengths[a.id] || 0;
+    return state.thread.slice(seenLen).filter(m => m && m.by !== myRole).length;
   }
 
   function followupButton(a, received) {
-    const dot = hasUnreadFollowup(a, received) ? '<span class="assign-followup-dot"></span>' : '';
-    return `<button class="btn btn-ghost btn-sm assign-followup-btn" onclick="openTaskFollowup('${a.id}',${received})">Follow up${dot}</button>`;
+    const count = followupUnreadCount(a, received);
+    const badge = count > 0 ? `<span class="assign-followup-count">${count > 9 ? '9+' : count}</span>` : '';
+    return `<button class="btn btn-ghost btn-sm assign-followup-btn" onclick="openTaskFollowup('${a.id}',${received})">Follow up${badge}</button>`;
   }
 
   function assignmentActions(a, received) {
@@ -210,7 +227,8 @@
   }
 
   function assignmentCard(a, received) {
-    return `<div class="wed-card">
+    const hasFollowup = followupUnreadCount(a, received) > 0;
+    return `<div class="wed-card${hasFollowup ? ' has-followup' : ''}">
       <div class="wed-card-head">
         <div class="wed-card-title">${escapeHtml(a.title || '')}</div>
         <span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span>
@@ -343,6 +361,10 @@
       const safeGroupKey = escapeHtml(JSON.stringify(group.key));
       const newCount = group.items.filter(a => !seenAssignmentStages.has(assignmentSeenKey(a))).length;
       const newBadge = newCount > 0 ? `<span class="assign-new-badge">${newCount > 9 ? '9+' : newCount}</span>` : '';
+      const followupTotal = group.items.reduce((sum, a) => sum + followupUnreadCount(a, received), 0);
+      const followupGroupBadge = followupTotal > 0
+        ? `<span class="assign-followup-group-badge">+${followupTotal > 9 ? '9+' : followupTotal} follow-up${followupTotal > 1 ? 's' : ''}</span>`
+        : '';
       const cards = open
         ? `<div class="assign-cards">${group.items.map(a => assignmentCard(a, received)).join('')}</div>`
         : '';
@@ -351,6 +373,7 @@
           <span class="assign-group-toggle">${open ? '−' : '+'}</span>
           <span class="assign-avatar-wrap">${av(group.name, 24)}${newBadge}</span>
           <span class="assign-group-name">${escapeHtml(group.name)}</span>
+          ${followupGroupBadge}
           <span class="assign-group-summary">${group.items.length} ${noun}${summaryText ? ` · ${escapeHtml(summaryText)}` : ''}</span>
         </div>
         ${cards}
@@ -415,12 +438,13 @@
   };
 
   // Called by showTaskFollowupModal once the thread has loaded, so opening
-  // the modal clears the unread dot the same way expanding a group clears
-  // its "new" badge.
+  // the modal clears the unread count the same way expanding a group clears
+  // its "new" badge. Stores the thread length seen so far (not just a flag)
+  // so a later re-open can compute exactly how many new messages arrived.
   window.markTaskFollowupSeen = function markTaskFollowupSeen(assignmentId, threadLen) {
     if (!assignmentId) return;
-    seenAssignmentStages.add(`followup::${assignmentId}::${threadLen}`);
-    saveSeenStages(seenAssignmentStages);
+    followupSeenLengths[assignmentId] = threadLen;
+    saveFollowupSeenLengths(followupSeenLengths);
     renderTasksTabList();
   };
 

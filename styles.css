@@ -373,7 +373,10 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
 .assign-decline-note{margin-top:8px;padding:7px 10px;background:var(--ruby-bg);border:1px solid var(--ruby-bd);border-radius:var(--r);font-size:11.5px;line-height:1.5;color:var(--ruby)}
 .assign-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap}
 .assign-followup-btn{position:relative;margin-left:auto}
-.assign-followup-dot{position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:var(--ruby);box-shadow:0 0 0 2px var(--white)}
+.assign-followup-count{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;margin-left:6px;border-radius:8px;background:var(--ruby);color:#fff;font-size:10px;font-weight:800;line-height:1}
+.assign-followup-group-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;font-size:10.5px;font-weight:800;white-space:nowrap}
+.wed-card.has-followup{border-color:#f59e0b}
+.wed-card.has-followup .wed-card-head{background:#fffbeb;border-bottom-color:#fde68a}
 .email-link-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);background:#fff;color:var(--forest);border-radius:6px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;margin-top:8px}
 .email-link-btn:hover{background:var(--sage3);border-color:var(--sage)}
 .ag-ta{width:100%;padding:8px 10px;border:1px solid var(--sage);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:12.5px;color:var(--body);outline:none;transition:border .15s;resize:vertical;min-height:42px;line-height:1.45;background:#fff}
