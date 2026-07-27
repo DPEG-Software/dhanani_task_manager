@@ -7438,6 +7438,7 @@ async function checkAndLoadProofNotifications(){
       timestamp:pn.updatedAt||pn.submittedAt||new Date().toISOString(),
       status:'pending',
       recipientEmail:pn.recipientEmail||'',
+      recipientName:pn.recipientName||'',
       assignmentGroupId:task.assignmentGroupId||'',
     };
     // Remove any stale local notifications for this same task before adding/updating
@@ -7963,6 +7964,75 @@ async function markAllNotificationsRead(){
   await saveNotifications();
 }
 
+// Notifications used to be a single flat list — with several pending
+// submissions from different people it read as a wall of tiny near-identical
+// text. Grouped by person (submitter/assignee) the same way the Tasks tab
+// groups Received/Delegated Assignments, collapsible, so it's scannable at
+// a glance. notifManualToggles overrides the default (pending groups start
+// open, resolved-only groups start collapsed) once a user actually clicks one.
+let notifManualToggles={};
+
+function notifGroupKey(n){
+  return String(n.recipientEmail||n.recipientName||'unknown').toLowerCase();
+}
+function notifGroupLabel(n){
+  return String(n.recipientName||n.recipientEmail||'Unknown').trim();
+}
+function groupNotificationsByPerson(list){
+  const grouped=new Map();
+  list.forEach(n=>{
+    const key=notifGroupKey(n);
+    if(!grouped.has(key))grouped.set(key,{key,name:notifGroupLabel(n),items:[]});
+    grouped.get(key).items.push(n);
+  });
+  const groups=[...grouped.values()];
+  groups.forEach(g=>g.items.sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0)));
+  groups.sort((a,b)=>new Date(b.items[0]?.timestamp||0)-new Date(a.items[0]?.timestamp||0));
+  return groups;
+}
+function isNotifGroupOpen(group){
+  if(Object.prototype.hasOwnProperty.call(notifManualToggles,group.key))return notifManualToggles[group.key];
+  return group.items.some(n=>n.status==='pending');
+}
+function toggleNotifGroup(key){
+  const group=groupNotificationsByPerson(notifications).find(g=>g.key===key);
+  notifManualToggles[key]=!(group&&isNotifGroupOpen(group));
+  renderNotifications();
+}
+
+function renderNotificationCard(n){
+  const ts=n.timestamp?new Date(n.timestamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  const statusColor=n.status==='approved'?'#15803d':n.status==='dismissed'?'#9ca3af':'#92400e';
+  const statusLabel=n.status==='approved'?'Approved':n.status==='dismissed'?'Dismissed':'Pending';
+  const icon=n.type==='task_completion'
+    ?`<svg width="16" height="16" fill="none" stroke="#15803d" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+    :`<svg width="16" height="16" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const proofHtml=renderNotificationProofs(n);
+  const newTag=n.seen===false?`<span style="display:inline-flex;align-items:center;padding:1px 6px;background:#dcfce7;border:1px solid #86efac;border-radius:10px;font-size:9px;font-weight:800;color:#166534;letter-spacing:.4px;margin-left:5px;vertical-align:middle">NEW</span>`:'';
+  return`<div class="card${n.id===highlightedNotifId?' notif-highlight':''}" id="notif-card-${n.id}" style="padding:12px 14px${n.seen===false?';border-left:3px solid #86efac':''}">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="flex-shrink:0;margin-top:1px">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;color:var(--body);line-height:1.4;margin-bottom:4px">${escapeHtml(n.message||'')}${newTag}</div>
+        ${proofHtml}
+        ${n.dismissReason?`<div style="margin-top:6px;font-size:11px;color:#991b1b">Dismissed reason: ${escapeHtml(n.dismissReason)}</div>`:''}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--muted)">${ts}</span>
+          <span style="font-size:10px;font-weight:600;color:${statusColor}">${statusLabel}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+        ${n.taskId!=null?`<button class="btn btn-ghost btn-sm" onclick="goToNotificationTask(${n.id})">Go to Action Log</button>`:''}
+        ${n.status==='pending'?`
+        ${(n.type==='task_completion'||n.type==='proof_submitted')?`<button class="btn btn-primary btn-sm" onclick="approveNotification(${n.id})">Approve</button>`:''}
+        ${(n.type==='proof_submitted'||n.type==='task_completion')?`<button class="btn btn-ghost btn-sm" onclick="askNotificationFollowup(${n.id})">Ask</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="dismissNotification(${n.id})">Dismiss</button>
+        `:''}
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderNotifications(){
   const el=document.getElementById('notif-list');
   if(!el)return;
@@ -7970,36 +8040,24 @@ function renderNotifications(){
     el.innerHTML='<div style="padding:40px;text-align:center;font-size:12px;color:var(--muted)">No notifications yet</div>';
     return;
   }
-  el.innerHTML=notifications.map(n=>{
-    const ts=n.timestamp?new Date(n.timestamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-    const statusColor=n.status==='approved'?'#15803d':n.status==='dismissed'?'#9ca3af':'#92400e';
-    const statusLabel=n.status==='approved'?'Approved':n.status==='dismissed'?'Dismissed':'Pending';
-    const icon=n.type==='task_completion'
-      ?`<svg width="16" height="16" fill="none" stroke="#15803d" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-      :`<svg width="16" height="16" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-    const proofHtml=renderNotificationProofs(n);
-    const newTag=n.seen===false?`<span style="display:inline-flex;align-items:center;padding:1px 6px;background:#dcfce7;border:1px solid #86efac;border-radius:10px;font-size:9px;font-weight:800;color:#166534;letter-spacing:.4px;margin-left:5px;vertical-align:middle">NEW</span>`:'';
-    return`<div class="card${n.id===highlightedNotifId?' notif-highlight':''}" id="notif-card-${n.id}" style="padding:12px 14px${n.seen===false?';border-left:3px solid #86efac':''}">
-      <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="flex-shrink:0;margin-top:1px">${icon}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:12.5px;color:var(--body);line-height:1.4;margin-bottom:4px">${escapeHtml(n.message||'')}${newTag}</div>
-          ${proofHtml}
-          ${n.dismissReason?`<div style="margin-top:6px;font-size:11px;color:#991b1b">Dismissed reason: ${escapeHtml(n.dismissReason)}</div>`:''}
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:10px;color:var(--muted)">${ts}</span>
-            <span style="font-size:10px;font-weight:600;color:${statusColor}">${statusLabel}</span>
-          </div>
-        </div>
-        <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
-          ${n.taskId!=null?`<button class="btn btn-ghost btn-sm" onclick="goToNotificationTask(${n.id})">Go to Action Log</button>`:''}
-          ${n.status==='pending'?`
-          ${(n.type==='task_completion'||n.type==='proof_submitted')?`<button class="btn btn-primary btn-sm" onclick="approveNotification(${n.id})">Approve</button>`:''}
-          ${(n.type==='proof_submitted'||n.type==='task_completion')?`<button class="btn btn-ghost btn-sm" onclick="askNotificationFollowup(${n.id})">Ask</button>`:''}
-          <button class="btn btn-ghost btn-sm" onclick="dismissNotification(${n.id})">Dismiss</button>
-          `:''}
-        </div>
+  const groups=groupNotificationsByPerson(notifications);
+  el.innerHTML=groups.map(group=>{
+    const open=isNotifGroupOpen(group);
+    const noun=group.items.length===1?'notification':'notifications';
+    const pendingCount=group.items.filter(n=>n.status==='pending').length;
+    const summaryText=pendingCount>0?`${pendingCount} pending`:'All resolved';
+    const unseenCount=group.items.filter(n=>n.seen===false).length;
+    const newBadge=unseenCount>0?`<span class="assign-new-badge">${unseenCount>9?'9+':unseenCount}</span>`:'';
+    const safeGroupKey=escapeHtml(JSON.stringify(group.key));
+    const cards=open?`<div class="assign-cards">${group.items.map(renderNotificationCard).join('')}</div>`:'';
+    return `<div class="assign-group">
+      <div class="assign-group-head" onclick="toggleNotifGroup(${safeGroupKey})">
+        <span class="assign-group-toggle">${open?'−':'+'}</span>
+        <span class="assign-avatar-wrap">${av(group.name,24)}${newBadge}</span>
+        <span class="assign-group-name">${escapeHtml(group.name)}</span>
+        <span class="assign-group-summary">${group.items.length} ${noun} · ${summaryText}</span>
       </div>
+      ${cards}
     </div>`;
   }).join('');
   scrollProofThreadsToBottom(el);
@@ -8018,6 +8076,7 @@ function highlightProofNotificationForTask(appTaskId){
   // user actually resolves this notification (see approveNotification/
   // dismissNotification), not on a timer.
   highlightedNotifId=n.id;
+  notifManualToggles[notifGroupKey(n)]=true; // force that person's group open so the card is actually in the DOM to scroll to
   renderNotifications();
   setTimeout(()=>{
     document.getElementById(`notif-card-${n.id}`)?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -8205,6 +8264,7 @@ async function pollToDoCompletions(manual=false){
           taskId:matchTask.id,
           todoTaskId:item.todoTaskId,
           recipientEmail:item.recipientEmail||matchTask.email||'',
+          recipientName:matchTask.person||'',
           proofs:proofFiles,
           timestamp:new Date().toISOString(),
           status:'pending'
