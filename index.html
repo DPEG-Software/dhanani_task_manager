@@ -362,6 +362,10 @@
       <button class="btn btn-ghost btn-sm" id="btn-poll-now" onclick="pollNow()" style="margin-left:auto">Poll Now</button>
       <button class="btn btn-ghost btn-sm" onclick="markAllNotificationsRead()">Mark all read</button>
     </div>
+    <div class="directory-toggle">
+      <button id="notif-current-btn" class="active" onclick="setNotifTabMode('current')">Needs Approval <span class="nb red" id="notif-current-badge" style="margin-left:6px;display:none">0</span></button>
+      <button id="notif-history-btn" onclick="setNotifTabMode('history')">History <span class="nb" id="notif-history-badge" style="margin-left:6px;display:none">0</span></button>
+    </div>
     <div id="notif-list" style="display:flex;flex-direction:column;gap:8px">
       <div style="padding:40px;text-align:center;font-size:12px;color:var(--muted)">No notifications yet</div>
     </div>
@@ -8044,54 +8048,89 @@ function renderNotificationCard(n){
   </div>`;
 }
 
+// Resolved (approved/dismissed) notifications used to stay mixed in with
+// pending ones inside each person's group forever, so the list only ever
+// grew. Split into two tabs — Needs Approval / History — same
+// directory-toggle pattern as the Tasks tab's Received/Delegated switch,
+// rather than stacking both on the page at once.
+let notifTabMode='current'; // 'current' | 'history'
+window.setNotifTabMode=function setNotifTabMode(mode){
+  notifTabMode=mode;
+  document.getElementById('notif-current-btn')?.classList.toggle('active',mode==='current');
+  document.getElementById('notif-history-btn')?.classList.toggle('active',mode==='history');
+  renderNotifications();
+};
+function updateNotifTabBadges(pendingCount,resolvedCount){
+  const setBadge=(id,count)=>{
+    const badgeEl=document.getElementById(id);
+    if(!badgeEl)return;
+    badgeEl.textContent=count>99?'99+':count;
+    badgeEl.style.display=count>0?'':'none';
+  };
+  setBadge('notif-current-badge',pendingCount||0);
+  setBadge('notif-history-badge',resolvedCount||0);
+}
+
+function renderNotifGroupBlock(group){
+  const open=isNotifGroupOpen(group);
+  const noun=group.items.length===1?'notification':'notifications';
+  // Full breakdown, not just the pending count — "3 notifications · 1
+  // pending" left the other 2 unexplained; spell out what they actually are.
+  const statusCounts={};
+  group.items.forEach(n=>{
+    const label=n.status==='approved'?'approved':n.status==='dismissed'?'dismissed':'pending';
+    statusCounts[label]=(statusCounts[label]||0)+1;
+  });
+  const summaryText=['pending','approved','dismissed']
+    .filter(label=>statusCounts[label])
+    .map(label=>`${statusCounts[label]} ${label}`)
+    .join(' · ');
+  const unseenCount=group.items.filter(n=>n.seen===false).length;
+  // Readable red pill beside the name, same pattern as the Tasks tab's
+  // "+1 follow-up" badge, instead of a small dot tucked into the avatar
+  // corner that's easy to miss.
+  const newBadge=unseenCount>0?`<span class="notif-new-badge">+${unseenCount>9?'9+':unseenCount} new</span>`:'';
+  const safeGroupKey=escapeHtml(JSON.stringify(group.key));
+  const cards=open?`<div class="assign-cards">${group.items.map(renderNotificationCard).join('')}</div>`:'';
+  return `<div class="assign-group">
+    <div class="assign-group-head" onclick="toggleNotifGroup(${safeGroupKey})">
+      <span class="assign-group-toggle">${open?'−':'+'}</span>
+      <span class="assign-avatar-wrap">${av(group.name,24)}</span>
+      <span class="assign-group-name" style="color:var(--forest)">${escapeHtml(group.name)}</span>
+      ${newBadge}
+      <span class="assign-group-summary">${group.items.length} ${noun} · ${summaryText}</span>
+    </div>
+    ${cards}
+  </div>`;
+}
+
 function renderNotifications(){
   const el=document.getElementById('notif-list');
   if(!el)return;
+  const pending=notifications.filter(n=>n.status==='pending');
+  const resolved=notifications.filter(n=>n.status!=='pending');
+  updateNotifTabBadges(pending.length,resolved.length);
   if(!notifications.length){
     el.innerHTML='<div style="padding:40px;text-align:center;font-size:12px;color:var(--muted)">No notifications yet</div>';
     return;
   }
-  const groups=groupNotificationsByPerson(notifications);
   // Live count, not a fixed number — always reflects however many are
   // actually unseen right now, and always equals the sum of the per-group
   // badges below it since both are computed from the same seen===false check.
   const totalNew=notifications.filter(n=>n.seen===false).length;
-  const summaryBanner=totalNew>0?`<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:10px;background:var(--sage3);border:1px solid var(--sage);border-radius:var(--rlg)">
+  const summaryBanner=(notifTabMode==='current'&&totalNew>0)?`<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:10px;background:var(--sage3);border:1px solid var(--sage);border-radius:var(--rlg)">
     <span style="font-size:13.5px;font-weight:800;color:var(--forest)">${totalNew} new notification${totalNew===1?'':'s'}</span>
     <span style="font-size:11px;color:var(--muted)">— divided by person below</span>
   </div>`:'';
-  el.innerHTML=summaryBanner+groups.map(group=>{
-    const open=isNotifGroupOpen(group);
-    const noun=group.items.length===1?'notification':'notifications';
-    // Full breakdown, not just the pending count — "3 notifications · 1
-    // pending" left the other 2 unexplained; spell out what they actually are.
-    const statusCounts={};
-    group.items.forEach(n=>{
-      const label=n.status==='approved'?'approved':n.status==='dismissed'?'dismissed':'pending';
-      statusCounts[label]=(statusCounts[label]||0)+1;
-    });
-    const summaryText=['pending','approved','dismissed']
-      .filter(label=>statusCounts[label])
-      .map(label=>`${statusCounts[label]} ${label}`)
-      .join(' · ');
-    const unseenCount=group.items.filter(n=>n.seen===false).length;
-    // Readable red pill beside the name, same pattern as the Tasks tab's
-    // "+1 follow-up" badge, instead of a small dot tucked into the avatar
-    // corner that's easy to miss.
-    const newBadge=unseenCount>0?`<span class="notif-new-badge">+${unseenCount>9?'9+':unseenCount} new</span>`:'';
-    const safeGroupKey=escapeHtml(JSON.stringify(group.key));
-    const cards=open?`<div class="assign-cards">${group.items.map(renderNotificationCard).join('')}</div>`:'';
-    return `<div class="assign-group">
-      <div class="assign-group-head" onclick="toggleNotifGroup(${safeGroupKey})">
-        <span class="assign-group-toggle">${open?'−':'+'}</span>
-        <span class="assign-avatar-wrap">${av(group.name,24)}</span>
-        <span class="assign-group-name" style="color:var(--forest)">${escapeHtml(group.name)}</span>
-        ${newBadge}
-        <span class="assign-group-summary">${group.items.length} ${noun} · ${summaryText}</span>
-      </div>
-      ${cards}
-    </div>`;
-  }).join('');
+
+  const list=notifTabMode==='current'?pending:resolved;
+  const listHtml=list.length
+    ? groupNotificationsByPerson(list).map(renderNotifGroupBlock).join('')
+    : notifTabMode==='current'
+      ? `<div style="padding:20px 14px;text-align:center;font-size:12px;color:var(--muted);background:var(--sage3);border:1px solid var(--sage);border-radius:var(--rlg)">✓ All caught up — nothing needs action</div>`
+      : `<div style="padding:20px 14px;text-align:center;font-size:12px;color:var(--muted)">No resolved notifications yet</div>`;
+
+  el.innerHTML=summaryBanner+listHtml;
   scrollProofThreadsToBottom(el);
 }
 
@@ -8109,6 +8148,7 @@ function highlightProofNotificationForTask(appTaskId){
   // dismissNotification), not on a timer.
   highlightedNotifId=n.id;
   notifManualToggles[notifGroupKey(n)]=true; // force that person's group open so the card is actually in the DOM to scroll to
+  window.setNotifTabMode?.('current'); // target is always pending — make sure that tab is the one showing
   renderNotifications();
   setTimeout(()=>{
     document.getElementById(`notif-card-${n.id}`)?.scrollIntoView({behavior:'smooth',block:'center'});
