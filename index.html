@@ -8075,14 +8075,18 @@ function renderNotifications(){
       .map(label=>`${statusCounts[label]} ${label}`)
       .join(' · ');
     const unseenCount=group.items.filter(n=>n.seen===false).length;
-    const newBadge=unseenCount>0?`<span class="assign-new-badge">${unseenCount>9?'9+':unseenCount}</span>`:'';
+    // Readable red pill beside the name, same pattern as the Tasks tab's
+    // "+1 follow-up" badge, instead of a small dot tucked into the avatar
+    // corner that's easy to miss.
+    const newBadge=unseenCount>0?`<span class="notif-new-badge">+${unseenCount>9?'9+':unseenCount} new</span>`:'';
     const safeGroupKey=escapeHtml(JSON.stringify(group.key));
     const cards=open?`<div class="assign-cards">${group.items.map(renderNotificationCard).join('')}</div>`:'';
     return `<div class="assign-group">
       <div class="assign-group-head" onclick="toggleNotifGroup(${safeGroupKey})">
         <span class="assign-group-toggle">${open?'−':'+'}</span>
-        <span class="assign-avatar-wrap">${av(group.name,24)}${newBadge}</span>
+        <span class="assign-avatar-wrap">${av(group.name,24)}</span>
         <span class="assign-group-name" style="color:var(--forest)">${escapeHtml(group.name)}</span>
+        ${newBadge}
         <span class="assign-group-summary">${group.items.length} ${noun} · ${summaryText}</span>
       </div>
       ${cards}
