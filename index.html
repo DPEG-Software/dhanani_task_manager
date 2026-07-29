@@ -877,17 +877,24 @@
 
 <!-- DETAIL MODAL -->
 <div class="mo" id="mo-detail">
-  <div class="mo-box">
+  <div class="mo-box" style="width:620px;max-height:92vh">
     <div class="mo-hdr"><div><div class="mo-title" id="mo-title"></div><div class="mo-sub" id="mo-sub"></div></div><button class="mo-x" onclick="closeMo('mo-detail')">&#10005;</button></div>
     <div class="mo-body">
+      <div class="mo-section-lbl mo-section-lbl-first">Details</div>
       <div class="form-grp" style="margin-bottom:8px"><label class="form-lbl">Title</label><input type="text" class="form-in" id="mo-edit-title" placeholder="Task title"></div>
       <div class="sum-box" id="mo-sum"></div>
+
+      <div class="mo-section-lbl">Assignment</div>
       <div class="d-row"><div class="d-lbl">Assigned To</div><div style="flex:1;display:flex;gap:6px"><input type="text" class="form-in" id="mo-edit-person" placeholder="Name" style="flex:1;padding:4px 8px;font-size:12px"><input type="email" class="form-in" id="mo-edit-email" placeholder="Email" style="flex:1;padding:4px 8px;font-size:12px"></div></div>
       <div class="d-row"><div class="d-lbl">Department</div><select class="form-sel" id="mo-dept" style="width:auto"></select></div>
+
+      <div class="mo-section-lbl">Schedule &amp; Status</div>
       <div class="d-row"><div class="d-lbl">Date</div><input type="date" class="form-in" id="mo-edit-date" style="font-size:12px;padding:4px 8px;width:auto"></div>
       <div class="d-row"><div class="d-lbl">Priority</div><select class="form-sel" id="mo-edit-priority" style="width:auto"><option>Normal</option><option>High</option></select></div>
       <div class="d-row"><div class="d-lbl">Status</div><select class="form-sel" id="mo-status" style="width:auto"><option>Pending</option><option>Done</option><option>Overdue</option></select></div>
-      <div class="form-grp" style="margin-top:10px"><label class="form-lbl">Follow-up Note</label><input type="text" class="form-in" id="mo-followup" placeholder="Add a note..."></div>
+
+      <div class="mo-section-lbl">Notes &amp; Proof</div>
+      <div class="form-grp"><label class="form-lbl">Internal Note</label><input type="text" class="form-in" id="mo-followup" placeholder="Add a note..."></div>
       <div id="mo-proof-panel"></div>
     </div>
     <div class="mo-foot">
@@ -3010,6 +3017,13 @@ function addNtAssignee(person){
   const dept=String(person?.dept||personDept(email,name)||document.getElementById('nt-dept')?.value||'Needs Department').trim();
   ntAssignees.push({name:name||email.split('@')[0],email,dept});
   renderNtAssigneeChips();
+  // The visible Department <select> was never synced to the picked person —
+  // it just sat on its default first option ("Investor Relations") no
+  // matter who got selected, since only ntAssignees[].dept (the small chip
+  // subtitle) was ever set. Mirrors setDeptAssignDepartment's sel.value=val
+  // pattern used by the sibling Department Assignment picker.
+  const deptSel=document.getElementById('nt-dept');
+  if(deptSel&&allDepartments().includes(dept))deptSel.value=dept;
   clearAddTaskPerson(false);
 }
 function findDepartmentAssignmentContact(text){
