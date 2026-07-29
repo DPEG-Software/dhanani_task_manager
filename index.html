@@ -3138,17 +3138,14 @@ function chWeek(d){curWeek=Math.max(0,curWeek-d);document.getElementById("wn-l")
 // ============================================================
 // ACTION LOG
 // ============================================================
+// Buckets by when the task was CREATED, not its due date. Every task id in
+// this app is Date.now()-based (see addTask/createTaskFromEmail/etc.), so
+// it doubles as a reliable creation timestamp without needing a dedicated
+// createdAt field (which most tasks don't actually have set).
 function taskWeekOffset(t){
-  if(!t.date)return 0;
-  const d=new Date(t.date+'T12:00:00');
+  const d=new Date(t.id);
   const toMon=x=>{const r=new Date(x);r.setDate(r.getDate()-(r.getDay()||7)+1);r.setHours(0,0,0,0);return r;};
   return Math.max(0,Math.round((toMon(new Date())-toMon(d))/(7*24*60*60*1000)));
-}
-function overdueCarryWeeks(t){
-  return Math.max(1,taskWeekOffset(t));
-}
-function isCarriedOverdue(t){
-  return curWeek===0&&nstt(t.status)==="Overdue"&&taskWeekOffset(t)>0;
 }
 function sortActionTasks(list){
   return [...list].sort((a,b)=>{
@@ -3167,8 +3164,7 @@ function getVis(){
   const pf=document.getElementById("sf-priority")?.value||"all";
   return sortActionTasks(tasks.filter(t=>{
     const createdInWeek=taskWeekOffset(t)===curWeek;
-    const carried=isCarriedOverdue(t);
-    const wm=curSearch?true:(createdInWeek||carried);
+    const wm=curSearch?true:createdInWeek;
     const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
     return wm&&sm&&(sf==="all"||nstt(t.status)===sf)&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
   }));
@@ -3180,18 +3176,16 @@ function renderMaster(){
     return;
   }
   tb.innerHTML=list.map(t=>{
-    const carried=isCarriedOverdue(t);
-    const overdueNote=carried?`<div style="margin-top:4px;padding:4px 7px;background:#fee2e2;border:1px solid #fecaca;border-radius:5px;color:#991b1b;font-size:10.5px;font-weight:600">Pending from ${overdueCarryWeeks(t)} week${overdueCarryWeeks(t)!==1?'s':''} ago</div>`:'';
     const priorityNote=String(t.priority||"Normal").toLowerCase()==="high"?`<div style="margin-top:4px;color:#b91c1c;font-size:10.5px;font-weight:700">Prioritized from Outlook</div>`:'';
     return `
-    <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6;':''}${carried?'background:#fff1f2;box-shadow:inset 3px 0 #ef4444;':''}">
+    <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6;':''}">
       <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 16px">
         <input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)">
       </td>
       <td style="padding:10px 14px">
         <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}${t._proofNotif?`<span style="margin-left:7px;padding:1px 7px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10px;font-weight:700;color:#92400e;vertical-align:middle">Proof Ready</span>`:''}</div>
         ${t.replyCount>1?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${t.replyCount} msgs</div>`:""}
-        ${overdueNote}${priorityNote}
+        ${priorityNote}
       </td>
       <td style="padding:10px 10px">
         <div style="display:flex;align-items:center;gap:6px">${av(t.person,22)}<span style="font-size:12px;color:var(--body);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.person}</span></div>
@@ -4243,7 +4237,7 @@ function syncPulse(){
 }
 function syncBadges(){
   const open=tasks.filter(t=>nstt(t.status)!=="Done").length;
-  const actionWeekOpen=tasks.filter(t=>nstt(t.status)!=="Done"&&(taskWeekOffset(t)===curWeek||isCarriedOverdue(t))).length;
+  const actionWeekOpen=tasks.filter(t=>nstt(t.status)!=="Done"&&taskWeekOffset(t)===curWeek).length;
   const high=tasks.filter(t=>String(t.priority||"Normal").toLowerCase()==="high"&&nstt(t.status)!=="Done").length;
   const wed=tasks.filter(t=>t.wednesday).length+customNotes.length;
   const dn=tasks.filter(t=>nstt(t.status)==="Done").length;
