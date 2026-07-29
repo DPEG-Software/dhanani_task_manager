@@ -878,7 +878,7 @@
 <!-- DETAIL MODAL -->
 <div class="mo" id="mo-detail">
   <div class="mo-box" style="width:620px;max-height:92vh">
-    <div class="mo-hdr"><div><div class="mo-title" id="mo-title"></div><div class="mo-sub" id="mo-sub"></div></div><button class="mo-x" onclick="closeMo('mo-detail')">&#10005;</button></div>
+    <div class="mo-hdr"><div style="min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="mo-title" id="mo-title" style="font-size:18px"></div><span id="mo-person-badge" style="display:none;align-items:center;gap:5px;padding:3px 10px;background:var(--sage3);border:1px solid var(--sage);border-radius:20px;font-size:12px;font-weight:700;color:var(--forest);white-space:nowrap"></span></div><div class="mo-sub" id="mo-sub"></div></div><button class="mo-x" onclick="closeMo('mo-detail')">&#10005;</button></div>
     <div class="mo-body">
       <div class="mo-section-lbl mo-section-lbl-first">Details</div>
       <div class="form-grp" style="margin-bottom:8px"><label class="form-lbl">Title</label><input type="text" class="form-in" id="mo-edit-title" placeholder="Task title"></div>
@@ -893,7 +893,7 @@
       <div class="d-row"><div class="d-lbl">Priority</div><select class="form-sel" id="mo-edit-priority" style="width:auto"><option>Normal</option><option>High</option></select></div>
       <div class="d-row"><div class="d-lbl">Status</div><select class="form-sel" id="mo-status" style="width:auto"><option>Pending</option><option>Done</option><option>Overdue</option></select></div>
 
-      <div class="mo-section-lbl">Notes &amp; Proof</div>
+      <div class="mo-section-lbl">Notes</div>
       <div class="form-grp"><label class="form-lbl">Internal Note</label><input type="text" class="form-in" id="mo-followup" placeholder="Add a note..."></div>
       <div id="mo-proof-panel"></div>
     </div>
@@ -3701,7 +3701,12 @@ function dlCSV(){
 function openDetail(id){
   const t=tasks.find(x=>x.id===id);if(!t)return;curTaskId=id;
   document.getElementById("mo-title").textContent=emailSubject(t);
-  document.getElementById("mo-sub").textContent=`${t.person} • ${t.dept} • ${fmtD(t.date)}`;
+  const personBadge=document.getElementById("mo-person-badge");
+  if(personBadge){
+    if(t.person){personBadge.textContent=t.person;personBadge.style.display="inline-flex";}
+    else personBadge.style.display="none";
+  }
+  document.getElementById("mo-sub").textContent=`${t.dept} • ${fmtD(t.date)}`;
   document.getElementById("mo-sum").innerHTML=renderSumBox(t);
   document.getElementById("mo-edit-title").value=t.title||"";
   document.getElementById("mo-edit-person").value=t.person||"";
@@ -7519,10 +7524,23 @@ async function checkAndLoadProofNotifications(){
   }
 }
 
+let moProofPanelOpen=true;
+function toggleMoProofPanel(){
+  moProofPanelOpen=!moProofPanelOpen;
+  const body=document.getElementById('mo-proof-body');
+  if(body)body.style.display=moProofPanelOpen?'':'none';
+  const arrow=document.getElementById('mo-proof-toggle-arrow');
+  if(arrow)arrow.textContent=moProofPanelOpen?'−':'+';
+}
 function renderProofPanel(t){
   const panel=document.getElementById('mo-proof-panel');
   if(!panel)return;
   if(!t?._proofNotif){panel.innerHTML='';return;}
+  // Own section, separate from the Internal Note field above it — this can
+  // get long (files, a follow-up thread, previews), so it's collapsible.
+  // Defaults open since a pending proof is actionable and shouldn't be
+  // hidden from view the moment the modal opens.
+  moProofPanelOpen=true;
   const n=t._proofNotif;
   const proofFiles=(n.proofs||[]).filter(p=>p.webUrl||p.shareId);
   const fileRows=proofFiles.map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f3f4f6;flex-wrap:wrap">
@@ -7532,10 +7550,13 @@ function renderProofPanel(t){
   </div>`).join('');
   const noteDisplay=n.note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#166534;line-height:1.5"><b>Note:</b> ${escapeHtml(n.note)}</div>`:'';
   const threadHtml=renderProofThread(n);
-  panel.innerHTML=`<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-      <span style="padding:2px 9px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10.5px;font-weight:700;color:#92400e">${proofFiles.length?'Proof Ready for Review':'Message Submitted'}</span>
-    </div>
+  panel.innerHTML=`<div class="mo-section-lbl" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="toggleMoProofPanel()">
+    <span style="display:flex;align-items:center;gap:6px">Proof Submission
+      <span style="padding:2px 9px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10.5px;font-weight:700;color:#92400e;text-transform:none;letter-spacing:normal">${proofFiles.length?'Ready for Review':'Message Submitted'}</span>
+    </span>
+    <span id="mo-proof-toggle-arrow" style="font-size:13px;color:var(--muted)">−</span>
+  </div>
+  <div id="mo-proof-body">
     <div style="font-size:12px;color:#374151;margin-bottom:8px">
       Submitted by <strong>${escapeHtml(n.recipientName||n.recipientEmail||'')}</strong>
     </div>
