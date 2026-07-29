@@ -8032,9 +8032,10 @@ function groupNotificationsByPerson(list){
   groups.sort((a,b)=>new Date(b.items[0]?.timestamp||0)-new Date(a.items[0]?.timestamp||0));
   return groups;
 }
+// Collapsed by default, same as the Tasks tab's Received/Delegated groups —
+// only expands once the user actually clicks a name.
 function isNotifGroupOpen(group){
-  if(Object.prototype.hasOwnProperty.call(notifManualToggles,group.key))return notifManualToggles[group.key];
-  return group.items.some(n=>n.status==='pending');
+  return notifManualToggles[group.key]===true;
 }
 function toggleNotifGroup(key){
   const group=groupNotificationsByPerson(notifications).find(g=>g.key===key);
