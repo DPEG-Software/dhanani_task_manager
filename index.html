@@ -893,8 +893,6 @@
       <div class="d-row"><div class="d-lbl">Priority</div><select class="form-sel" id="mo-edit-priority" style="width:auto"><option>Normal</option><option>High</option></select></div>
       <div class="d-row"><div class="d-lbl">Status</div><select class="form-sel" id="mo-status" style="width:auto"><option>Pending</option><option>Done</option><option>Overdue</option></select></div>
 
-      <div class="mo-section-lbl">Notes</div>
-      <div class="form-grp"><label class="form-lbl">Internal Note</label><input type="text" class="form-in" id="mo-followup" placeholder="Add a note..."></div>
       <div id="mo-proof-panel"></div>
     </div>
     <div class="mo-foot">
@@ -3715,7 +3713,6 @@ function openDetail(id){
   document.getElementById("mo-edit-priority").value=t.priority||"Normal";
   document.getElementById("mo-dept").innerHTML=deptOptions(t.dept);
   document.getElementById("mo-status").value=nstt(t.status);
-  document.getElementById("mo-followup").value=t.followup||"";
   const rs=document.getElementById("mo-refresh-summary");
   if(rs)rs.style.display=t.conversationId||t.emailId?"inline-flex":"none";
   renderProofPanel(t);
@@ -3730,7 +3727,6 @@ async function saveDetail(){
   const newDate=document.getElementById("mo-edit-date").value||t.date;
   const newPriority=document.getElementById("mo-edit-priority").value||t.priority||"Normal";
   const newStatus=document.getElementById("mo-status").value;
-  const newFollowup=document.getElementById("mo-followup").value||"";
   const newDept=document.getElementById("mo-dept").value;
   const changes=[];
   if(newTitle!==t.title)changes.push(`Title: "${t.title}" → "${newTitle}"`);
@@ -3739,9 +3735,8 @@ async function saveDetail(){
   if(newDate&&newDate!==t.date)changes.push(`Date: ${fmtD(t.date)} → ${fmtD(newDate)}`);
   if(newPriority!==(t.priority||"Normal"))changes.push(`Priority: ${t.priority||"Normal"} → ${newPriority}`);
   if(newStatus!==nstt(t.status))changes.push(`Status: ${nstt(t.status)} → ${newStatus}`);
-  if(newFollowup&&newFollowup!==t.followup)changes.push(`Note: ${newFollowup}`);
   t.title=newTitle;t.person=newPerson;if(newEmail)t.email=newEmail;
-  t.date=newDate;t.priority=newPriority;t.status=newStatus;t.followup=newFollowup;
+  t.date=newDate;t.priority=newPriority;t.status=newStatus;
   saveStaffDeptForTask(t,newDept);
   closeMo("mo-detail");refreshAll();
   if(changes.length){
@@ -7524,54 +7519,33 @@ async function checkAndLoadProofNotifications(){
   }
 }
 
-let moProofPanelOpen=true;
-function toggleMoProofPanel(){
-  moProofPanelOpen=!moProofPanelOpen;
-  const body=document.getElementById('mo-proof-body');
-  if(body)body.style.display=moProofPanelOpen?'':'none';
-  const arrow=document.getElementById('mo-proof-toggle-arrow');
-  if(arrow)arrow.textContent=moProofPanelOpen?'−':'+';
+// Used to render the full thread/files/Approve-Ask-Dismiss panel inline —
+// duplicating everything Notifications already does. Now just a clickable
+// bar that jumps there (closing this modal, switching pages, and reusing
+// highlightProofNotificationForTask — the same scroll-and-flash mechanism
+// the Tasks tab's "Review Proof" button already relies on) instead of
+// maintaining two separate proof-review UIs.
+function goToProofInNotifications(taskId){
+  closeMo('mo-detail');
+  nav('notifications');
+  highlightProofNotificationForTask(String(taskId));
 }
 function renderProofPanel(t){
   const panel=document.getElementById('mo-proof-panel');
   if(!panel)return;
   if(!t?._proofNotif){panel.innerHTML='';return;}
-  // Own section, separate from the Internal Note field above it — this can
-  // get long (files, a follow-up thread, previews), so it's collapsible.
-  // Defaults open since a pending proof is actionable and shouldn't be
-  // hidden from view the moment the modal opens.
-  moProofPanelOpen=true;
   const n=t._proofNotif;
   const proofFiles=(n.proofs||[]).filter(p=>p.webUrl||p.shareId);
-  const fileRows=proofFiles.map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f3f4f6;flex-wrap:wrap">
-    <span style="font-size:12px;font-weight:600;color:#111;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name||'File')}</span>
-    <span style="font-size:11px;color:#9ca3af;flex-shrink:0">${p.size?formatFileSize(p.size):''}</span>
-    ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="font-size:11px;font-weight:700;color:#0E3416;flex-shrink:0">Open ↗</a>`:''}
-  </div>`).join('');
-  const noteDisplay=n.note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#166534;line-height:1.5"><b>Note:</b> ${escapeHtml(n.note)}</div>`:'';
-  const threadHtml=renderProofThread(n);
-  panel.innerHTML=`<div class="mo-section-lbl" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="toggleMoProofPanel()">
-    <span style="display:flex;align-items:center;gap:6px">Proof Submission
-      <span style="padding:2px 9px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10.5px;font-weight:700;color:#92400e;text-transform:none;letter-spacing:normal">${proofFiles.length?'Ready for Review':'Message Submitted'}</span>
-    </span>
-    <span id="mo-proof-toggle-arrow" style="font-size:13px;color:var(--muted)">−</span>
-  </div>
-  <div id="mo-proof-body">
-    <div style="font-size:12px;color:#374151;margin-bottom:8px">
-      Submitted by <strong>${escapeHtml(n.recipientName||n.recipientEmail||'')}</strong>
-    </div>
-    ${noteDisplay}
-    ${threadHtml}
-    <div style="margin-bottom:10px">${fileRows}</div>
-    <div id="mo-proof-inline" style="display:grid;gap:8px;margin-bottom:12px"></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-primary btn-sm" style="background:#15803d;border-color:#15803d" onclick="approveProof('${escapeHtml(n.id)}',${t.id})">✓ Approve</button>
-      <button class="btn btn-ghost btn-sm" onclick="askProofFollowup('${escapeHtml(n.id)}',${t.id})">Ask Follow-up</button>
-      <button class="btn btn-ghost btn-sm" style="color:#b91c1c;border-color:#fca5a5" onclick="dismissProof('${escapeHtml(n.id)}',${t.id})">✗ Dismiss with Reason</button>
-    </div>
-  </div>`;
-  scrollProofThreadsToBottom(panel);
-  if(proofFiles.length)loadProofPreviews(proofFiles);
+  const summary=proofFiles.length
+    ?`${proofFiles.length} file${proofFiles.length>1?'s':''} submitted`
+    :'A message was submitted';
+  panel.innerHTML=`<div class="mo-section-lbl">Proof Submission</div>
+    <button type="button" onclick="goToProofInNotifications(${t.id})" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:11px 13px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;cursor:pointer;font-family:inherit">
+      <span style="font-size:12.5px;color:#92400e;line-height:1.4">
+        <strong>${escapeHtml(n.recipientName||n.recipientEmail||'Someone')}</strong> submitted proof — ${summary}. Click to review in Notifications.
+      </span>
+      <span style="font-size:15px;color:#92400e;flex-shrink:0">→</span>
+    </button>`;
 }
 
 function renderProofThread(n){
@@ -7647,29 +7621,6 @@ async function sendProofFollowupEmail(recipientEmail,task,question){
   }catch(err){
     console.warn('Follow-up email failed:',err.message);
   }
-}
-
-async function askProofFollowup(notifId,taskId){
-  const t=tasks.find(x=>x.id===taskId);
-  if(!t||!t._proofNotif)return;
-  const question=prompt('Ask the assignee a follow-up question:');
-  if(question===null)return;
-  const message=String(question||'').trim();
-  if(!message){toast('Please type a follow-up question');return;}
-  try{
-    const fnUrl=workerBaseUrl();
-    const userToken=await getAccessToken();
-    const res=await fetch(`${fnUrl}/notify`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-      body:JSON.stringify({type:'proof_followup_question',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:t._proofNotif.recipientEmail||'',message}),
-    });
-    if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not ask follow-up');}
-    await sendProofFollowupEmail(t._proofNotif.recipientEmail||t.email,t,message);
-    await checkAndLoadProofNotifications();
-    openDetail(taskId);
-    toast('Follow-up question sent and emailed');
-  }catch(err){toast('Could not send follow-up: '+(err.message||err));}
 }
 
 // ── Generic task follow-up (Tasks tab — Received & Delegated cards) ──────────
@@ -7804,52 +7755,6 @@ async function sendTaskFollowupMessage(){
   }finally{if(btn)btn.disabled=false;}
 }
 
-async function loadProofPreviews(proofs){
-  const container=document.getElementById('mo-proof-inline');
-  if(!container||!proofs.length)return;
-  const token=await getAccessToken();
-  for(const p of proofs){
-    if(!p.shareId)continue;
-    try{
-      const res=await fetch(`https://graph.microsoft.com/v1.0/shares/${encodeURIComponent(p.shareId)}/driveItem?$select=id,name,file,@microsoft.graph.downloadUrl`,{headers:{Authorization:`Bearer ${token}`}});
-      if(!res.ok)continue;
-      const item=await res.json();
-      const url=item['@microsoft.graph.downloadUrl'];
-      if(!url)continue;
-      const mime=p.type||item.file?.mimeType||'';
-      const wrap=document.createElement('div');
-      if(mime.startsWith('image/')){
-        wrap.innerHTML=`<img src="${url}" alt="${escapeHtml(p.name)}" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid #e5e7eb;display:block"><div style="font-size:10px;color:#9ca3af;margin-top:2px">${escapeHtml(p.name)}</div>`;
-      }else if(mime==='application/pdf'){
-        wrap.innerHTML=`<embed src="${url}" type="application/pdf" style="width:100%;height:380px;border-radius:6px;border:1px solid #e5e7eb"><div style="font-size:10px;color:#9ca3af;margin-top:2px">${escapeHtml(p.name)}</div>`;
-      }else{
-        continue; // non-previewable formats show as "Open ↗" link above
-      }
-      container.appendChild(wrap);
-    }catch{}
-  }
-}
-
-async function approveProof(notifId,taskId){
-  const t=tasks.find(x=>x.id===taskId);
-  if(!t||!t._proofNotif)return;
-  const n=t._proofNotif;
-  try{
-    const fnUrl=workerBaseUrl();
-    const userToken=await getAccessToken();
-    await fetch(`${fnUrl}/notify`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-      body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'approved',reason:''}),
-    });
-    window.updateTasksTabProofState?.(String(taskId), 'approved');
-    t.status='Done';t.completedAt=new Date().toISOString();t.approvedBy=currentUser?.email||'';
-    delete t._proofNotif;
-    closeMo('mo-detail');refreshAll();toast('Proof approved — task marked Done');
-    await saveTasksToOneDrive();
-  }catch(err){toast('Could not approve: '+err.message);}
-}
-
 async function sendProofDeclineEmail(recipientEmail,taskTitle,reason,senderName,task){
   const addr=String(recipientEmail||'').trim();
   if(!addr||!addr.includes('@'))return;
@@ -7870,29 +7775,6 @@ async function sendProofDeclineEmail(recipientEmail,taskTitle,reason,senderName,
       await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:{subject:`Proof declined: ${taskTitle||'Task'}`,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:addr}}]},saveToSentItems:true})});
     }
   }catch(err){console.warn('Proof decline email failed:',err.message);}
-}
-
-async function dismissProof(notifId,taskId){
-  const t=tasks.find(x=>x.id===taskId);
-  if(!t||!t._proofNotif)return;
-  const n=t._proofNotif;
-  const reason=prompt('Reason for declining this proof?');
-  if(reason===null)return;
-  try{
-    const fnUrl=workerBaseUrl();
-    const userToken=await getAccessToken();
-    await fetch(`${fnUrl}/notify`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-      body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:t.recipientTodoListId||'',todoTaskId:t.recipientTodoTaskId||''}),
-    });
-    window.updateTasksTabProofState?.(String(taskId), 'declined');
-    delete t._proofNotif;
-    closeMo('mo-detail');refreshAll();
-    await saveTasksToOneDrive();
-    await sendProofDeclineEmail(n.recipientEmail||'',t.title||'',reason,currentUser?.name||'',t);
-    toast('Proof declined — email sent to recipient');
-  }catch(err){toast('Could not decline: '+err.message);}
 }
 
 async function loadNotifications(){
