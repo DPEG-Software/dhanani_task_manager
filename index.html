@@ -363,6 +363,10 @@
       <button class="btn btn-ghost btn-sm" id="btn-poll-now" onclick="pollNow()" style="margin-left:auto">Poll Now</button>
       <button class="btn btn-ghost btn-sm" onclick="markAllNotificationsRead()">Mark all read</button>
     </div>
+    <div class="directory-toggle">
+      <button id="notif-current-btn" class="active" onclick="setNotifTabMode('current')">Needs Approval <span class="nb red" id="notif-current-badge" style="margin-left:6px;display:none">0</span></button>
+      <button id="notif-history-btn" onclick="setNotifTabMode('history')">History <span class="nb" id="notif-history-badge" style="margin-left:6px;display:none">0</span></button>
+    </div>
     <div id="notif-list" style="display:flex;flex-direction:column;gap:8px">
       <div style="padding:40px;text-align:center;font-size:12px;color:var(--muted)">No notifications yet</div>
     </div>
@@ -745,6 +749,27 @@
   </div>
 </div>
 
+<!-- TASK FOLLOW-UP MODAL (Tasks tab — Received & Delegated) -->
+<div class="mo" id="mo-task-followup">
+  <div class="mo-box" style="width:520px;max-height:88vh">
+    <div class="mo-hdr">
+      <div>
+        <div class="mo-title" id="tf-modal-title">Follow up</div>
+        <div class="mo-sub" id="tf-modal-sub"></div>
+      </div>
+      <button class="mo-x" onclick="closeTaskFollowup()">&#10005;</button>
+    </div>
+    <div class="mo-body" id="tf-modal-body" style="max-height:56vh;overflow-y:auto"></div>
+    <div class="mo-foot" style="flex-direction:column;align-items:stretch">
+      <textarea id="tf-modal-input" class="ag-ta" placeholder="Type a message..." style="min-height:64px;margin-bottom:8px"></textarea>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="tf-modal-status" style="font-size:11px;color:var(--muted);margin-right:auto"></span>
+        <button class="btn btn-primary btn-sm" id="tf-modal-send" onclick="sendTaskFollowupMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- FORWARD GAP WARNING MODAL -->
 <div class="mo" id="mo-fwd-gap">
   <div class="mo-box" style="max-width:580px">
@@ -853,17 +878,22 @@
 
 <!-- DETAIL MODAL -->
 <div class="mo" id="mo-detail">
-  <div class="mo-box">
-    <div class="mo-hdr"><div><div class="mo-title" id="mo-title"></div><div class="mo-sub" id="mo-sub"></div></div><button class="mo-x" onclick="closeMo('mo-detail')">&#10005;</button></div>
+  <div class="mo-box" style="width:620px;max-height:92vh">
+    <div class="mo-hdr"><div style="min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="mo-title" id="mo-title" style="font-size:18px"></div><span id="mo-person-badge" style="display:none;align-items:center;gap:5px;padding:3px 10px;background:var(--sage3);border:1px solid var(--sage);border-radius:20px;font-size:12px;font-weight:700;color:var(--forest);white-space:nowrap"></span></div><div class="mo-sub" id="mo-sub"></div></div><button class="mo-x" onclick="closeMo('mo-detail')">&#10005;</button></div>
     <div class="mo-body">
+      <div class="mo-section-lbl mo-section-lbl-first">Details</div>
       <div class="form-grp" style="margin-bottom:8px"><label class="form-lbl">Title</label><input type="text" class="form-in" id="mo-edit-title" placeholder="Task title"></div>
       <div class="sum-box" id="mo-sum"></div>
+
+      <div class="mo-section-lbl">Assignment</div>
       <div class="d-row"><div class="d-lbl">Assigned To</div><div style="flex:1;display:flex;gap:6px"><input type="text" class="form-in" id="mo-edit-person" placeholder="Name" style="flex:1;padding:4px 8px;font-size:12px"><input type="email" class="form-in" id="mo-edit-email" placeholder="Email" style="flex:1;padding:4px 8px;font-size:12px"></div></div>
       <div class="d-row"><div class="d-lbl">Department</div><select class="form-sel" id="mo-dept" style="width:auto"></select></div>
+
+      <div class="mo-section-lbl">Schedule &amp; Status</div>
       <div class="d-row"><div class="d-lbl">Date</div><input type="date" class="form-in" id="mo-edit-date" style="font-size:12px;padding:4px 8px;width:auto"></div>
       <div class="d-row"><div class="d-lbl">Priority</div><select class="form-sel" id="mo-edit-priority" style="width:auto"><option>Normal</option><option>High</option></select></div>
       <div class="d-row"><div class="d-lbl">Status</div><select class="form-sel" id="mo-status" style="width:auto"><option>Pending</option><option>Done</option><option>Overdue</option></select></div>
-      <div class="form-grp" style="margin-top:10px"><label class="form-lbl">Follow-up Note</label><input type="text" class="form-in" id="mo-followup" placeholder="Add a note..."></div>
+
       <div id="mo-proof-panel"></div>
     </div>
     <div class="mo-foot">
@@ -3002,6 +3032,13 @@ function addNtAssignee(person){
   const dept=String(person?.dept||personDept(email,name)||document.getElementById('nt-dept')?.value||'Needs Department').trim();
   ntAssignees.push({name:name||email.split('@')[0],email,dept});
   renderNtAssigneeChips();
+  // The visible Department <select> was never synced to the picked person —
+  // it just sat on its default first option ("Investor Relations") no
+  // matter who got selected, since only ntAssignees[].dept (the small chip
+  // subtitle) was ever set. Mirrors setDeptAssignDepartment's sel.value=val
+  // pattern used by the sibling Department Assignment picker.
+  const deptSel=document.getElementById('nt-dept');
+  if(deptSel&&allDepartments().includes(dept))deptSel.value=dept;
   clearAddTaskPerson(false);
 }
 function findDepartmentAssignmentContact(text){
@@ -3118,17 +3155,14 @@ function chWeek(d){curWeek=Math.max(0,curWeek-d);document.getElementById("wn-l")
 // ============================================================
 // ACTION LOG
 // ============================================================
+// Buckets by when the task was CREATED, not its due date. Every task id in
+// this app is Date.now()-based (see addTask/createTaskFromEmail/etc.), so
+// it doubles as a reliable creation timestamp without needing a dedicated
+// createdAt field (which most tasks don't actually have set).
 function taskWeekOffset(t){
-  if(!t.date)return 0;
-  const d=new Date(t.date+'T12:00:00');
+  const d=new Date(t.id);
   const toMon=x=>{const r=new Date(x);r.setDate(r.getDate()-(r.getDay()||7)+1);r.setHours(0,0,0,0);return r;};
   return Math.max(0,Math.round((toMon(new Date())-toMon(d))/(7*24*60*60*1000)));
-}
-function overdueCarryWeeks(t){
-  return Math.max(1,taskWeekOffset(t));
-}
-function isCarriedOverdue(t){
-  return curWeek===0&&nstt(t.status)==="Overdue"&&taskWeekOffset(t)>0;
 }
 function sortActionTasks(list){
   return [...list].sort((a,b)=>{
@@ -3147,8 +3181,7 @@ function getVis(){
   const pf=document.getElementById("sf-priority")?.value||"all";
   return sortActionTasks(tasks.filter(t=>{
     const createdInWeek=taskWeekOffset(t)===curWeek;
-    const carried=isCarriedOverdue(t);
-    const wm=curSearch?true:(createdInWeek||carried);
+    const wm=curSearch?true:createdInWeek;
     const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
     return wm&&sm&&(sf==="all"||nstt(t.status)===sf)&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
   }));
@@ -3160,18 +3193,16 @@ function renderMaster(){
     return;
   }
   tb.innerHTML=list.map(t=>{
-    const carried=isCarriedOverdue(t);
-    const overdueNote=carried?`<div style="margin-top:4px;padding:4px 7px;background:#fee2e2;border:1px solid #fecaca;border-radius:5px;color:#991b1b;font-size:10.5px;font-weight:600">Pending from ${overdueCarryWeeks(t)} week${overdueCarryWeeks(t)!==1?'s':''} ago</div>`:'';
     const priorityNote=String(t.priority||"Normal").toLowerCase()==="high"?`<div style="margin-top:4px;color:#b91c1c;font-size:10.5px;font-weight:700">Prioritized from Outlook</div>`:'';
     return `
-    <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6;':''}${carried?'background:#fff1f2;box-shadow:inset 3px 0 #ef4444;':''}">
+    <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6;':''}">
       <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 16px">
         <input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)">
       </td>
       <td style="padding:10px 14px">
         <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}${t._proofNotif?`<span style="margin-left:7px;padding:1px 7px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10px;font-weight:700;color:#92400e;vertical-align:middle">Proof Ready</span>`:''}</div>
         ${t.replyCount>1?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${t.replyCount} msgs</div>`:""}
-        ${overdueNote}${priorityNote}
+        ${priorityNote}
       </td>
       <td style="padding:10px 10px">
         <div style="display:flex;align-items:center;gap:6px">${av(t.person,22)}<span style="font-size:12px;color:var(--body);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.person}</span></div>
@@ -3679,7 +3710,12 @@ function dlCSV(){
 function openDetail(id){
   const t=tasks.find(x=>x.id===id);if(!t)return;curTaskId=id;
   document.getElementById("mo-title").textContent=emailSubject(t);
-  document.getElementById("mo-sub").textContent=`${t.person} • ${t.dept} • ${fmtD(t.date)}`;
+  const personBadge=document.getElementById("mo-person-badge");
+  if(personBadge){
+    if(t.person){personBadge.textContent=t.person;personBadge.style.display="inline-flex";}
+    else personBadge.style.display="none";
+  }
+  document.getElementById("mo-sub").textContent=`${t.dept} • ${fmtD(t.date)}`;
   document.getElementById("mo-sum").innerHTML=renderSumBox(t);
   document.getElementById("mo-edit-title").value=t.title||"";
   document.getElementById("mo-edit-person").value=t.person||"";
@@ -3688,7 +3724,6 @@ function openDetail(id){
   document.getElementById("mo-edit-priority").value=t.priority||"Normal";
   document.getElementById("mo-dept").innerHTML=deptOptions(t.dept);
   document.getElementById("mo-status").value=nstt(t.status);
-  document.getElementById("mo-followup").value=t.followup||"";
   const rs=document.getElementById("mo-refresh-summary");
   if(rs)rs.style.display=t.conversationId||t.emailId?"inline-flex":"none";
   renderProofPanel(t);
@@ -3703,7 +3738,6 @@ async function saveDetail(){
   const newDate=document.getElementById("mo-edit-date").value||t.date;
   const newPriority=document.getElementById("mo-edit-priority").value||t.priority||"Normal";
   const newStatus=document.getElementById("mo-status").value;
-  const newFollowup=document.getElementById("mo-followup").value||"";
   const newDept=document.getElementById("mo-dept").value;
   const changes=[];
   if(newTitle!==t.title)changes.push(`Title: "${t.title}" → "${newTitle}"`);
@@ -3712,9 +3746,8 @@ async function saveDetail(){
   if(newDate&&newDate!==t.date)changes.push(`Date: ${fmtD(t.date)} → ${fmtD(newDate)}`);
   if(newPriority!==(t.priority||"Normal"))changes.push(`Priority: ${t.priority||"Normal"} → ${newPriority}`);
   if(newStatus!==nstt(t.status))changes.push(`Status: ${nstt(t.status)} → ${newStatus}`);
-  if(newFollowup&&newFollowup!==t.followup)changes.push(`Note: ${newFollowup}`);
   t.title=newTitle;t.person=newPerson;if(newEmail)t.email=newEmail;
-  t.date=newDate;t.priority=newPriority;t.status=newStatus;t.followup=newFollowup;
+  t.date=newDate;t.priority=newPriority;t.status=newStatus;
   saveStaffDeptForTask(t,newDept);
   closeMo("mo-detail");refreshAll();
   if(changes.length){
@@ -4221,7 +4254,7 @@ function syncPulse(){
 }
 function syncBadges(){
   const open=tasks.filter(t=>nstt(t.status)!=="Done").length;
-  const actionWeekOpen=tasks.filter(t=>nstt(t.status)!=="Done"&&(taskWeekOffset(t)===curWeek||isCarriedOverdue(t))).length;
+  const actionWeekOpen=tasks.filter(t=>nstt(t.status)!=="Done"&&taskWeekOffset(t)===curWeek).length;
   const high=tasks.filter(t=>String(t.priority||"Normal").toLowerCase()==="high"&&nstt(t.status)!=="Done").length;
   const wed=tasks.filter(t=>t.wednesday).length+customNotes.length;
   const dn=tasks.filter(t=>nstt(t.status)==="Done").length;
@@ -7351,6 +7384,28 @@ async function addCalendarEventToTasks(eventId){
 // NOTIFICATIONS SYSTEM
 // ============================================================
 let notifications=[];
+let highlightedNotifId=null;
+
+// "Seen" used to live only as notifications[].seen, persisted through an
+// async OneDrive save shared with tasks/staffConfig/etc — a slow round-trip
+// that could lose a just-set seen:true if the page was refreshed before it
+// completed (and old data that predates seen tracking entirely never had
+// the field set, so it always read as unseen). Tracked locally instead,
+// same instant/race-free localStorage pattern as the Tasks tab follow-up
+// read-state. Keyed by kvNotifId (stable across polls) falling back to the
+// local id, and only pending notifications ever count as "new" — once
+// approved/dismissed it's resolved regardless of whether it was "seen".
+const NOTIF_SEEN_STORAGE_KEY='dpeg_notif_seen_ids';
+function loadNotifSeenIds(){
+  try{ return new Set(JSON.parse(localStorage.getItem(NOTIF_SEEN_STORAGE_KEY)||'[]')); }
+  catch{ return new Set(); }
+}
+function saveNotifSeenIds(set){
+  try{ localStorage.setItem(NOTIF_SEEN_STORAGE_KEY,JSON.stringify([...set].slice(-1000))); }catch{}
+}
+let notifSeenIds=loadNotifSeenIds();
+function notifSeenKey(n){ return String(n.kvNotifId||n.id); }
+function isNotifUnseen(n){ return n.status==='pending' && !notifSeenIds.has(notifSeenKey(n)); }
 let processedEmailIds=new Set(JSON.parse(localStorage.getItem('dpeg_processed_done_emails')||'[]'));
 let _notifPollTimer=null;
 let pendingProofFiles=[];
@@ -7378,6 +7433,31 @@ async function checkAndLoadProofNotifications(){
   const myEmail=(currentUser?.email||'').toLowerCase();
   tasks.forEach(t=>delete t._proofNotif);
 
+  // Track the latest follow-up thread per (appTaskId, recipientEmail) that
+  // involves the current user (as assignor or assignee), so the Tasks tab
+  // can show an unread dot on the Follow-up button without a separate fetch.
+  window._taskFollowupState=window._taskFollowupState||{};
+  kvNotifs.filter(n=>(n.type==='proof_submitted'||n.type==='task_followup')
+      &&Array.isArray(n.thread)&&n.thread.length
+      &&(String(n.senderEmail||'').toLowerCase()===myEmail||String(n.recipientEmail||'').toLowerCase()===myEmail))
+    .forEach(n=>{
+      const key=`${n.appTaskId}::${String(n.recipientEmail||'').toLowerCase()}`;
+      const existing=window._taskFollowupState[key];
+      if(isBetterFollowupCandidate(n,existing)){
+        window._taskFollowupState[key]={notifId:n.id,appTaskId:n.appTaskId,recipientEmail:n.recipientEmail,thread:n.thread,type:n.type,updatedAt:n.updatedAt||n.submittedAt||n.createdAt||0};
+      }
+    });
+  // renderMyTasks(true) below only redraws the Tasks tab when the D1
+  // assignment row itself changed (status/proof) — a new follow-up message
+  // only touches this KV thread state, so without this it would silently
+  // never repaint until the user manually leaves and reopens the tab.
+  const followupSig=Object.keys(window._taskFollowupState).sort()
+    .map(k=>{const s=window._taskFollowupState[k];return `${k}:${s.thread.length}:${s.updatedAt}`;}).join('|');
+  if(followupSig!==window._taskFollowupStateSig){
+    window._taskFollowupStateSig=followupSig;
+    window.renderTasksTabList?.();
+  }
+
   const existingKvIds=new Set((notifications||[]).filter(n=>n.kvNotifId).map(n=>n.kvNotifId));
   let newAdded=0;
   let existingUpdated=0;
@@ -7400,6 +7480,7 @@ async function checkAndLoadProofNotifications(){
     const localData={
       type:'proof_submitted',
       message:`${pn.recipientName||pn.recipientEmail||'Someone'} submitted proof for "${pn.taskTitle||'a task'}"`,
+      taskTitle:pn.taskTitle||task.title||'',
       taskId:task.id,
       proofs:Array.isArray(pn.proofs)?pn.proofs:[],
       note:pn.note||'',
@@ -7408,6 +7489,7 @@ async function checkAndLoadProofNotifications(){
       timestamp:pn.updatedAt||pn.submittedAt||new Date().toISOString(),
       status:'pending',
       recipientEmail:pn.recipientEmail||'',
+      recipientName:pn.recipientName||'',
       assignmentGroupId:task.assignmentGroupId||'',
     };
     // Remove any stale local notifications for this same task before adding/updating
@@ -7425,9 +7507,14 @@ async function checkAndLoadProofNotifications(){
       Object.assign(existingLocal,localData);
       if(sig(existingLocal)!==before)existingUpdated++;
     }else{
+      // seen must only be set here, at creation — never inside localData
+      // (which also gets merged into already-existing entries on every poll
+      // via Object.assign below), or an already-viewed notification would
+      // flip back to "unseen" the moment any other field on it changed.
       notifications.unshift({
         id:Date.now()+Math.random(),
         kvNotifId:pn.id,
+        seen:false,
         ...localData,
       });
       newAdded++;
@@ -7443,38 +7530,33 @@ async function checkAndLoadProofNotifications(){
   }
 }
 
+// Used to render the full thread/files/Approve-Ask-Dismiss panel inline —
+// duplicating everything Notifications already does. Now just a clickable
+// bar that jumps there (closing this modal, switching pages, and reusing
+// highlightProofNotificationForTask — the same scroll-and-flash mechanism
+// the Tasks tab's "Review Proof" button already relies on) instead of
+// maintaining two separate proof-review UIs.
+function goToProofInNotifications(taskId){
+  closeMo('mo-detail');
+  nav('notifications');
+  highlightProofNotificationForTask(String(taskId));
+}
 function renderProofPanel(t){
   const panel=document.getElementById('mo-proof-panel');
   if(!panel)return;
   if(!t?._proofNotif){panel.innerHTML='';return;}
   const n=t._proofNotif;
   const proofFiles=(n.proofs||[]).filter(p=>p.webUrl||p.shareId);
-  const fileRows=proofFiles.map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f3f4f6;flex-wrap:wrap">
-    <span style="font-size:12px;font-weight:600;color:#111;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name||'File')}</span>
-    <span style="font-size:11px;color:#9ca3af;flex-shrink:0">${p.size?formatFileSize(p.size):''}</span>
-    ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="font-size:11px;font-weight:700;color:#0E3416;flex-shrink:0">Open ↗</a>`:''}
-  </div>`).join('');
-  const noteDisplay=n.note?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:#166534;line-height:1.5"><b>Note:</b> ${escapeHtml(n.note)}</div>`:'';
-  const threadHtml=renderProofThread(n);
-  panel.innerHTML=`<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-      <span style="padding:2px 9px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10.5px;font-weight:700;color:#92400e">${proofFiles.length?'Proof Ready for Review':'Message Submitted'}</span>
-    </div>
-    <div style="font-size:12px;color:#374151;margin-bottom:8px">
-      Submitted by <strong>${escapeHtml(n.recipientName||n.recipientEmail||'')}</strong>
-    </div>
-    ${noteDisplay}
-    ${threadHtml}
-    <div style="margin-bottom:10px">${fileRows}</div>
-    <div id="mo-proof-inline" style="display:grid;gap:8px;margin-bottom:12px"></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-primary btn-sm" style="background:#15803d;border-color:#15803d" onclick="approveProof('${escapeHtml(n.id)}',${t.id})">✓ Approve</button>
-      <button class="btn btn-ghost btn-sm" onclick="askProofFollowup('${escapeHtml(n.id)}',${t.id})">Ask Follow-up</button>
-      <button class="btn btn-ghost btn-sm" style="color:#b91c1c;border-color:#fca5a5" onclick="dismissProof('${escapeHtml(n.id)}',${t.id})">✗ Dismiss with Reason</button>
-    </div>
-  </div>`;
-  scrollProofThreadsToBottom(panel);
-  if(proofFiles.length)loadProofPreviews(proofFiles);
+  const summary=proofFiles.length
+    ?`${proofFiles.length} file${proofFiles.length>1?'s':''} submitted`
+    :'A message was submitted';
+  panel.innerHTML=`<div class="mo-section-lbl">Proof Submission</div>
+    <button type="button" onclick="goToProofInNotifications(${t.id})" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:11px 13px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;cursor:pointer;font-family:inherit">
+      <span style="font-size:12.5px;color:#92400e;line-height:1.4">
+        <strong>${escapeHtml(n.recipientName||n.recipientEmail||'Someone')}</strong> submitted proof — ${summary}. Click to review in Notifications.
+      </span>
+      <span style="font-size:15px;color:#92400e;flex-shrink:0">→</span>
+    </button>`;
 }
 
 function renderProofThread(n){
@@ -7552,73 +7634,136 @@ async function sendProofFollowupEmail(recipientEmail,task,question){
   }
 }
 
-async function askProofFollowup(notifId,taskId){
-  const t=tasks.find(x=>x.id===taskId);
-  if(!t||!t._proofNotif)return;
-  const question=prompt('Ask the assignee a follow-up question:');
-  if(question===null)return;
-  const message=String(question||'').trim();
-  if(!message){toast('Please type a follow-up question');return;}
+// ── Generic task follow-up (Tasks tab — Received & Delegated cards) ──────────
+// Unlike askProofFollowup/askNotificationFollowup above, this does not require
+// a proof to have been submitted first: either party can start or continue
+// the conversation about a task at any time. It reuses the same KV thread
+// schema (and renderProofThread) as the proof follow-up feature so the two
+// stay visually and structurally consistent.
+let _taskFollowupCtx=null;
+
+// A dedicated task_followup record always wins over a proof_submitted one,
+// even if the proof_submitted has a fresher timestamp — a proof resubmission
+// creates a brand-new, empty proof_submitted record, and picking on recency
+// alone would make that look like "the" thread and hide the real
+// conversation. Recency only breaks ties within the same type. Mirrors the
+// same rule enforced server-side in task_followup_message.
+function isBetterFollowupCandidate(candidate,current){
+  if(!current)return true;
+  const candIsThread=candidate.type==='task_followup';
+  const curIsThread=current.type==='task_followup';
+  if(candIsThread!==curIsThread)return candIsThread;
+  const candTime=new Date(candidate.updatedAt||candidate.submittedAt||candidate.createdAt||0).getTime();
+  const curTime=new Date(current.updatedAt||current.submittedAt||current.createdAt||0).getTime();
+  return candTime>=curTime;
+}
+
+async function fetchTaskFollowupThread(appTaskId,recipientEmail){
+  try{
+    const fnUrl=workerBaseUrl();
+    const userToken=await getAccessToken();
+    const res=await fetch(`${fnUrl}/notify`,{headers:{Authorization:`Bearer ${userToken}`}});
+    if(!res.ok)return null;
+    const data=await res.json();
+    const notifs=Array.isArray(data.notifications)?data.notifications:[];
+    const email=String(recipientEmail||'').toLowerCase();
+    return notifs
+      .filter(n=>(n.type==='proof_submitted'||n.type==='task_followup')&&String(n.appTaskId)===String(appTaskId||'')&&String(n.recipientEmail||'').toLowerCase()===email)
+      .reduce((best,n)=>isBetterFollowupCandidate(n,best)?n:best,null);
+  }catch{return null;}
+}
+
+async function showTaskFollowupModal(params){
+  _taskFollowupCtx=params;
+  const titleEl=document.getElementById('tf-modal-title');
+  const subEl=document.getElementById('tf-modal-sub');
+  const otherName=params.role==='assignee'?(params.assignerName||params.assignerEmail):(params.recipientName||params.recipientEmail);
+  if(titleEl)titleEl.textContent=`Follow up — ${otherName||'the other party'}`;
+  if(subEl)subEl.textContent=params.title||'';
+  const input=document.getElementById('tf-modal-input');
+  if(input)input.value='';
+  const statusEl=document.getElementById('tf-modal-status');
+  if(statusEl)statusEl.textContent='';
+  document.getElementById('mo-task-followup')?.classList.add('open');
+  await refreshTaskFollowupThread();
+}
+
+async function refreshTaskFollowupThread(){
+  if(!_taskFollowupCtx)return;
+  const body=document.getElementById('tf-modal-body');
+  if(!body)return;
+  body.innerHTML='<div style="font-size:12px;color:var(--muted)">Loading conversation...</div>';
+  const n=await fetchTaskFollowupThread(_taskFollowupCtx.appTaskId,_taskFollowupCtx.recipientEmail);
+  const thread=n&&Array.isArray(n.thread)?n.thread:[];
+  body.innerHTML=thread.length?renderProofThread(n):'<div style="font-size:12px;color:var(--muted);padding:6px 0">No messages yet — send one to start the conversation.</div>';
+  scrollProofThreadsToBottom(body);
+  window.markTaskFollowupSeen?.(_taskFollowupCtx.assignmentId,thread.length,_taskFollowupCtx.role);
+}
+
+function closeTaskFollowup(){
+  document.getElementById('mo-task-followup')?.classList.remove('open');
+  _taskFollowupCtx=null;
+}
+
+async function sendTaskFollowupEmail(recipientEmail,ctx,message){
+  const addr=String(recipientEmail||'').trim();
+  if(!addr||!addr.includes('@'))return;
+  try{
+    const sender=currentUser?.name||currentUser?.email||'DPEG Task Manager';
+    const appUrl=location.origin+location.pathname;
+    const html=`<div style="font-family:Arial,sans-serif;max-width:620px;color:#111">
+      <div style="background:#0E3416;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Task Follow-up — ${escapeHtml(ctx.title||'Assigned task')}</div>
+      <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:14px 16px">
+        <p style="margin:0 0 8px"><strong>From:</strong> ${escapeHtml(sender)}</p>
+        <div style="background:#f0fdf4;border-left:3px solid #0E3416;padding:10px 12px;margin:10px 0;font-size:14px;line-height:1.5">${escapeHtml(message).replace(/\n/g,'<br>')}</div>
+        <p style="color:#9ca3af;font-size:11px;margin:8px 0 0">Reply from the Tasks tab in DPEG Task Manager: <a href="${escapeHtml(appUrl)}">${escapeHtml(appUrl)}</a></p>
+      </div>
+    </div>`;
+    await replyToTaskEmail({title:ctx.title||'Assigned task',email:addr},html,addr);
+  }catch(err){
+    console.warn('Task follow-up email failed:',err.message);
+  }
+}
+
+async function sendTaskFollowupMessage(){
+  if(!_taskFollowupCtx)return;
+  const ctx=_taskFollowupCtx;
+  const input=document.getElementById('tf-modal-input');
+  const statusEl=document.getElementById('tf-modal-status');
+  const btn=document.getElementById('tf-modal-send');
+  const message=String(input?.value||'').trim();
+  if(!message){toast('Type a message first');return;}
+  if(btn)btn.disabled=true;
+  if(statusEl)statusEl.textContent='Sending...';
   try{
     const fnUrl=workerBaseUrl();
     const userToken=await getAccessToken();
     const res=await fetch(`${fnUrl}/notify`,{
       method:'POST',
       headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-      body:JSON.stringify({type:'proof_followup_question',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:t._proofNotif.recipientEmail||'',message}),
+      body:JSON.stringify({
+        type:'task_followup_message',
+        appTaskId:ctx.appTaskId||'',
+        taskTitle:ctx.title||'',
+        assignerEmail:ctx.assignerEmail||'',
+        recipientEmail:ctx.recipientEmail||'',
+        recipientName:ctx.recipientName||'',
+        by:ctx.role,
+        senderEmail:currentUser?.email||'',
+        senderName:currentUser?.name||'',
+        message,
+      }),
     });
-    if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not ask follow-up');}
-    await sendProofFollowupEmail(t._proofNotif.recipientEmail||t.email,t,message);
-    await checkAndLoadProofNotifications();
-    openDetail(taskId);
-    toast('Follow-up question sent and emailed');
-  }catch(err){toast('Could not send follow-up: '+(err.message||err));}
-}
-
-async function loadProofPreviews(proofs){
-  const container=document.getElementById('mo-proof-inline');
-  if(!container||!proofs.length)return;
-  const token=await getAccessToken();
-  for(const p of proofs){
-    if(!p.shareId)continue;
-    try{
-      const res=await fetch(`https://graph.microsoft.com/v1.0/shares/${encodeURIComponent(p.shareId)}/driveItem?$select=id,name,file,@microsoft.graph.downloadUrl`,{headers:{Authorization:`Bearer ${token}`}});
-      if(!res.ok)continue;
-      const item=await res.json();
-      const url=item['@microsoft.graph.downloadUrl'];
-      if(!url)continue;
-      const mime=p.type||item.file?.mimeType||'';
-      const wrap=document.createElement('div');
-      if(mime.startsWith('image/')){
-        wrap.innerHTML=`<img src="${url}" alt="${escapeHtml(p.name)}" style="max-width:100%;max-height:320px;border-radius:6px;border:1px solid #e5e7eb;display:block"><div style="font-size:10px;color:#9ca3af;margin-top:2px">${escapeHtml(p.name)}</div>`;
-      }else if(mime==='application/pdf'){
-        wrap.innerHTML=`<embed src="${url}" type="application/pdf" style="width:100%;height:380px;border-radius:6px;border:1px solid #e5e7eb"><div style="font-size:10px;color:#9ca3af;margin-top:2px">${escapeHtml(p.name)}</div>`;
-      }else{
-        continue; // non-previewable formats show as "Open ↗" link above
-      }
-      container.appendChild(wrap);
-    }catch{}
-  }
-}
-
-async function approveProof(notifId,taskId){
-  const t=tasks.find(x=>x.id===taskId);
-  if(!t||!t._proofNotif)return;
-  const n=t._proofNotif;
-  try{
-    const fnUrl=workerBaseUrl();
-    const userToken=await getAccessToken();
-    await fetch(`${fnUrl}/notify`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-      body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'approved',reason:''}),
-    });
-    window.updateTasksTabProofState?.(String(taskId), 'approved');
-    t.status='Done';t.completedAt=new Date().toISOString();t.approvedBy=currentUser?.email||'';
-    delete t._proofNotif;
-    closeMo('mo-detail');refreshAll();toast('Proof approved — task marked Done');
-    await saveTasksToOneDrive();
-  }catch(err){toast('Could not approve: '+err.message);}
+    if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not send message');}
+    if(input)input.value='';
+    if(statusEl)statusEl.textContent='';
+    const otherEmail=ctx.role==='assignor'?ctx.recipientEmail:ctx.assignerEmail;
+    await sendTaskFollowupEmail(otherEmail,ctx,message);
+    await refreshTaskFollowupThread();
+    window.renderMyTasks?.(true);
+  }catch(err){
+    if(statusEl)statusEl.innerHTML=`<span style="color:#b91c1c">${escapeHtml(err.message||'Could not send message')}</span>`;
+  }finally{if(btn)btn.disabled=false;}
 }
 
 async function sendProofDeclineEmail(recipientEmail,taskTitle,reason,senderName,task){
@@ -7641,29 +7786,6 @@ async function sendProofDeclineEmail(recipientEmail,taskTitle,reason,senderName,
       await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:{subject:`Proof declined: ${taskTitle||'Task'}`,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:addr}}]},saveToSentItems:true})});
     }
   }catch(err){console.warn('Proof decline email failed:',err.message);}
-}
-
-async function dismissProof(notifId,taskId){
-  const t=tasks.find(x=>x.id===taskId);
-  if(!t||!t._proofNotif)return;
-  const n=t._proofNotif;
-  const reason=prompt('Reason for declining this proof?');
-  if(reason===null)return;
-  try{
-    const fnUrl=workerBaseUrl();
-    const userToken=await getAccessToken();
-    await fetch(`${fnUrl}/notify`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-      body:JSON.stringify({type:'proof_result',notifId,appTaskId:String(taskId),taskTitle:t.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:t.recipientTodoListId||'',todoTaskId:t.recipientTodoTaskId||''}),
-    });
-    window.updateTasksTabProofState?.(String(taskId), 'declined');
-    delete t._proofNotif;
-    closeMo('mo-detail');refreshAll();
-    await saveTasksToOneDrive();
-    await sendProofDeclineEmail(n.recipientEmail||'',t.title||'',reason,currentUser?.name||'',t);
-    toast('Proof declined — email sent to recipient');
-  }catch(err){toast('Could not decline: '+err.message);}
 }
 
 async function loadNotifications(){
@@ -7696,11 +7818,19 @@ function updateNotifBadge(){
 
 function markNotifSeen(id){
   const n=notifications.find(x=>x.id===id);
-  if(n&&n.seen===false){n.seen=true;saveNotifications().catch(()=>{});renderNotifications();}
+  if(!n)return;
+  const key=notifSeenKey(n);
+  if(!notifSeenIds.has(key)){
+    notifSeenIds.add(key);
+    saveNotifSeenIds(notifSeenIds);
+    n.seen=true;
+    renderNotifications();
+  }
 }
 
 async function approveNotification(id){
   markNotifSeen(id);
+  if(highlightedNotifId===id)highlightedNotifId=null;
   const n=notifications.find(x=>x.id===id);
   if(!n)return;
   // KV-based proof_submitted — route through KV approve endpoint
@@ -7745,6 +7875,7 @@ async function approveNotification(id){
 
 async function dismissNotification(id){
   markNotifSeen(id);
+  if(highlightedNotifId===id)highlightedNotifId=null;
   const n=notifications.find(x=>x.id===id);
   if(!n)return;
   // KV-based proof_submitted — route through KV decline endpoint + email
@@ -7799,47 +7930,224 @@ async function markAllNotificationsRead(){
   await saveNotifications();
 }
 
+// Notifications used to be a single flat list — with several pending
+// submissions from different people it read as a wall of tiny near-identical
+// text. Grouped by person (submitter/assignee) the same way the Tasks tab
+// groups Received/Delegated Assignments, collapsible, so it's scannable at
+// a glance. notifManualToggles overrides the default (pending groups start
+// open, resolved-only groups start collapsed) once a user actually clicks one.
+let notifManualToggles={};
+
+function notifGroupKey(n){
+  return String(n.recipientEmail||n.recipientName||'unknown').toLowerCase();
+}
+function notifGroupLabel(n){
+  // recipientName is only as reliable as currentUser.name was at the moment
+  // that person submitted proof, which isn't always populated — fall back
+  // to the app's own contact directory (staffConfig/userContacts) before
+  // giving up and showing the raw email.
+  return String(n.recipientName||findPersonByEmail(n.recipientEmail)?.name||n.recipientEmail||'Unknown').trim();
+}
+function groupNotificationsByPerson(list){
+  const grouped=new Map();
+  list.forEach(n=>{
+    const key=notifGroupKey(n);
+    if(!grouped.has(key))grouped.set(key,{key,name:notifGroupLabel(n),items:[]});
+    grouped.get(key).items.push(n);
+  });
+  const groups=[...grouped.values()];
+  groups.forEach(g=>g.items.sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0)));
+  groups.sort((a,b)=>new Date(b.items[0]?.timestamp||0)-new Date(a.items[0]?.timestamp||0));
+  return groups;
+}
+// Collapsed by default, same as the Tasks tab's Received/Delegated groups —
+// only expands once the user actually clicks a name.
+function isNotifGroupOpen(group){
+  return notifManualToggles[group.key]===true;
+}
+function toggleNotifGroup(key){
+  const group=groupNotificationsByPerson(notifications).find(g=>g.key===key);
+  const opening=!(group&&isNotifGroupOpen(group));
+  notifManualToggles[key]=opening;
+  // Same as the Tasks tab's toggleTasksGroup — expanding a group is what
+  // clears its "new" badge, marking everything currently in it as seen.
+  if(opening&&group){
+    let changed=false;
+    group.items.forEach(n=>{
+      const k=notifSeenKey(n);
+      if(!notifSeenIds.has(k)){notifSeenIds.add(k);n.seen=true;changed=true;}
+    });
+    if(changed)saveNotifSeenIds(notifSeenIds);
+  }
+  renderNotifications();
+}
+
+function renderNotificationCard(n){
+  const ts=n.timestamp?new Date(n.timestamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  const statusColor=n.status==='approved'?'#15803d':n.status==='dismissed'?'#9ca3af':'#92400e';
+  const statusLabel=n.status==='approved'?'Approved':n.status==='dismissed'?'Dismissed':'Pending';
+  const icon=n.type==='task_completion'
+    ?`<svg width="16" height="16" fill="none" stroke="#15803d" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+    :`<svg width="16" height="16" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const proofHtml=renderNotificationProofs(n);
+  const isUnseen=isNotifUnseen(n);
+  const newTag=isUnseen?`<span style="display:inline-flex;align-items:center;padding:1px 6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:9px;font-weight:800;color:#92400e;letter-spacing:.4px;margin-left:5px;vertical-align:middle">NEW</span>`:'';
+  // The task title used to only exist buried inside the prose message
+  // ("X submitted proof for 'task title'"), rendered as one flat gray
+  // sentence — easy to miss which task a card was even about. Pulled out
+  // as its own bold line so it's the first thing the eye lands on.
+  const taskTitleHtml=n.taskTitle?`<div style="font-size:13.5px;font-weight:800;color:${isUnseen?'#92400e':'var(--body)'};margin-bottom:3px">${escapeHtml(n.taskTitle)}</div>`:'';
+  return`<div class="card${n.id===highlightedNotifId?' notif-highlight':''}${isUnseen?' notif-unseen':''}" id="notif-card-${n.id}" style="padding:12px 14px">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="flex-shrink:0;margin-top:1px">${icon}</div>
+      <div style="flex:1;min-width:0">
+        ${taskTitleHtml}
+        <div style="font-size:12.5px;color:var(--muted);line-height:1.4;margin-bottom:4px">${escapeHtml(n.message||'')}${newTag}</div>
+        ${proofHtml}
+        ${n.dismissReason?`<div style="margin-top:6px;font-size:11px;color:#991b1b">Dismissed reason: ${escapeHtml(n.dismissReason)}</div>`:''}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--muted)">${ts}</span>
+          <span style="font-size:10px;font-weight:600;color:${statusColor}">${statusLabel}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+        ${n.taskId!=null?`<button class="btn btn-ghost btn-sm" onclick="goToNotificationTask(${n.id})">Go to Action Log</button>`:''}
+        ${n.status==='pending'?`
+        ${(n.type==='task_completion'||n.type==='proof_submitted')?`<button class="btn btn-primary btn-sm" onclick="approveNotification(${n.id})">Approve</button>`:''}
+        ${(n.type==='proof_submitted'||n.type==='task_completion')?`<button class="btn btn-ghost btn-sm" onclick="askNotificationFollowup(${n.id})">Ask</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="dismissNotification(${n.id})">Dismiss</button>
+        `:''}
+      </div>
+    </div>
+  </div>`;
+}
+
+// Resolved (approved/dismissed) notifications used to stay mixed in with
+// pending ones inside each person's group forever, so the list only ever
+// grew. Split into two tabs — Needs Approval / History — same
+// directory-toggle pattern as the Tasks tab's Received/Delegated switch,
+// rather than stacking both on the page at once.
+let notifTabMode='current'; // 'current' | 'history'
+window.setNotifTabMode=function setNotifTabMode(mode){
+  notifTabMode=mode;
+  document.getElementById('notif-current-btn')?.classList.toggle('active',mode==='current');
+  document.getElementById('notif-history-btn')?.classList.toggle('active',mode==='history');
+  renderNotifications();
+};
+function updateNotifTabBadges(pendingCount,resolvedCount){
+  const setBadge=(id,count)=>{
+    const badgeEl=document.getElementById(id);
+    if(!badgeEl)return;
+    badgeEl.textContent=count>99?'99+':count;
+    badgeEl.style.display=count>0?'':'none';
+  };
+  setBadge('notif-current-badge',pendingCount||0);
+  setBadge('notif-history-badge',resolvedCount||0);
+}
+
+function renderNotifGroupBlock(group){
+  const open=isNotifGroupOpen(group);
+  const noun=group.items.length===1?'notification':'notifications';
+  // Full breakdown, not just the pending count — "3 notifications · 1
+  // pending" left the other 2 unexplained; spell out what they actually are.
+  const statusCounts={};
+  group.items.forEach(n=>{
+    const label=n.status==='approved'?'approved':n.status==='dismissed'?'dismissed':'pending';
+    statusCounts[label]=(statusCounts[label]||0)+1;
+  });
+  const summaryText=['pending','approved','dismissed']
+    .filter(label=>statusCounts[label])
+    .map(label=>`${statusCounts[label]} ${label}`)
+    .join(' · ');
+  const unseenCount=group.items.filter(isNotifUnseen).length;
+  // Readable red pill beside the name, same pattern as the Tasks tab's
+  // "+1 follow-up" badge, instead of a small dot tucked into the avatar
+  // corner that's easy to miss. Clears once you've merely opened/viewed it.
+  const newBadge=unseenCount>0?`<span class="notif-new-badge">+${unseenCount>9?'9+':unseenCount} new</span>`:'';
+  // Separate yellow pill for "still needs action" — unlike newBadge, this
+  // does NOT clear just from viewing it; only approving/dismissing removes
+  // it, so it stays as a persistent reminder that something is unresolved.
+  const pendingCount=statusCounts.pending||0;
+  const pendingBadge=pendingCount>0?`<span class="notif-pending-badge">${pendingCount} pending</span>`:'';
+  const safeGroupKey=escapeHtml(JSON.stringify(group.key));
+  const cards=open?`<div class="assign-cards">${group.items.map(renderNotificationCard).join('')}</div>`:'';
+  return `<div class="assign-group">
+    <div class="assign-group-head" onclick="toggleNotifGroup(${safeGroupKey})">
+      <span class="assign-group-toggle">${open?'−':'+'}</span>
+      <span class="assign-avatar-wrap">${av(group.name,24)}</span>
+      <span class="assign-group-name" style="color:var(--forest)">${escapeHtml(group.name)}</span>
+      ${pendingBadge}
+      ${newBadge}
+      <span class="assign-group-summary">${group.items.length} ${noun} · ${summaryText}</span>
+    </div>
+    ${cards}
+  </div>`;
+}
+
 function renderNotifications(){
   const el=document.getElementById('notif-list');
   if(!el)return;
+  const pending=notifications.filter(n=>n.status==='pending');
+  const resolved=notifications.filter(n=>n.status!=='pending');
+  updateNotifTabBadges(pending.length,resolved.length);
   if(!notifications.length){
     el.innerHTML='<div style="padding:40px;text-align:center;font-size:12px;color:var(--muted)">No notifications yet</div>';
     return;
   }
-  el.innerHTML=notifications.map(n=>{
-    const ts=n.timestamp?new Date(n.timestamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-    const statusColor=n.status==='approved'?'#15803d':n.status==='dismissed'?'#9ca3af':'#92400e';
-    const statusLabel=n.status==='approved'?'Approved':n.status==='dismissed'?'Dismissed':'Pending';
-    const icon=n.type==='task_completion'
-      ?`<svg width="16" height="16" fill="none" stroke="#15803d" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-      :`<svg width="16" height="16" fill="none" stroke="#6b7280" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-    const proofHtml=renderNotificationProofs(n);
-    const newTag=n.seen===false?`<span style="display:inline-flex;align-items:center;padding:1px 6px;background:#dcfce7;border:1px solid #86efac;border-radius:10px;font-size:9px;font-weight:800;color:#166534;letter-spacing:.4px;margin-left:5px;vertical-align:middle">NEW</span>`:'';
-    return`<div class="card" style="padding:12px 14px${n.seen===false?';border-left:3px solid #86efac':''}">
-      <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="flex-shrink:0;margin-top:1px">${icon}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:12.5px;color:var(--body);line-height:1.4;margin-bottom:4px">${escapeHtml(n.message||'')}${newTag}</div>
-          ${proofHtml}
-          ${n.dismissReason?`<div style="margin-top:6px;font-size:11px;color:#991b1b">Dismissed reason: ${escapeHtml(n.dismissReason)}</div>`:''}
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:10px;color:var(--muted)">${ts}</span>
-            <span style="font-size:10px;font-weight:600;color:${statusColor}">${statusLabel}</span>
-          </div>
-        </div>
-        <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
-          ${n.taskId!=null?`<button class="btn btn-ghost btn-sm" onclick="goToNotificationTask(${n.id})">Go to Action Log</button>`:''}
-          ${n.status==='pending'?`
-          ${(n.type==='task_completion'||n.type==='proof_submitted')?`<button class="btn btn-primary btn-sm" onclick="approveNotification(${n.id})">Approve</button>`:''}
-          ${(n.type==='proof_submitted'||n.type==='task_completion')?`<button class="btn btn-ghost btn-sm" onclick="askNotificationFollowup(${n.id})">Ask</button>`:''}
-          <button class="btn btn-ghost btn-sm" onclick="dismissNotification(${n.id})">Dismiss</button>
-          `:''}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
+  // Live count, not a fixed number — always reflects however many are
+  // actually unseen right now, and always equals the sum of the per-group
+  // badges below it since both are computed from isNotifUnseen. Only pending
+  // items ever count, so resolved History items can't inflate this anymore.
+  const totalNew=notifications.filter(isNotifUnseen).length;
+  const summaryBanner=(notifTabMode==='current'&&totalNew>0)?`<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;margin-bottom:10px;background:var(--sage3);border:1px solid var(--sage);border-radius:var(--rlg)">
+    <span style="font-size:13.5px;font-weight:800;color:var(--forest)">${totalNew} new notification${totalNew===1?'':'s'}</span>
+    <span style="font-size:11px;color:var(--muted)">— divided by person below</span>
+  </div>`:'';
+
+  const list=notifTabMode==='current'?pending:resolved;
+  const listHtml=list.length
+    ? groupNotificationsByPerson(list).map(renderNotifGroupBlock).join('')
+    : notifTabMode==='current'
+      ? `<div style="padding:20px 14px;text-align:center;font-size:12px;color:var(--muted);background:var(--sage3);border:1px solid var(--sage);border-radius:var(--rlg)">✓ All caught up — nothing needs action</div>`
+      : `<div style="padding:20px 14px;text-align:center;font-size:12px;color:var(--muted)">No resolved notifications yet</div>`;
+
+  el.innerHTML=summaryBanner+listHtml;
   scrollProofThreadsToBottom(el);
 }
+
+// Jumping here from a Delegated card's "Review Proof" button used to just
+// dump the user into a flat Notifications list they had to search through
+// manually. This scrolls straight to the matching card and flashes it, so
+// the right one is obvious even with many pending notifications.
+function highlightProofNotificationForTask(appTaskId){
+  const n=notifications.find(x=>x.type==='proof_submitted'&&x.status==='pending'&&String(x.taskId)===String(appTaskId||''));
+  if(!n)return;
+  // Baked into renderNotifications() (keyed off highlightedNotifId) rather
+  // than a one-off classList mutation, so it survives the 15s poll's
+  // re-render instead of vanishing after a couple seconds. Cleared once the
+  // user actually resolves this notification (see approveNotification/
+  // dismissNotification), not on a timer.
+  highlightedNotifId=n.id;
+  const groupKey=notifGroupKey(n);
+  notifManualToggles[groupKey]=true; // force that person's group open so the card is actually in the DOM to scroll to
+  // Forcing it open is the same as clicking to expand it — clears that
+  // person's "new" badges too, same as toggleNotifGroup.
+  const group=groupNotificationsByPerson(notifications).find(g=>g.key===groupKey);
+  if(group){
+    let changed=false;
+    group.items.forEach(item=>{
+      const k=notifSeenKey(item);
+      if(!notifSeenIds.has(k)){notifSeenIds.add(k);item.seen=true;changed=true;}
+    });
+    if(changed)saveNotifSeenIds(notifSeenIds);
+  }
+  window.setNotifTabMode?.('current'); // target is always pending — make sure that tab is the one showing
+  renderNotifications();
+  setTimeout(()=>{
+    document.getElementById(`notif-card-${n.id}`)?.scrollIntoView({behavior:'smooth',block:'center'});
+  },80);
+}
+window.highlightProofNotificationForTask=highlightProofNotificationForTask;
 
 function goToNotificationTask(id){
   markNotifSeen(id);
@@ -7914,7 +8222,7 @@ async function askNotificationFollowup(id){
       await checkAndLoadProofNotifications();
       renderNotifications();
     }
-    await sendProofFollowupEmail(n.recipientEmail||task?.email,task||{id:n.taskId,title:n.message,email:n.recipientEmail},message);
+    await sendProofFollowupEmail(n.recipientEmail||task?.email,task||{id:n.taskId,title:n.taskTitle||n.message,email:n.recipientEmail},message);
     toast('Follow-up question sent and emailed');
   }catch(err){toast('Could not send follow-up: '+(err.message||err));}
 }
@@ -8018,12 +8326,15 @@ async function pollToDoCompletions(manual=false){
           id:Date.now()+Math.random(),
           type:'task_completion',
           message:`${matchTask.person||'Someone'} completed "${matchTask.title||'task'}"${deadlineStr}. Marked done on ${completedOn}. Do you want to approve?`,
+          taskTitle:matchTask.title||'',
           taskId:matchTask.id,
           todoTaskId:item.todoTaskId,
           recipientEmail:item.recipientEmail||matchTask.email||'',
+          recipientName:matchTask.person||'',
           proofs:proofFiles,
           timestamp:new Date().toISOString(),
-          status:'pending'
+          status:'pending',
+          seen:false
         });
         added++;
       }

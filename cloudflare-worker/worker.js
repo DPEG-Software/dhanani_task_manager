@@ -4,6 +4,8 @@
 // POST /assignment       → Create/update a shared task-assignment record (D1)
 // GET  /assignments      → Fetch assignments for the current user (assigned to me + by me)
 // POST /assignment-status→ Recipient updates assignment status/progress (D1)
+// POST /assignment-alert → Assigner sends a one-click "update required" nudge (D1)
+// POST /assignment-alert-clear → Either party dismisses that alert (D1)
 
 const ALLOWED_ORIGIN  = 'https://dpeg-software.github.io';
 const DPEG_TENANT_ID  = '9152bf5c-22ff-4e4a-8624-784a2d243006';
@@ -119,6 +121,7 @@ async function ensureAssignmentProofColumns(env) {
     ['proof_submitted_at', 'TEXT'],
     ['proof_reviewed_at', 'TEXT'],
     ['proof_notification_id', 'TEXT'],
+    ['update_alert_at', 'TEXT'],
   ];
   for (const [name, type] of columns) {
     try {
@@ -150,6 +153,7 @@ async function updateAssignmentProofState(env, details) {
            proof_reviewed_at = CASE WHEN ? = 'submitted' THEN NULL ELSE COALESCE(?, proof_reviewed_at) END,
            proof_notification_id = COALESCE(NULLIF(?, ''), proof_notification_id),
            status = CASE WHEN ? = 'approved' THEN 'Done' ELSE status END,
+           update_alert_at = CASE WHEN ? IN ('submitted','approved','declined') THEN NULL ELSE update_alert_at END,
            updated_at = ?
      WHERE app_task_id = ?
        AND (? = '' OR recipient_email = ?)
@@ -160,6 +164,7 @@ async function updateAssignmentProofState(env, details) {
     proofStatus,
     reviewedAt,
     notificationId,
+    proofStatus,
     proofStatus,
     now,
     appTaskId,
@@ -773,6 +778,72 @@ async function handleNotify(request, env) {
     notifications[idx].thread = thread;
     notifications[idx].followupStatus = 'answered';
     notifications[idx].updatedAt = new Date().toISOString();
+  } else if (body.type === 'task_followup_message') {
+    // Generic per-task follow-up, usable from the Tasks tab regardless of
+    // proof status — unlike proof_followup_question/answer above, this does
+    // not require a prior proof submission to exist.
+    const appTaskId = String(body.appTaskId || '');
+    const recipientEmail = extractEmailAddress(body.recipientEmail || '');
+    if (!appTaskId || !recipientEmail) return json({ error: 'appTaskId and recipientEmail are required' }, 400);
+    const message = String(body.message || '').trim();
+    if (!message) return json({ error: 'Message is required' }, 400);
+    const by = body.by === 'assignee' ? 'assignee' : 'assignor';
+
+    // The conversation lives in a single, permanent task_followup record per
+    // (appTaskId, recipientEmail) — created once and reused forever. A proof
+    // resubmission creates a brand-new proof_submitted record with a fresher
+    // timestamp than the existing conversation, so picking "most recently
+    // updated" would silently fork the thread onto that empty new record and
+    // orphan the real history. Once a task_followup exists, it always wins.
+    let idx = notifications.findIndex(n =>
+      n.type === 'task_followup' &&
+      String(n.appTaskId) === appTaskId &&
+      extractEmailAddress(n.recipientEmail) === recipientEmail
+    );
+    if (idx < 0) {
+      // First message ever for this task+recipient — seed from the most
+      // recent proof_submitted's thread (if any) so earlier Ask-Follow-up
+      // conversation from the proof-review flow isn't lost, then this
+      // record becomes the permanent home for all future messages.
+      let seedThread = [];
+      let seedTime = -Infinity;
+      notifications.forEach(n => {
+        if (n.type === 'proof_submitted' &&
+            String(n.appTaskId) === appTaskId &&
+            extractEmailAddress(n.recipientEmail) === recipientEmail &&
+            Array.isArray(n.thread) && n.thread.length) {
+          const t = new Date(n.updatedAt || n.submittedAt || n.createdAt || 0).getTime();
+          if (t >= seedTime) { seedThread = n.thread; seedTime = t; }
+        }
+      });
+      notifications.push({
+        id: `tf-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+        type: 'task_followup',
+        appTaskId,
+        taskTitle: String(body.taskTitle || ''),
+        senderEmail: String(body.assignerEmail || ''),
+        recipientEmail: String(body.recipientEmail || ''),
+        recipientName: String(body.recipientName || ''),
+        thread: [...seedThread],
+        followupStatus: '',
+        status: 'open',
+        createdAt: new Date().toISOString(),
+        seen: false,
+      });
+      idx = notifications.length - 1;
+    }
+    const thread = Array.isArray(notifications[idx].thread) ? notifications[idx].thread : [];
+    thread.push({
+      id: `fm-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      by,
+      email: String(body.senderEmail || userEmailFromClaims(claims)),
+      name: String(body.senderName || claims.name || ''),
+      message,
+      createdAt: new Date().toISOString(),
+    });
+    notifications[idx].thread = thread;
+    notifications[idx].followupStatus = by === 'assignor' ? 'question' : 'answered';
+    notifications[idx].updatedAt = new Date().toISOString();
   } else {
     return json({ error: 'Unknown notification type' }, 400);
   }
@@ -958,6 +1029,7 @@ async function handleAssignments(request, env) {
     proofReviewedAt: row.proof_reviewed_at,
     proofNotificationId: row.proof_notification_id,
     proofInstructions: row.proof_instructions,
+    updateAlertAt: row.update_alert_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -1002,10 +1074,82 @@ async function handleAssignmentStatus(request, env) {
 
   const updatedAt = new Date().toISOString();
   await env.DPEG_ASSIGNMENTS.prepare(
-    'UPDATE assignments SET status = ?, progress_note = ?, updated_at = ? WHERE id = ?'
+    'UPDATE assignments SET status = ?, progress_note = ?, update_alert_at = NULL, updated_at = ? WHERE id = ?'
   ).bind(newStatus, body.progressNote != null ? String(body.progressNote).slice(0, 2000) : null, updatedAt, id).run();
 
   return json({ success: true, updatedAt });
+}
+
+// ── /assignment-alert endpoint: assigner sends a one-click "update required"
+// nudge (D1). Independent of the KV follow-up thread — just a timestamp flag
+// on the assignment row, cleared automatically once the recipient updates
+// their status or submits proof.
+async function handleAssignmentAlert(request, env) {
+  const { error, status, claims } = validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const id = String(body.id || '').trim();
+  if (!id) return json({ error: 'id is required' }, 400);
+
+  const row = await env.DPEG_ASSIGNMENTS
+    .prepare('SELECT assigner_email FROM assignments WHERE id = ?')
+    .bind(id).first();
+  if (!row) return json({ error: 'Assignment not found' }, 404);
+
+  const tokenEmail = userEmailFromClaims(claims);
+  if (extractEmailAddress(row.assigner_email) !== tokenEmail) {
+    return json({ error: 'Only the assigner can send an update-required alert' }, 403);
+  }
+
+  const updateAlertAt = new Date().toISOString();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'UPDATE assignments SET update_alert_at = ? WHERE id = ?'
+  ).bind(updateAlertAt, id).run();
+
+  return json({ success: true, updateAlertAt });
+}
+
+// ── /assignment-alert-clear endpoint: manually dismiss an alert (D1). Either
+// party can clear it — the recipient acknowledging it, or the assigner
+// retracting it — since the automatic clear-on-submit/approve/decline path
+// above doesn't cover every case (e.g. an alert sent while proof is already
+// sitting in review, with no status change left for the recipient to make).
+async function handleAssignmentAlertClear(request, env) {
+  const { error, status, claims } = validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const id = String(body.id || '').trim();
+  if (!id) return json({ error: 'id is required' }, 400);
+
+  const row = await env.DPEG_ASSIGNMENTS
+    .prepare('SELECT assigner_email, recipient_email FROM assignments WHERE id = ?')
+    .bind(id).first();
+  if (!row) return json({ error: 'Assignment not found' }, 404);
+
+  const tokenEmail = userEmailFromClaims(claims);
+  const isAssigner = extractEmailAddress(row.assigner_email) === tokenEmail;
+  const isRecipient = extractEmailAddress(row.recipient_email) === tokenEmail;
+  if (!isAssigner && !isRecipient) {
+    return json({ error: 'Only the assigner or recipient can dismiss this alert' }, 403);
+  }
+
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'UPDATE assignments SET update_alert_at = NULL WHERE id = ?'
+  ).bind(id).run();
+
+  return json({ success: true });
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -1033,6 +1177,8 @@ export default {
     if (path === '/attachment-summary') return handleAttachmentSummary(request, env);
     if (path === '/assignment') return handleCreateAssignment(request, env);
     if (path === '/assignment-status') return handleAssignmentStatus(request, env);
+    if (path === '/assignment-alert') return handleAssignmentAlert(request, env);
+    if (path === '/assignment-alert-clear') return handleAssignmentAlertClear(request, env);
     return handleSummary(request, env);
   },
 };

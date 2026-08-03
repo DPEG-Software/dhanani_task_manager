@@ -22,6 +22,19 @@
   let seenAssignmentStages = loadSeenStages();
   function assignmentSeenKey(a) { return `${a.id}::${stageLabel(a)}`; }
 
+  // Follow-up "seen" tracking is separate from the stage-badge Set above,
+  // since it needs to remember *how many* thread messages were already seen
+  // (to compute an unread count), not just a single seen/unseen flag.
+  const FOLLOWUP_SEEN_STORAGE_KEY = 'dpeg_followup_seen_lengths';
+  function loadFollowupSeenLengths() {
+    try { return JSON.parse(localStorage.getItem(FOLLOWUP_SEEN_STORAGE_KEY) || '{}'); }
+    catch { return {}; }
+  }
+  function saveFollowupSeenLengths(map) {
+    try { localStorage.setItem(FOLLOWUP_SEEN_STORAGE_KEY, JSON.stringify(map)); } catch {}
+  }
+  let followupSeenLengths = loadFollowupSeenLengths();
+
   function fnBaseUrl() {
     return (localStorage.getItem('dpeg_ai_fn_url') || WORKER_URL).replace(/\/?$/, '');
   }
@@ -181,29 +194,100 @@
     return `<span class="assign-due${overdue ? ' is-overdue' : ''}">Due ${fmtD(a.dueDate)}${overdue ? ' (overdue)' : ''}</span>`;
   }
 
+  // Follow-up thread state is populated by index.html's checkAndLoadProofNotifications
+  // poll (window._taskFollowupState), keyed by appTaskId+recipientEmail so both the
+  // Received and Delegated view of the same task share one conversation.
+  function followupThreadState(a) {
+    const key = `${a.appTaskId}::${String(a.recipientEmail || '').toLowerCase()}`;
+    return window._taskFollowupState ? window._taskFollowupState[key] : null;
+  }
+
+  // Seen-length is keyed by assignment id *and* role, not just assignment id.
+  // On a self-assigned task (assigner === recipient) the Received and
+  // Delegated views point at the exact same D1 row/id — without the role in
+  // the key, sending a follow-up from Delegated would mark it "seen" for
+  // the Received view too, since they'd share one storage slot.
+  function followupSeenKey(a, received) {
+    return `${a.id}::${received ? 'assignee' : 'assignor'}`;
+  }
+
+  // Count of thread messages from the other party since this user last
+  // opened (or sent into) this task's follow-up thread. Using a count
+  // rather than a boolean means two separate follow-up messages read as
+  // "2", not just "unread".
+  function followupUnreadCount(a, received) {
+    const state = followupThreadState(a);
+    if (!state || !Array.isArray(state.thread) || !state.thread.length) return 0;
+    const myRole = received ? 'assignee' : 'assignor';
+    const seenLen = followupSeenLengths[followupSeenKey(a, received)] || 0;
+    return state.thread.slice(seenLen).filter(m => m && m.by !== myRole).length;
+  }
+
+  function followupButton(a, received) {
+    const count = followupUnreadCount(a, received);
+    const badge = count > 0 ? `<span class="assign-followup-count">${count > 9 ? '9+' : count}</span>` : '';
+    return `<button class="btn btn-ghost btn-sm assign-followup-btn" onclick="openTaskFollowup('${a.id}',${received})">Follow up${badge}</button>`;
+  }
+
+  // Standalone one-click "update required" nudge — separate from the
+  // follow-up thread entirely. Bell button lives only on Delegated cards
+  // (the assignor sends it); the fixed label it produces is read on
+  // Received cards/groups. Cleared server-side once the recipient updates
+  // status or submits proof (see handleAssignmentStatus/updateAssignmentProofState).
+  const ALERT_LABEL = '! Alert: Update Requested';
+
+  function alertBellButton(a, received) {
+    if (received) return '';
+    const active = !!a.updateAlertAt;
+    return `<button type="button" class="assign-alert-btn${active ? ' is-active' : ''}" title="${active ? 'Update-required alert sent' : 'Send update-required alert'}" onclick="sendUpdateAlert('${a.id}')">${active ? '🔔' : '🔕'}</button>`;
+  }
+
+  function alertLabel(a, received) {
+    if (!received || !a.updateAlertAt) return '';
+    // Auto-clears once the recipient submits/updates proof or the assigner
+    // resolves it (approve/decline) — but neither happens if an alert lands
+    // while a proof is already sitting in review, so give the recipient an
+    // explicit way to dismiss it themselves rather than being stuck.
+    return `<span class="assign-alert-label">${ALERT_LABEL}<button type="button" class="assign-alert-dismiss" title="Dismiss alert" onclick="event.stopPropagation();dismissUpdateAlert('${a.id}')">&times;</button></span>`;
+  }
+
   function assignmentActions(a, received) {
     const proof = proofState(a);
+    const followBtn = followupButton(a, received);
+    const bellBtn = alertBellButton(a, received);
+    const alertBadge = alertLabel(a, received);
+    let content;
     if (received) {
       if (proof === 'none') {
         const opts = MANUAL_STATUSES.map(s => `<option value="${s}" ${s === (a.status || 'Assigned') ? 'selected' : ''}>${s}</option>`).join('');
-        return `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
+        content = `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`;
-      }
-      if (proof === 'submitted') return `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>
+      } else if (proof === 'submitted') {
+        content = `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Update Proof</button>`;
-      if (proof === 'declined') return `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — check your email, then</span>
+      } else if (proof === 'declined') {
+        content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — check your email, then</span>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button>`;
-      if (proof === 'approved') return `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
-      return '';
+      } else if (proof === 'approved') {
+        content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
+      } else {
+        content = '';
+      }
+    } else if (proof === 'submitted') {
+      content = `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review Proof</button>`;
+    } else if (proof === 'declined') {
+      content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — awaiting resubmission</span>`;
+    } else if (proof === 'approved') {
+      content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
+    } else {
+      content = `<span style="font-size:11.5px;color:var(--muted);font-weight:600">In progress</span>`;
     }
-    if (proof === 'submitted') return `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review Proof</button>`;
-    if (proof === 'declined') return `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — awaiting resubmission</span>`;
-    if (proof === 'approved') return `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
-    return `<span style="font-size:11.5px;color:var(--muted);font-weight:600">In progress</span>`;
+    return `${content}<span class="assign-actions-trailing">${alertBadge}${followBtn}${bellBtn}</span>`;
   }
 
   function assignmentCard(a, received) {
-    return `<div class="wed-card">
+    const hasFollowup = followupUnreadCount(a, received) > 0;
+    return `<div class="wed-card${hasFollowup ? ' has-followup' : ''}">
       <div class="wed-card-head">
         <div class="wed-card-title">${escapeHtml(a.title || '')}</div>
         <span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span>
@@ -268,7 +352,7 @@
 
   function assignmentsSignature(cache) {
     const sig = list => (list || [])
-      .map(a => [a.id, a.status, a.proofStatus, a.summary, a.dueDate, a.title, a.dept, a.priority].join('|'))
+      .map(a => [a.id, a.status, a.proofStatus, a.summary, a.dueDate, a.title, a.dept, a.priority, a.updateAlertAt].join('|'))
       .join(';');
     return `${sig(cache?.assignedToMe)}::${sig(cache?.assignedByMe)}`;
   }
@@ -325,6 +409,11 @@
     setBadge('tasks-history-badge', historyCount);
   }
 
+  // Exposed so index.html's notification poll can force a repaint when only
+  // the KV follow-up thread changed — renderMyTasks(true) alone won't redraw,
+  // since its D1-row signature check has nothing to compare there (see
+  // checkAndLoadProofNotifications's followup-signature diff).
+  window.renderTasksTabList = renderTasksTabList;
   function renderTasksTabList() {
     const tb = document.getElementById('tasks-tbody');
     if (!tb) return;
@@ -344,6 +433,13 @@
       const safeGroupKey = escapeHtml(JSON.stringify(group.key));
       const newCount = group.items.filter(a => !seenAssignmentStages.has(assignmentSeenKey(a))).length;
       const newBadge = newCount > 0 ? `<span class="assign-new-badge">${newCount > 9 ? '9+' : newCount}</span>` : '';
+      const followupTotal = group.items.reduce((sum, a) => sum + followupUnreadCount(a, received), 0);
+      const followupGroupBadge = followupTotal > 0
+        ? `<span class="assign-followup-group-badge">+${followupTotal > 9 ? '9+' : followupTotal} follow-up${followupTotal > 1 ? 's' : ''}</span>`
+        : '';
+      const alertGroupBadge = received && group.items.some(a => a.updateAlertAt)
+        ? `<span class="assign-alert-group-badge">${ALERT_LABEL}</span>`
+        : '';
       const cards = open
         ? `<div class="assign-cards">${group.items.map(a => assignmentCard(a, group.received)).join('')}</div>`
         : '';
@@ -357,6 +453,8 @@
           <span class="assign-group-toggle">${open ? '−' : '+'}</span>
           <span class="assign-avatar-wrap">${av(group.name, 24)}${newBadge}</span>
           <span class="assign-group-name">${groupName}</span>
+          ${alertGroupBadge}
+          ${followupGroupBadge}
           <span class="assign-group-summary">${group.items.length} ${noun}${summaryText ? ` · ${escapeHtml(summaryText)}` : ''}</span>
         </div>
         ${cards}
@@ -401,6 +499,86 @@
     });
   };
 
+  // One-click "update required" nudge — Delegated cards only. Independent of
+  // the follow-up thread: just flips a timestamp flag on the assignment row.
+  window.sendUpdateAlert = async function sendUpdateAlert(id) {
+    const a = (tasksTabCache.assignedByMe || []).find(x => x.id === id);
+    if (!a) return;
+    try {
+      const userToken = await getAccessToken();
+      const res = await fetch(`${fnBaseUrl()}/assignment-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userToken}` },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { updateAlertAt } = await res.json();
+      a.updateAlertAt = updateAlertAt || new Date().toISOString();
+      renderTasksTabList();
+      toast('Update-required alert sent');
+    } catch (err) {
+      console.warn('Send update alert failed:', err.message);
+      toast('Could not send alert — try again');
+    }
+  };
+
+  // Manual dismiss for the recipient (or the assigner, retracting their own
+  // alert) — see the comment on alertLabel for why this can't rely solely
+  // on the automatic clear-on-status-change path.
+  window.dismissUpdateAlert = async function dismissUpdateAlert(id) {
+    const a = (tasksTabCache.assignedToMe || []).find(x => x.id === id)
+      || (tasksTabCache.assignedByMe || []).find(x => x.id === id);
+    if (!a) return;
+    try {
+      const userToken = await getAccessToken();
+      const res = await fetch(`${fnBaseUrl()}/assignment-alert-clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userToken}` },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      a.updateAlertAt = null;
+      renderTasksTabList();
+      toast('Alert dismissed');
+    } catch (err) {
+      console.warn('Dismiss alert failed:', err.message);
+      toast('Could not dismiss alert — try again');
+    }
+  };
+
+  // Opens the generic task follow-up modal (index.html: showTaskFollowupModal),
+  // available on both Received and Delegated cards regardless of proof status.
+  window.openTaskFollowup = function openTaskFollowup(id, received) {
+    const list = received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []);
+    const a = list.find(x => x.id === id);
+    if (!a || typeof window.showTaskFollowupModal !== 'function') return;
+    window.showTaskFollowupModal({
+      assignmentId: a.id,
+      appTaskId: a.appTaskId || '',
+      title: a.title || '',
+      assignerEmail: a.assignerEmail || '',
+      assignerName: a.assignerName || '',
+      recipientEmail: a.recipientEmail || '',
+      recipientName: a.recipientName || '',
+      role: received ? 'assignee' : 'assignor',
+    });
+  };
+
+  // Called by showTaskFollowupModal once the thread has loaded, so opening
+  // the modal clears the unread count the same way expanding a group clears
+  // its "new" badge. Stores the thread length seen so far (not just a flag)
+  // so a later re-open can compute exactly how many new messages arrived.
+  // role must match the 'assignee'/'assignor' key format used by
+  // followupSeenKey above — see the comment there for why role is part of
+  // the key (self-assigned tasks share one assignment id across both views).
+  window.markTaskFollowupSeen = function markTaskFollowupSeen(assignmentId, threadLen, role) {
+    if (!assignmentId) return;
+    const key = `${assignmentId}::${role === 'assignor' ? 'assignor' : 'assignee'}`;
+    followupSeenLengths[key] = threadLen;
+    saveFollowupSeenLengths(followupSeenLengths);
+    renderTasksTabList();
+  };
+
   window.openProofReviewFromTasksTab = async function openProofReviewFromTasksTab(id) {
     const a = (tasksTabCache.assignedByMe || []).find(x => x.id === id);
     if (!a) return;
@@ -408,6 +586,9 @@
       await checkAndLoadProofNotifications().catch(err => console.warn('Proof notification refresh failed:', err.message));
     }
     if (typeof nav === 'function') nav('notifications');
+    // Scrolls to and flashes the exact notification card so the user doesn't
+    // have to hunt for it among every other pending notification.
+    window.highlightProofNotificationForTask?.(a.appTaskId);
     toast('Open Notifications to review the submitted proof');
   };
 

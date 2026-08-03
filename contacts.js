@@ -186,12 +186,18 @@
     profileContacts().forEach((p) => {
       if (p?.email) map.set(normEmail(p.email), p);
     });
-    Object.values(staffConfig).forEach((p) => {
+    // userContacts (personal Outlook/AAD-synced cache, often carrying a
+    // stale/raw "department" attribute) is merged BEFORE staffConfig so the
+    // admin-curated department always wins on conflict — matching
+    // personDept()'s own priority order (staffConfig checked first). This
+    // used to be reversed, letting a stale personal contact entry silently
+    // override the correct configured department in the autocomplete.
+    Object.values(userContacts || {}).forEach((p) => {
       if (!p?.email || !p?.name) return;
       const key = normEmail(p.email);
       map.set(key, { ...(map.get(key) || {}), ...p, email: key });
     });
-    Object.values(userContacts || {}).forEach((p) => {
+    Object.values(staffConfig).forEach((p) => {
       if (!p?.email || !p?.name) return;
       const key = normEmail(p.email);
       map.set(key, { ...(map.get(key) || {}), ...p, email: key });
