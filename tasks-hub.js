@@ -227,9 +227,13 @@
 
   function assignmentActions(a, received) {
     const proof = proofState(a);
-    const followBtn = followupButton(a, received);
-    const bellBtn = alertBellButton(a, received);
-    const alertBadge = alertLabel(a, received);
+    // A task that's Done has nothing left to follow up or alert about — once
+    // it sinks into the completed/"history" part of its group (see
+    // sortAssignmentItems), these controls are retired along with it.
+    const isDone = proof === 'approved';
+    const followBtn = isDone ? '' : followupButton(a, received);
+    const bellBtn = isDone ? '' : alertBellButton(a, received);
+    const alertBadge = isDone ? '' : alertLabel(a, received);
     let content;
     if (received) {
       if (proof === 'none') {
@@ -260,7 +264,7 @@
   }
 
   function assignmentCard(a, received) {
-    const hasFollowup = followupUnreadCount(a, received) > 0;
+    const hasFollowup = proofState(a) !== 'approved' && followupUnreadCount(a, received) > 0;
     return `<div class="wed-card${hasFollowup ? ' has-followup' : ''}">
       <div class="wed-card-head">
         <div class="wed-card-title">${escapeHtml(a.title || '')}</div>
@@ -399,7 +403,7 @@
       const safeGroupKey = escapeHtml(JSON.stringify(group.key));
       const newCount = group.items.filter(a => !seenAssignmentStages.has(assignmentSeenKey(a))).length;
       const newBadge = newCount > 0 ? `<span class="assign-new-badge">${newCount > 9 ? '9+' : newCount}</span>` : '';
-      const followupTotal = group.items.reduce((sum, a) => sum + followupUnreadCount(a, received), 0);
+      const followupTotal = group.items.reduce((sum, a) => sum + (proofState(a) === 'approved' ? 0 : followupUnreadCount(a, received)), 0);
       const followupGroupBadge = followupTotal > 0
         ? `<span class="assign-followup-group-badge">+${followupTotal > 9 ? '9+' : followupTotal} follow-up${followupTotal > 1 ? 's' : ''}</span>`
         : '';

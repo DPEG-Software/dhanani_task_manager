@@ -891,7 +891,7 @@
       <div class="mo-section-lbl">Schedule &amp; Status</div>
       <div class="d-row"><div class="d-lbl">Date</div><input type="date" class="form-in" id="mo-edit-date" style="font-size:12px;padding:4px 8px;width:auto"></div>
       <div class="d-row"><div class="d-lbl">Priority</div><select class="form-sel" id="mo-edit-priority" style="width:auto"><option>Normal</option><option>High</option></select></div>
-      <div class="d-row"><div class="d-lbl">Status</div><select class="form-sel" id="mo-status" style="width:auto"><option>Pending</option><option>Done</option><option>Overdue</option></select></div>
+      <div class="d-row"><div class="d-lbl">Status</div><select class="form-sel" id="mo-status" style="width:auto"><option>Pending</option><option>Done</option></select></div>
 
       <div id="mo-proof-panel"></div>
     </div>
@@ -2933,8 +2933,8 @@ async function refreshTaskFromThreadMessages(messages,subject=''){
   }
 }
 
-function sbadge(s) {
-  const st=nstt(s);
+function sbadge(t) {
+  const st=isOverdueTask(t)?"Overdue":nstt(t.status);
   const m={Pending:"bp",Done:"bd",Overdue:"bo"};
   return `<span class="badge ${m[st]||"bp"}">${st}</span>`;
 }
@@ -3149,8 +3149,8 @@ function taskWeekOffset(t){
 }
 function sortActionTasks(list){
   return [...list].sort((a,b)=>{
-    const ao=nstt(a.status)==="Overdue"?0:1;
-    const bo=nstt(b.status)==="Overdue"?0:1;
+    const ao=isOverdueTask(a)?0:1;
+    const bo=isOverdueTask(b)?0:1;
     if(ao!==bo)return ao-bo;
     const ap=String(a.priority||"Normal").toLowerCase()==="high"?0:1;
     const bp=String(b.priority||"Normal").toLowerCase()==="high"?0:1;
@@ -3166,7 +3166,8 @@ function getVis(){
     const createdInWeek=taskWeekOffset(t)===curWeek;
     const wm=curSearch?true:createdInWeek;
     const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
-    return wm&&sm&&(sf==="all"||nstt(t.status)===sf)&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
+    const stm=sf==="all"||(sf==="Overdue"?isOverdueTask(t):nstt(t.status)===sf);
+    return wm&&sm&&stm&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
   }));
 }
 function renderMaster(){
@@ -3191,7 +3192,7 @@ function renderMaster(){
         <div style="display:flex;align-items:center;gap:6px">${av(t.person,22)}<span style="font-size:12px;color:var(--body);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.person}</span></div>
       </td>
       <td style="padding:10px 8px"><span class="dept-pill" style="font-size:10.5px;padding:2px 7px"><span class="dept-dot" style="background:${dcolor(t.dept)}"></span>${t.dept}</span></td>
-      <td style="padding:10px 8px">${sbadge(t.status)}</td>
+      <td style="padding:10px 8px">${sbadge(t)}</td>
       <td style="padding:10px 8px">${pBadge(t.priority)}</td>
       <td onclick="event.stopPropagation()" style="padding:10px 8px">
         <div class="wed-btn${t.wednesday?" on":""}" style="width:auto;padding:0 8px;font-size:10.5px;white-space:nowrap" onclick="togWed(${t.id})">${t.wednesday?"On Wed":"+ Wed"}</div>
@@ -3270,7 +3271,7 @@ function renderPplList(filter){
   el.innerHTML=list.map(p=>{
     const dn=p.tasks.filter(t=>nstt(t.status)==="Done").length;
     const pe=p.tasks.filter(t=>nstt(t.status)!=="Done").length;
-    const ov=p.tasks.filter(t=>nstt(t.status)==="Overdue").length;
+    const ov=p.tasks.filter(isOverdueTask).length;
     return `<div class="person-row${curPplSel===p.name?" sel":""}" onclick="selectPpl('${p.name}')">
       ${av(p.name,32)}
       <div style="flex:1;min-width:0">
@@ -3305,11 +3306,11 @@ function selectPpl(name){
       ${av(name,44)}<div style="flex:1">
         <div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:2px">${name}</div>
         <div style="font-size:12px;color:var(--muted)">${pdb?.role||""} &bull; ${dept} &bull; <span id="ppl-email-label">${email||"No email saved"}</span></div>
-        <div style="display:flex;gap:12px;margin-top:5px"><span style="font-size:12px;font-weight:600;color:#15803d">${dn} completed</span><span style="font-size:12px;font-weight:600;color:${pt.filter(t=>nstt(t.status)==="Overdue").length?"#b91c1c":"var(--muted)"}">${pt.filter(t=>nstt(t.status)!=="Done").length} open</span></div>
+        <div style="display:flex;gap:12px;margin-top:5px"><span style="font-size:12px;font-weight:600;color:#15803d">${dn} completed</span><span style="font-size:12px;font-weight:600;color:${pt.filter(isOverdueTask).length?"#b91c1c":"var(--muted)"}">${pt.filter(t=>nstt(t.status)!=="Done").length} open</span></div>
       </div>
       <div style="text-align:right"><div style="font-size:22px;font-weight:700;color:var(--body)">${pct}%</div><div class="prog-track" style="width:72px;margin-top:4px"><div class="prog-fill" style="width:${pct}%"></div></div></div>
     </div>
-    ${pt.length?`<table style="width:100%;border-collapse:collapse"><thead><tr>${["Task","Status","Priority","Date","Notes"].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:#f9fafb;border-bottom:1px solid var(--border)">${h}</th>`).join("")}</tr></thead><tbody>${pt.map(t=>`<tr style="border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openDetail(${t.id})"><td style="padding:10px"><div style="font-size:13px;font-weight:600;color:var(--body)">${t.title}</div>${threadLinkButton(t)}</td><td style="padding:10px">${sbadge(t.status)}</td><td style="padding:10px">${pBadge(t.priority)}</td><td style="padding:10px;font-size:12px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td><td style="padding:10px;font-size:12px;color:var(--muted);font-style:${t.followup?"normal":"italic"}">${t.followup||"None"}</td></tr>`).join("")}</tbody></table>`:
+    ${pt.length?`<table style="width:100%;border-collapse:collapse"><thead><tr>${["Task","Status","Priority","Date","Notes"].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:#f9fafb;border-bottom:1px solid var(--border)">${h}</th>`).join("")}</tr></thead><tbody>${pt.map(t=>`<tr style="border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openDetail(${t.id})"><td style="padding:10px"><div style="font-size:13px;font-weight:600;color:var(--body)">${t.title}</div>${threadLinkButton(t)}</td><td style="padding:10px">${sbadge(t)}</td><td style="padding:10px">${pBadge(t.priority)}</td><td style="padding:10px;font-size:12px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td><td style="padding:10px;font-size:12px;color:var(--muted);font-style:${t.followup?"normal":"italic"}">${t.followup||"None"}</td></tr>`).join("")}</tbody></table>`:
     `<div class="empty-state"><div class="es-text">No tasks assigned yet</div></div>`}`;
 }
 async function updatePersonDept(name,dept){
@@ -3325,7 +3326,7 @@ function renderDeptList(){
   tasks.forEach(t=>{if(dp[t.dept])dp[t.dept].push(t);else dp[t.dept]=[t];});
   document.getElementById("dept-list").innerHTML=Object.entries(dp).map(([d,dt])=>{
     const dn=dt.filter(t=>nstt(t.status)==="Done").length;
-    const ov=dt.filter(t=>nstt(t.status)==="Overdue").length;
+    const ov=dt.filter(isOverdueTask).length;
     const initials=d.split(" ").map(x=>x[0]).join("").toUpperCase().slice(0,2);
     return `<div class="dept-row${curDeptSel===d?" sel":""}" onclick="selectDept('${d}')">
       <div class="dept-icon" style="background:${dcolor(d)}">${initials}</div>
@@ -3344,7 +3345,7 @@ function selectDept(dept){
       <div style="flex:1"><div style="font-size:17px;font-weight:700;color:var(--body);margin-bottom:1px">${dept}</div><div style="font-size:12px;color:var(--muted)">${dt.length} tasks &bull; ${pct}% complete</div></div>
       <div style="text-align:right"><div style="font-size:22px;font-weight:700;color:var(--body)">${pct}%</div><div class="prog-track" style="width:72px;margin-top:4px"><div class="prog-fill" style="width:${pct}%"></div></div></div>
     </div>
-    ${dt.length?`<table style="width:100%;border-collapse:collapse"><thead><tr>${["Task","Assigned To","Status","Date"].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:#f9fafb;border-bottom:1px solid var(--border)">${h}</th>`).join("")}</tr></thead><tbody>${dt.map(t=>`<tr style="border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openDetail(${t.id})"><td style="padding:10px"><div style="font-size:13px;font-weight:600;color:var(--body)">${t.title}</div>${threadLinkButton(t)}</td><td style="padding:10px"><div style="display:flex;align-items:center;gap:7px">${av(t.person,24)}<span style="font-size:12.5px">${t.person}</span></div></td><td style="padding:10px">${sbadge(t.status)}</td><td style="padding:10px;font-size:12px;color:var(--muted)">${fmtD(t.date)}</td></tr>`).join("")}</tbody></table>`:
+    ${dt.length?`<table style="width:100%;border-collapse:collapse"><thead><tr>${["Task","Assigned To","Status","Date"].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);background:#f9fafb;border-bottom:1px solid var(--border)">${h}</th>`).join("")}</tr></thead><tbody>${dt.map(t=>`<tr style="border-bottom:1px solid #f3f4f6;cursor:pointer" onclick="openDetail(${t.id})"><td style="padding:10px"><div style="font-size:13px;font-weight:600;color:var(--body)">${t.title}</div>${threadLinkButton(t)}</td><td style="padding:10px"><div style="display:flex;align-items:center;gap:7px">${av(t.person,24)}<span style="font-size:12.5px">${t.person}</span></div></td><td style="padding:10px">${sbadge(t)}</td><td style="padding:10px;font-size:12px;color:var(--muted)">${fmtD(t.date)}</td></tr>`).join("")}</tbody></table>`:
     `<div class="empty-state"><div class="es-text">No tasks yet</div></div>`}`;
 }
 
@@ -3362,13 +3363,13 @@ function renderActivity(){
   const el=document.getElementById("activity-list");
   let list;
   if(curActTab==='overdue'){
-    list=tasks.filter(t=>nstt(t.status)==="Overdue").sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,12);
+    list=tasks.filter(isOverdueTask).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,12);
   } else {
     list=[...tasks].sort((a,b)=>b.id-a.id).slice(0,10);
   }
   if(!list.length){el.innerHTML=`<div style="padding:20px;text-align:center;font-size:12px;color:var(--muted)">${curActTab==='overdue'?'No overdue tasks ✔':'No activity yet'}</div>`;return;}
   el.innerHTML=list.map(t=>{
-    const dc=nstt(t.status)==="Done"?"done":nstt(t.status)==="Overdue"?"overdue":"";
+    const dc=nstt(t.status)==="Done"?"done":isOverdueTask(t)?"overdue":"";
     const dateLbl=fmtD(t.date)?`Added: ${fmtD(t.date)}`:'No deadline';
     return `<div class="act-item" style="cursor:pointer" onclick="openDetail(${t.id})"><div class="act-dot ${dc}"></div><div><div class="act-title">${t.title}</div><div class="act-meta">${t.dept} &bull; ${t.person} &bull; ${dateLbl}</div></div></div>`;
   }).join("");
@@ -3406,8 +3407,8 @@ function renderWed(){
   const wt=tasks.filter(t=>t.wednesday);
   const total=wt.length+customNotes.length;
   document.getElementById('ws-n').textContent=total;
-  document.getElementById('ws-p').textContent=wt.filter(t=>nstt(t.status)==='Pending').length;
-  document.getElementById('ws-o').textContent=wt.filter(t=>nstt(t.status)==='Overdue').length;
+  document.getElementById('ws-p').textContent=wt.filter(t=>nstt(t.status)==='Pending'&&!isOverdueTask(t)).length;
+  document.getElementById('ws-o').textContent=wt.filter(isOverdueTask).length;
   const el=document.getElementById('wed-list');
   if(!total){
     el.innerHTML=`<div class="empty-state"><div class="es-text">Nothing added yet</div><div class="es-sub">Use the Wed button in the Action Log to add tasks, or type a note above</div></div>`;
@@ -3437,7 +3438,7 @@ function renderWed(){
       const dt=groups[dept];
       const dc=DEPT_COLORS[dept]||'#374151';
       const dn=dt.filter(t=>nstt(t.status)==='Done').length;
-      const ov=dt.filter(t=>nstt(t.status)==='Overdue').length;
+      const ov=dt.filter(isOverdueTask).length;
       const pct=dt.length?Math.round(dn/dt.length*100):0;
       html+=`<button onclick="document.getElementById('wed-dept-${dept.replace(/[^a-zA-Z0-9]/g,'-')}')?.scrollIntoView({behavior:'smooth',block:'nearest'})"
         style="display:flex;flex-direction:column;gap:3px;padding:10px 13px;border:1px solid var(--border);border-radius:var(--r);background:var(--white);cursor:pointer;transition:all .15s;text-align:left;min-width:100px;border-top:3px solid ${dc}"
@@ -3470,7 +3471,7 @@ function renderWed(){
           <div class="wed-card-head">
             <div class="wed-card-title">${emailSubject(t)}</div>
             <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
-              ${sbadge(t.status)}
+              ${sbadge(t)}
               <button class="rm-btn" onclick="removeFromWed(${t.id})" title="Remove from agenda">&#215;</button>
             </div>
           </div>
@@ -3487,7 +3488,7 @@ function renderWed(){
             </div>
             <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="1" style="min-height:32px">${t.meetingNote||''}</textarea>
             <div class="ag-foot" style="margin-top:6px">
-              ${['Pending','Done','Overdue'].map(s=>`<button class="ag-status-btn ${s.toLowerCase()}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
+              ${['Pending','Done'].map(s=>`<button class="ag-status-btn ${s.toLowerCase()}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
               <button class="btn btn-ghost btn-xs" onclick="removeFromWed(${t.id})" style="margin-left:auto;font-size:10.5px">Remove</button>
             </div>
           </div>
@@ -3557,11 +3558,11 @@ async function saveMeeting(){
   wt.forEach(t=>{const el=document.getElementById("wn-"+t.id);if(el)t.meetingNote=el.value;});
   customNotes.forEach((n,i)=>{const el=document.getElementById("cn-note-"+i);if(el)n.meetingNote=el.value;});
   archives.unshift({id:Date.now(),date:new Date().toISOString().split("T")[0],
-    tasks:wt.map(t=>({title:t.title,person:t.person,dept:t.dept,status:nstt(t.status),note:t.meetingNote||""})),
+    tasks:wt.map(t=>({title:t.title,person:t.person,dept:t.dept,status:isOverdueTask(t)?"Overdue":nstt(t.status),note:t.meetingNote||""})),
     customNotes:customNotes.map(n=>({text:n.text,note:n.meetingNote||""}))
   });
   tasks.forEach(t=>{
-    if(nstt(t.status)==="Overdue"){
+    if(isOverdueTask(t)){
       t.wednesday=false;
       t.carryForwardFrom=t.carryForwardFrom||new Date().toISOString().split("T")[0];
       t.followup=t.meetingNote||t.followup||"Pending from Wednesday review.";
@@ -3608,7 +3609,7 @@ function showArcD(id){
         <div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">
           <div style="width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${idx++}</div>
           <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--body)">${t.title}</div><div style="font-size:11.5px;color:var(--muted)">${t.person} &bull; ${t.dept}</div></div>
-          ${sbadge(t.status)}
+          ${sbadge(t)}
         </div>
         ${t.note?`<div style="font-size:12px;color:var(--sub);padding:8px 12px;background:#f9fafb;border-radius:var(--r);border-left:3px solid #e5e7eb;margin-top:4px;line-height:1.55">${t.note}</div>`:`<div style="font-size:12px;color:var(--muted);font-style:italic">No notes recorded</div>`}
       </div>`).join("")}
@@ -3634,7 +3635,8 @@ function getSummaryFilteredTasks(){
   const {w,dept,status}=getSummaryFilters();
   return tasks.filter(t=>{
     const wm=w==="all"||t.weekOffset===parseInt(w)||(nstt(t.status)!=="Done"&&t.weekOffset<=parseInt(w));
-    return (w==="all"?true:wm)&&(dept==="all"||t.dept===dept)&&(status==="all"||nstt(t.status)===status);
+    const stm=status==="all"||(status==="Overdue"?isOverdueTask(t):nstt(t.status)===status);
+    return (w==="all"?true:wm)&&(dept==="all"||t.dept===dept)&&stm;
   });
 }
 function buildSummaryPrintReport(){
@@ -3662,7 +3664,7 @@ function buildSummaryPrintReport(){
           <td><strong>${escapeHtml(emailSubject(t))}</strong></td>
           <td>${escapeHtml(t.person||"")}</td>
           <td>${escapeHtml(t.dept||"")}</td>
-          <td>${escapeHtml(nstt(t.status))}</td>
+          <td>${escapeHtml(isOverdueTask(t)?"Overdue":nstt(t.status))}</td>
           <td>${escapeHtml(t.priority||"Normal")}</td>
           <td>${escapeHtml(fmtD(t.date))}</td>
           <td>${escapeHtml(t.followup||t.summary||"")}</td>
@@ -3675,13 +3677,13 @@ function renderSum(){
   document.getElementById("sum-tbody").innerHTML=list.map((t,i)=>`
     <tr><td style="color:var(--muted)">${i+1}</td><td><div style="font-weight:600;color:var(--body)">${t.title}</div></td><td>${t.person}</td>
     <td><span class="dept-pill"><span class="dept-dot" style="background:${dcolor(t.dept)}"></span>${t.dept}</span></td>
-    <td>${sbadge(t.status)}</td><td>${pBadge(t.priority)}</td>
+    <td>${sbadge(t)}</td><td>${pBadge(t.priority)}</td>
     <td style="color:var(--muted);font-size:12px;white-space:nowrap">${fmtD(t.date)}</td>
     <td style="color:var(--muted);font-size:12px;font-style:${t.followup?"normal":"italic"}">${t.followup||"None"}</td></tr>`).join("");
 }
 function dlCSV(){
   let list=getSummaryFilteredTasks();
-  const rows=[["Number","Task","Assigned To","Email","Department","Status","Priority","Date","Notes"],...list.map((t,i)=>[i+1,t.title,t.person,t.email||"",t.dept,nstt(t.status),t.priority||"",fmtD(t.date),t.followup||""])];
+  const rows=[["Number","Task","Assigned To","Email","Department","Status","Priority","Date","Notes"],...list.map((t,i)=>[i+1,t.title,t.person,t.email||"",t.dept,isOverdueTask(t)?"Overdue":nstt(t.status),t.priority||"",fmtD(t.date),t.followup||""])];
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,"+encodeURIComponent(csv);
   a.download=`DPEG_Tasks_${new Date().toISOString().split("T")[0]}.csv`;a.click();toast("CSV downloaded");
@@ -3823,7 +3825,7 @@ async function addTask(){
 function drillStat(type){
   let list,title,sub;
   if(type==="high"){list=tasks.filter(t=>String(t.priority||"Normal").toLowerCase()==="high"&&nstt(t.status)!=="Done");title="High Priority Tasks";sub=`${list.length} tasks needing immediate attention`;}
-  if(type==="overdue"){list=tasks.filter(t=>nstt(t.status)==="Overdue").sort((a,b)=>new Date(a.date)-new Date(b.date));title="Overdue Tasks";sub=`${list.length} tasks past their deadline`;}
+  if(type==="overdue"){list=tasks.filter(isOverdueTask).sort((a,b)=>new Date(a.date)-new Date(b.date));title="Overdue Tasks";sub=`${list.length} tasks past their deadline`;}
   if(!list||!list.length){toast("No tasks in this category");return;}
   document.getElementById("drill-title").textContent=title;document.getElementById("drill-sub").textContent=sub;
   document.getElementById("drill-tbody").innerHTML=list.map(t=>`
@@ -3831,7 +3833,7 @@ function drillStat(type){
       <td style="padding:11px 14px"><div style="font-size:13px;font-weight:600;color:var(--body)">${t.title}</div></td>
       <td style="padding:11px 14px;font-size:12.5px">${t.person}</td>
       <td style="padding:11px 14px"><span class="dept-pill"><span class="dept-dot" style="background:${dcolor(t.dept)}"></span>${t.dept}</span></td>
-      <td style="padding:11px 14px">${sbadge(t.status)}</td><td style="padding:11px 14px">${pBadge(t.priority)}</td>
+      <td style="padding:11px 14px">${sbadge(t)}</td><td style="padding:11px 14px">${pBadge(t.priority)}</td>
       <td style="padding:11px 14px;font-size:12px;color:var(--muted);white-space:nowrap">${fmtD(t.date)}</td>
     </tr>`).join("");
   document.getElementById("mo-drill").classList.add("open");
@@ -6057,7 +6059,7 @@ async function showUnreadCheckIfNeeded(recipientStr, onProceed){
     <div class="unread-thread-card">
       <div class="unread-thread-head">
         <div class="unread-thread-title">${emailSubject(t)}</div>
-        ${sbadge(t.status)}
+        ${sbadge(t)}
       </div>
       <div class="unread-thread-meta">
         <span style="font-weight:600">${t.person}</span>
@@ -6708,7 +6710,7 @@ function showForwardRelatedTasks(recipientEmail){
     <div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid #fed7aa">
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:600;color:var(--body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emailSubject(t)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:1px">${t.person||''} · ${sbadge(t.status)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${t.person||''} · ${sbadge(t)}</div>
       </div>
       ${taskEmailId(t)?`<button class="btn btn-ghost btn-xs" onclick="openTaskThread(${t.id})" style="flex-shrink:0;font-size:10.5px;padding:3px 7px">View</button>`:''}
     </div>`).join('');
