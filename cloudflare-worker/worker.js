@@ -217,20 +217,49 @@ function decodeToken(token) {
   }
 }
 
-// Validate the user's MSAL Bearer token (shared by both endpoints)
-function validateUserToken(request) {
+// Validate the user's MSAL Bearer token (shared by every endpoint).
+// decodeToken() only base64-decodes the payload — it does NOT check the
+// signature. So the actual proof of identity here is the call to Graph
+// /me: Graph only returns 200 for a genuine, unexpired token it issued.
+// Once that succeeds, the token as a whole is known-authentic, so it's
+// safe to also read auxiliary fields (like tid) off the unsigned decode —
+// an attacker can't get Graph to accept a token whose payload was tampered.
+async function validateUserToken(request) {
   const auth  = request.headers.get('Authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token) return { error: 'Missing authorization token', status: 401 };
-  const claims = decodeToken(token);
-  if (!claims) return { error: 'Invalid token', status: 401 };
-  if (claims.tid !== DPEG_TENANT_ID) return { error: 'Wrong tenant', status: 403 };
-  if (claims.exp && Date.now() / 1000 > claims.exp) return { error: 'Token expired', status: 401 };
+
+  let me;
+  try {
+    const meRes = await fetch(
+      'https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName,displayName',
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!meRes.ok) return { error: 'Invalid or expired token', status: 401 };
+    me = await meRes.json();
+  } catch {
+    return { error: 'Could not verify token', status: 502 };
+  }
+
+  const decoded = decodeToken(token) || {};
+  if (decoded.tid !== DPEG_TENANT_ID) return { error: 'Wrong tenant', status: 403 };
+
+  const email = extractEmailAddress(me.mail || me.userPrincipalName || '');
+  if (!email) return { error: 'Could not resolve account email', status: 403 };
+
+  const claims = { ...decoded, preferred_username: email, name: me.displayName || decoded.name };
   return { claims };
 }
 
-// Acquire an app-only token using client_credentials (uses Tasks.ReadWrite.All Application permission)
+// Acquire an app-only token using client_credentials (uses Tasks.ReadWrite.All Application permission).
+// Cached per-isolate until shortly before expiry so we're not round-tripping
+// to Azure AD on every single request.
+let appTokenCache = { token: null, expiresAt: 0 };
 async function getAppToken(env) {
+  const now = Date.now();
+  if (appTokenCache.token && now < appTokenCache.expiresAt - 30_000) {
+    return appTokenCache.token;
+  }
   const body = new URLSearchParams({
     grant_type:    'client_credentials',
     client_id:     AZURE_CLIENT_ID,
@@ -246,12 +275,13 @@ async function getAppToken(env) {
     throw new Error(`App token request failed (${res.status}): ${err}`);
   }
   const data = await res.json();
-  return data.access_token;
+  appTokenCache = { token: data.access_token, expiresAt: now + (data.expires_in || 3600) * 1000 };
+  return appTokenCache.token;
 }
 
 // ── /todo endpoint ───────────────────────────────────────────────────────────
 async function handleTodo(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
 
   let body;
@@ -359,7 +389,7 @@ async function handleTodo(request, env) {
 
 // ── /data endpoint: shared company state for Action Log / Wednesday / Admin config
 async function handleData(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_DATA) return json({ error: 'DPEG_DATA KV binding is not configured' }, 501);
 
@@ -375,6 +405,20 @@ async function handleData(request, env) {
 
     const userEmail = extractEmailAddress(claims.preferred_username || claims.upn || claims.email || '');
     const existing = await env.DPEG_DATA.get(DATA_KEY, 'json') || {};
+
+    // Optimistic concurrency: this endpoint reads the whole shared document
+    // and writes the whole thing back, so without a version check, two
+    // people saving around the same time silently clobber each other's
+    // tasks/notes. The client must prove it last loaded the version it's
+    // about to overwrite; otherwise it must reload and retry.
+    if (existing.updatedAt && body.baseUpdatedAt !== existing.updatedAt) {
+      return json({
+        error: 'conflict',
+        message: 'Company data changed since you last loaded it. Reload and try again.',
+        current: existing,
+      }, 409);
+    }
+
     const payload = {
       tasks: Array.isArray(body.tasks) ? body.tasks : [],
       archives: Array.isArray(body.archives) ? body.archives : [],
@@ -394,7 +438,7 @@ async function handleData(request, env) {
 
 // ── / endpoint (existing AI summary) ─────────────────────────────────────────
 async function handleSummary(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
 
   let body;
@@ -448,7 +492,7 @@ Write 3-5 sentences. No bullet points, no headers. State names, amounts, propert
 
 // ── /attachment-summary endpoint ─────────────────────────────────────────────
 async function handleAttachmentSummary(request, env) {
-  const { error, status } = validateUserToken(request);
+  const { error, status } = await validateUserToken(request);
   if (error) return json({ error }, status);
 
   let body;
@@ -492,7 +536,7 @@ Write 1-3 bullet points (•) summarizing what these attachments contain. Be spe
 
 // ── /poll-completions endpoint ───────────────────────────────────────────────
 async function handlePollCompletions(request, env) {
-  const { error, status } = validateUserToken(request);
+  const { error, status } = await validateUserToken(request);
   if (error) return json({ error }, status);
 
   let body;
@@ -534,7 +578,7 @@ async function handlePollCompletions(request, env) {
 }
 
 async function handleProofTask(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
 
   let body;
@@ -563,7 +607,7 @@ async function handleProofTask(request, env) {
 }
 
 async function handleProofSubmit(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
 
   let body;
@@ -608,7 +652,7 @@ async function handleProofSubmit(request, env) {
 
 // ── /notify endpoint: append or update proof notifications in KV ──────────────
 async function handleNotify(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_DATA) return json({ error: 'DPEG_DATA KV binding is not configured' }, 501);
 
@@ -870,7 +914,7 @@ async function handleTodoUpdate(request, env) {
 
 // ── /assignment endpoint: create/update a shared assignment record (D1) ──────
 async function handleCreateAssignment(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
   await ensureAssignmentProofColumns(env);
@@ -893,17 +937,33 @@ async function handleCreateAssignment(request, env) {
   const assignerName = String(body.assignerName || claims.name || assignerEmail || '').trim();
   const now = new Date().toISOString();
 
-  const existing = await env.DPEG_ASSIGNMENTS
-    .prepare('SELECT created_at, status, progress_note, proof_status, proof_submitted_at, proof_reviewed_at, proof_notification_id FROM assignments WHERE id = ?')
-    .bind(id).first();
-
+  // Single atomic upsert: on conflict, only touch assigner-owned columns.
+  // Recipient-owned columns (status, progress_note, proof_*) and created_at
+  // are deliberately left out of the DO UPDATE SET so a concurrent
+  // /assignment-status write from the recipient can never be clobbered by
+  // a racing /assignment write from the assigner (or vice versa).
   await env.DPEG_ASSIGNMENTS.prepare(
-    `INSERT OR REPLACE INTO assignments
+    `INSERT INTO assignments
       (id, app_task_id, title, summary, dept, priority, due_date,
        assigner_email, assigner_name, recipient_email, recipient_name,
        status, progress_note, proof_status, proof_submitted_at, proof_reviewed_at, proof_notification_id, recipient_todo_list_id, recipient_todo_task_id,
        proof_instructions, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,'Assigned',NULL,'none',NULL,NULL,NULL,?,?,?,?,?)
+     ON CONFLICT(id) DO UPDATE SET
+       app_task_id = excluded.app_task_id,
+       title = excluded.title,
+       summary = excluded.summary,
+       dept = excluded.dept,
+       priority = excluded.priority,
+       due_date = excluded.due_date,
+       assigner_email = excluded.assigner_email,
+       assigner_name = excluded.assigner_name,
+       recipient_email = excluded.recipient_email,
+       recipient_name = excluded.recipient_name,
+       recipient_todo_list_id = excluded.recipient_todo_list_id,
+       recipient_todo_task_id = excluded.recipient_todo_task_id,
+       proof_instructions = excluded.proof_instructions,
+       updated_at = excluded.updated_at`
   ).bind(
     id,
     String(body.appTaskId || ''),
@@ -916,16 +976,10 @@ async function handleCreateAssignment(request, env) {
     assignerName,
     recipientEmail,
     String(body.recipientName || ''),
-    existing?.status || 'Assigned',
-    existing?.progress_note ?? null,
-    existing?.proof_status || 'none',
-    existing?.proof_submitted_at ?? null,
-    existing?.proof_reviewed_at ?? null,
-    existing?.proof_notification_id ?? null,
     String(body.recipientTodoListId || ''),
     String(body.recipientTodoTaskId || ''),
     String(body.proofInstructions || ''),
-    existing?.created_at || now,
+    now,
     now,
   ).run();
 
@@ -934,7 +988,7 @@ async function handleCreateAssignment(request, env) {
 
 // ── /assignments endpoint: fetch both directions for the current user (D1) ───
 async function handleAssignments(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
   await ensureAssignmentProofColumns(env);
@@ -993,7 +1047,7 @@ async function handleAssignments(request, env) {
 const ASSIGNMENT_STATUSES = new Set(['Assigned', 'In Progress']);
 
 async function handleAssignmentStatus(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
   await ensureAssignmentProofColumns(env);

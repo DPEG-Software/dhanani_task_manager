@@ -2,9 +2,9 @@
   const LIVE_STAGES = ['Assigned', 'In Progress', 'Submitted', 'Done'];
   const MANUAL_STATUSES = ['Assigned', 'In Progress'];
 
-  let tasksTabMode = 'received'; // 'received' | 'given'
+  let tasksTabMode = 'received'; // 'received' | 'given' | 'history'
   let tasksTabCache = { assignedToMe: [], assignedByMe: [] };
-  const tasksTabOpenGroups = { received: new Set(), given: new Set() };
+  const tasksTabOpenGroups = { received: new Set(), given: new Set(), history: new Set() };
 
   // "New" tracking for the red count badge next to each group's name. Keyed by
   // id + current stage (not just id) so a task that was already seen still
@@ -57,18 +57,44 @@
     return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
   }
 
-  function groupAssignments(list, received) {
+  // History is all-Done already, so sort by when it was approved (falling
+  // back to creation date) instead of when it was assigned.
+  function sortHistoryItems(a, b) {
+    return new Date(b.proofReviewedAt || b.createdAt || 0) - new Date(a.proofReviewedAt || a.createdAt || 0);
+  }
+
+  // `received` is either a fixed boolean (Received/Delegated tabs, one
+  // direction for the whole list) or a per-item lookup fn (History, which
+  // merges both directions). Groups are keyed with a direction prefix only
+  // in the per-item case, so a person who both assigned you something and
+  // received something from you doesn't collapse into a single group.
+  function groupAssignments(list, received, sortFn = sortAssignmentItems) {
+    const perItem = typeof received === 'function';
     const grouped = new Map();
     list.forEach(a => {
-      const name = received ? a.assignerName : a.recipientName;
-      const email = received ? a.assignerEmail : a.recipientEmail;
-      const key = groupKey(name, email);
-      if (!grouped.has(key)) grouped.set(key, { key, name: groupLabel(name, email), items: [] });
+      const isReceived = perItem ? received(a) : received;
+      const name = isReceived ? a.assignerName : a.recipientName;
+      const email = isReceived ? a.assignerEmail : a.recipientEmail;
+      const key = (perItem ? (isReceived ? 'in:' : 'out:') : '') + groupKey(name, email);
+      if (!grouped.has(key)) grouped.set(key, { key, name: groupLabel(name, email), received: isReceived, items: [] });
       grouped.get(key).items.push(a);
     });
     const groups = [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name));
-    groups.forEach(g => g.items.sort(sortAssignmentItems));
+    groups.forEach(g => g.items.sort(sortFn));
     return groups;
+  }
+
+  // Shared by renderTasksTabList and toggleTasksGroup so both derive the
+  // exact same list/grouping for a given tab mode.
+  function tasksTabModeSource(mode) {
+    if (mode === 'history') {
+      const toMe = (tasksTabCache.assignedToMe || []).filter(a => stageLabel(a) === 'Done').map(a => ({ ...a, _received: true }));
+      const byMe = (tasksTabCache.assignedByMe || []).filter(a => stageLabel(a) === 'Done').map(a => ({ ...a, _received: false }));
+      return { list: [...toMe, ...byMe], received: a => a._received, sortFn: sortHistoryItems };
+    }
+    const received = mode === 'received';
+    const list = (received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || [])).filter(a => stageLabel(a) !== 'Done');
+    return { list, received, sortFn: sortAssignmentItems };
   }
 
   function safeDomId(id) {
@@ -316,11 +342,14 @@
     tasksTabMode = mode;
     document.getElementById('tasks-received-btn')?.classList.toggle('active', mode === 'received');
     document.getElementById('tasks-given-btn')?.classList.toggle('active', mode === 'given');
+    document.getElementById('tasks-history-btn')?.classList.toggle('active', mode === 'history');
     const desc = document.getElementById('tasks-tab-description');
     if (desc) {
       desc.textContent = mode === 'received'
         ? 'Tasks assigned by others to you are present here.'
-        : 'Tasks assigned by you to others are present here.';
+        : mode === 'given'
+        ? 'Tasks assigned by you to others are present here.'
+        : 'Approved, completed tasks move here once done.';
     }
     renderTasksTabList();
   };
@@ -366,18 +395,22 @@
   function updateTasksNavBadges() {
     const toMe = tasksTabCache.assignedToMe || [];
     const byMe = tasksTabCache.assignedByMe || [];
-    const unseenCount = list => list.filter(a => !seenAssignmentStages.has(assignmentSeenKey(a))).length;
-    const receivedCount = unseenCount(toMe);
-    const givenCount = unseenCount(byMe);
+    const unseen = a => !seenAssignmentStages.has(assignmentSeenKey(a));
+    const notDone = a => stageLabel(a) !== 'Done';
+    const isDone = a => stageLabel(a) === 'Done';
+    const receivedCount = toMe.filter(a => notDone(a) && unseen(a)).length;
+    const givenCount = byMe.filter(a => notDone(a) && unseen(a)).length;
+    const historyCount = [...toMe, ...byMe].filter(a => isDone(a) && unseen(a)).length;
     const setBadge = (id, count) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.textContent = count > 99 ? '99+' : count;
       el.style.display = count > 0 ? '' : 'none';
     };
-    setBadge('nb-tasks', receivedCount + givenCount);
+    setBadge('nb-tasks', receivedCount + givenCount + historyCount);
     setBadge('tasks-received-badge', receivedCount);
     setBadge('tasks-given-badge', givenCount);
+    setBadge('tasks-history-badge', historyCount);
   }
 
   // Exposed so index.html's notification poll can force a repaint when only
@@ -389,14 +422,15 @@
     const tb = document.getElementById('tasks-tbody');
     if (!tb) return;
     updateTasksNavBadges();
-    const received = tasksTabMode === 'received';
-    const list = received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []);
+    const mode = tasksTabMode;
+    const { list, received, sortFn } = tasksTabModeSource(mode);
     if (!list.length) {
-      tb.innerHTML = `<div class="empty-state"><div class="es-text">No tasks yet</div></div>`;
+      const emptyText = mode === 'history' ? 'No completed tasks yet' : 'No tasks yet';
+      tb.innerHTML = `<div class="empty-state"><div class="es-text">${emptyText}</div></div>`;
       return;
     }
-    const openGroups = tasksTabOpenGroups[tasksTabMode];
-    tb.innerHTML = groupAssignments(list, received).map(group => {
+    const openGroups = tasksTabOpenGroups[mode];
+    tb.innerHTML = groupAssignments(list, received, sortFn).map(group => {
       const open = openGroups.has(group.key);
       const noun = group.items.length === 1 ? 'task' : 'tasks';
       const summaryText = stageSummary(group.items);
@@ -411,13 +445,18 @@
         ? `<span class="assign-alert-group-badge">${ALERT_LABEL}</span>`
         : '';
       const cards = open
-        ? `<div class="assign-cards">${group.items.map(a => assignmentCard(a, received)).join('')}</div>`
+        ? `<div class="assign-cards">${group.items.map(a => assignmentCard(a, group.received)).join('')}</div>`
         : '';
+      // History merges both directions, so the group name alone is
+      // ambiguous — prefix it with who assigned to whom.
+      const groupName = mode === 'history'
+        ? `${group.received ? 'From' : 'To'} ${escapeHtml(group.name)}`
+        : escapeHtml(group.name);
       return `<div class="assign-group">
         <div class="assign-group-head" onclick="toggleTasksGroup(${safeGroupKey})">
           <span class="assign-group-toggle">${open ? '−' : '+'}</span>
           <span class="assign-avatar-wrap">${av(group.name, 24)}${newBadge}</span>
-          <span class="assign-group-name">${escapeHtml(group.name)}</span>
+          <span class="assign-group-name">${groupName}</span>
           ${alertGroupBadge}
           ${followupGroupBadge}
           <span class="assign-group-summary">${group.items.length} ${noun}${summaryText ? ` · ${escapeHtml(summaryText)}` : ''}</span>
@@ -436,9 +475,8 @@
       openGroups.add(key);
       // Expanding a group is what clears its "new" badge — mark everything
       // currently in it as seen at its current stage.
-      const received = tasksTabMode === 'received';
-      const list = received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []);
-      const group = groupAssignments(list, received).find(g => g.key === key);
+      const { list, received, sortFn } = tasksTabModeSource(tasksTabMode);
+      const group = groupAssignments(list, received, sortFn).find(g => g.key === key);
       if (group) {
         group.items.forEach(a => seenAssignmentStages.add(assignmentSeenKey(a)));
         saveSeenStages(seenAssignmentStages);

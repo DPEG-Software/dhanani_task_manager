@@ -264,6 +264,7 @@
     <div class="directory-toggle">
       <button id="tasks-received-btn" class="active" onclick="setTasksTabMode('received')">Received Assignments <span class="nb red" id="tasks-received-badge" style="margin-left:6px;display:none">0</span></button>
       <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Delegated Assignments <span class="nb red" id="tasks-given-badge" style="margin-left:6px;display:none">0</span></button>
+      <button id="tasks-history-btn" onclick="setTasksTabMode('history')">History <span class="nb red" id="tasks-history-badge" style="margin-left:6px;display:none">0</span></button>
     </div>
     <div id="tasks-tab-description" style="font-size:12px;color:var(--sub);margin:-4px 0 10px">
       Tasks assigned by others to you are present here.
@@ -1031,6 +1032,7 @@ let userContacts = {};
 let customDepartments = [];
 let customNotes = [];
 let sharedDataActive = false;
+let sharedDataVersion = null;
 let selectedTaskIds = new Set();
 let ntAssignees = [];
 let curTaskId = null, curWeek = 0, curSearch = "", curPplSel = null, curDeptSel = null, curPplFilter = "", directoryMode = "people";
@@ -1888,7 +1890,9 @@ async function loadSharedCompanyData(){
     const token=await getAccessToken();
     const res=await fetch(`${base}/data`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)return false;
-    applyLoadedData(await res.json());
+    const data=await res.json();
+    applyLoadedData(data);
+    sharedDataVersion=data?.updatedAt||null;
     sharedDataActive=true;
     setSyncStatus("synced","Synced company data");
     finishDataLoad();
@@ -1904,9 +1908,16 @@ async function saveSharedCompanyData(){
   if(!base)return false;
   try{
     const token=await getAccessToken();
-    const payload=JSON.stringify({tasks,archives,staffConfig,customDepartments,customNotes,notifications});
+    const payload=JSON.stringify({tasks,archives,staffConfig,customDepartments,customNotes,notifications,baseUpdatedAt:sharedDataVersion});
     const res=await fetch(`${base}/data`,{method:"PUT",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:payload});
+    if(res.status===409){
+      setSyncStatus("error","Someone else made changes — reload to see them, then retry");
+      console.warn("Shared data save conflict: local view is stale, refusing to overwrite.");
+      return false;
+    }
     if(!res.ok)return false;
+    const result=await res.json().catch(()=>null);
+    sharedDataVersion=result?.updatedAt||sharedDataVersion;
     sharedDataActive=true;
     setSyncStatus("synced","Saved company data");
     return true;
@@ -1955,8 +1966,14 @@ function nstt(s) { return s==="In Progress"?"Pending":(s||"Pending"); }
 // every nstt(t.status)==="Overdue" check was silently always false.
 function isOverdueTask(t) {
   if (nstt(t.status) === "Done" || !t.date) return false;
+  // Parse as a local calendar date, not new Date(t.date) — that parses
+  // plain "YYYY-MM-DD" as UTC midnight, which in US timezones lands hours
+  // before local midnight and wrongly flags tasks due *today* as overdue.
+  const m = String(t.date).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return false;
+  const due = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-  return new Date(t.date) < startOfToday;
+  return due < startOfToday;
 }
 function normEmail(email) { return String(email||"").trim().toLowerCase(); }
 function staffKey(email,name) { return normEmail(email) || String(name||"").trim().toLowerCase(); }
