@@ -51,6 +51,9 @@
   // newest-assigned-first, so a task that just finished doesn't linger mixed
   // in among active ones, and the most recent active task is what you see first.
   function sortAssignmentItems(a, b) {
+    const aReview = awaitingApproval(a);
+    const bReview = awaitingApproval(b);
+    if (aReview !== bReview) return aReview ? -1 : 1;
     const aDone = stageLabel(a) === 'Done';
     const bDone = stageLabel(b) === 'Done';
     if (aDone !== bDone) return aDone ? 1 : -1;
@@ -138,6 +141,10 @@
 
   function proofState(a) {
     return String(a?.proofStatus || 'none').toLowerCase();
+  }
+
+  function awaitingApproval(a) {
+    return proofState(a) === 'submitted' || !!window.hasPendingTaskProofReview?.(a?.appTaskId);
   }
 
   // Derives the single live stage (0-3, LIVE_STAGES index) an assignment is
@@ -273,12 +280,13 @@
       } else {
         content = '';
       }
-    } else if (proof === 'submitted') {
+    } else if (awaitingApproval(a)) {
       content = `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review Proof</button>`;
     } else if (proof === 'declined') {
       content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — awaiting resubmission</span>`;
     } else if (proof === 'approved') {
-      content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
+      content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>
+        <button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button>`;
     } else {
       content = `<span style="font-size:11.5px;color:var(--muted);font-weight:600">In progress</span>`;
     }
@@ -342,17 +350,17 @@
     const desc = document.getElementById('tasks-tab-description');
     if (desc) {
       desc.textContent = mode === 'received'
-        ? 'Tasks assigned by others to you are present here.'
+        ? 'Your active assignments, status updates, proof, and conversations.'
         : mode === 'given'
-        ? 'Tasks assigned by you to others are present here.'
-        : 'Approved, completed tasks move here once done.';
+        ? 'Tasks you assigned to others. Submitted proof needing review appears first.'
+        : 'Approved and completed tasks, with their conversations and proof history.';
     }
     renderTasksTabList();
   };
 
   function assignmentsSignature(cache) {
     const sig = list => (list || [])
-      .map(a => [a.id, a.status, a.proofStatus, a.summary, a.dueDate, a.title, a.dept, a.priority, a.updateAlertAt].join('|'))
+      .map(a => [a.id, a.status, a.proofStatus, a.summary, a.dueDate, a.title, a.dept, a.priority, a.updateAlertAt, a.version].join('|'))
       .join(';');
     return `${sig(cache?.assignedToMe)}::${sig(cache?.assignedByMe)}`;
   }
@@ -395,7 +403,7 @@
     const notDone = a => stageLabel(a) !== 'Done';
     const isDone = a => stageLabel(a) === 'Done';
     const receivedCount = toMe.filter(a => notDone(a) && unseen(a)).length;
-    const givenCount = byMe.filter(a => notDone(a) && unseen(a)).length;
+    const givenCount = byMe.filter(a => notDone(a) && (unseen(a) || awaitingApproval(a))).length;
     const historyCount = [...toMe, ...byMe].filter(a => isDone(a) && unseen(a)).length;
     const setBadge = (id, count) => {
       const el = document.getElementById(id);
@@ -440,6 +448,10 @@
       const alertGroupBadge = received && group.items.some(a => a.updateAlertAt)
         ? `<span class="assign-alert-group-badge">${ALERT_LABEL}</span>`
         : '';
+      const approvalCount = !received ? group.items.filter(awaitingApproval).length : 0;
+      const approvalBadge = approvalCount > 0
+        ? `<span class="assign-approval-badge">${approvalCount} awaiting approval</span>`
+        : '';
       const cards = open
         ? `<div class="assign-cards">${group.items.map(a => assignmentCard(a, group.received)).join('')}</div>`
         : '';
@@ -454,6 +466,7 @@
           <span class="assign-avatar-wrap">${av(group.name, 24)}${newBadge}</span>
           <span class="assign-group-name">${groupName}</span>
           ${alertGroupBadge}
+          ${approvalBadge}
           ${followupGroupBadge}
           <span class="assign-group-summary">${group.items.length} ${noun}${summaryText ? ` · ${escapeHtml(summaryText)}` : ''}</span>
         </div>
@@ -582,14 +595,11 @@
   window.openProofReviewFromTasksTab = async function openProofReviewFromTasksTab(id) {
     const a = (tasksTabCache.assignedByMe || []).find(x => x.id === id);
     if (!a) return;
-    if (typeof checkAndLoadProofNotifications === 'function') {
-      await checkAndLoadProofNotifications().catch(err => console.warn('Proof notification refresh failed:', err.message));
+    if (typeof window.openTaskProofReview !== 'function') {
+      toast('Proof review is still loading — try again');
+      return;
     }
-    if (typeof nav === 'function') nav('notifications');
-    // Scrolls to and flashes the exact notification card so the user doesn't
-    // have to hunt for it among every other pending notification.
-    window.highlightProofNotificationForTask?.(a.appTaskId);
-    toast('Open Notifications to review the submitted proof');
+    await window.openTaskProofReview(a);
   };
 
   window.updateTasksTabProofState = function updateTasksTabProofState(appTaskId, proofStatus) {
@@ -613,19 +623,31 @@
   };
 
   window.updateAssignmentStatus = async function updateAssignmentStatus(id, status) {
+    const assignment = (tasksTabCache.assignedToMe || []).find(a => a.id === id);
+    if (!assignment) return;
     try {
       const userToken = await getAccessToken();
       const res = await fetch(`${fnBaseUrl()}/assignment-status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userToken}` },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, status, expectedVersion: assignment.version }),
       });
+      if (res.status === 409) {
+        await renderMyTasks(false);
+        toast('This task changed elsewhere. Latest version loaded — please try again.');
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { version, updatedAt } = await res.json();
       const changedRows = [
         ...(tasksTabCache.assignedToMe || []).filter(a => a.id === id),
         ...(tasksTabCache.assignedByMe || []).filter(a => a.id === id),
       ];
-      changedRows.forEach(row => { row.status = status; });
+      changedRows.forEach(row => {
+        row.status = status;
+        row.version = version || row.version;
+        row.updatedAt = updatedAt || row.updatedAt;
+      });
       renderTasksTabList();
       toast('Progress updated');
     } catch (err) {

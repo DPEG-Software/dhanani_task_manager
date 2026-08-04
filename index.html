@@ -104,10 +104,6 @@
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3M3 17v3a2 2 0 002 2h14a2 2 0 002-2v-3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Summary Sheet
     </button>
-    <button class="ni" id="nav-notifications-btn" onclick="nav('notifications')">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Notifications <span class="nb red" id="nb-notif" style="display:none">0</span>
-    </button>
     <div class="sb-lbl">Actions</div>
     <button class="ni" onclick="openAdd()">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke-width="2" stroke-linecap="round"/></svg>
@@ -262,12 +258,12 @@
   <!-- TASKS (assignments given/received, shared across users via the Worker) -->
   <div class="page" id="page-tasks">
     <div class="directory-toggle">
-      <button id="tasks-received-btn" class="active" onclick="setTasksTabMode('received')">Received Assignments <span class="nb red" id="tasks-received-badge" style="margin-left:6px;display:none">0</span></button>
-      <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Delegated Assignments <span class="nb red" id="tasks-given-badge" style="margin-left:6px;display:none">0</span></button>
+      <button id="tasks-received-btn" class="active" onclick="setTasksTabMode('received')">My Tasks <span class="nb red" id="tasks-received-badge" style="margin-left:6px;display:none">0</span></button>
+      <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Delegated <span class="nb red" id="tasks-given-badge" style="margin-left:6px;display:none">0</span></button>
       <button id="tasks-history-btn" onclick="setTasksTabMode('history')">History <span class="nb red" id="tasks-history-badge" style="margin-left:6px;display:none">0</span></button>
     </div>
     <div id="tasks-tab-description" style="font-size:12px;color:var(--sub);margin:-4px 0 10px">
-      Tasks assigned by others to you are present here.
+      Your active assignments, status updates, proof, and conversations.
     </div>
     <div id="tasks-tbody"></div>
   </div>
@@ -765,6 +761,32 @@
       <div style="display:flex;align-items:center;gap:8px">
         <span id="tf-modal-status" style="font-size:11px;color:var(--muted);margin-right:auto"></span>
         <button class="btn btn-primary btn-sm" id="tf-modal-send" onclick="sendTaskFollowupMessage()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PROOF REVIEW MODAL (opened directly from Delegated Tasks) -->
+<div class="mo" id="mo-task-proof-review">
+  <div class="mo-box task-review-box">
+    <div class="mo-hdr">
+      <div>
+        <div class="mo-title" id="task-review-title">Review submitted proof</div>
+        <div class="mo-sub" id="task-review-sub"></div>
+      </div>
+      <button class="mo-x" onclick="closeTaskProofReview()">&#10005;</button>
+    </div>
+    <div class="mo-body task-review-body" id="task-review-body"></div>
+    <div class="mo-foot task-review-foot">
+      <label class="task-review-message-wrap" for="task-review-message">
+        <span>Message or reason for changes</span>
+        <textarea id="task-review-message" class="ag-ta" placeholder="Add a message, ask a question, or explain what needs to change..."></textarea>
+      </label>
+      <div class="task-review-actions">
+        <span id="task-review-status" class="task-review-status"></span>
+        <button class="btn btn-ghost btn-sm" id="task-review-message-btn" onclick="sendTaskReviewMessage()">Send Message</button>
+        <button class="btn btn-ghost btn-sm task-review-changes-btn" id="task-review-changes-btn" onclick="requestTaskProofChanges()">Request Changes</button>
+        <button class="btn btn-primary btn-sm" id="task-review-approve-btn" onclick="approveTaskProof()">Approve Proof</button>
       </div>
     </div>
   </div>
@@ -7526,20 +7548,21 @@ async function checkAndLoadProofNotifications(){
     renderNotifications();
     await saveNotifications();
     refreshAll();
-    if(newAdded>0)toast(`${newAdded} proof submission${newAdded>1?'s':''} ready for review — check Notifications`);
+    if(newAdded>0)toast(`${newAdded} proof submission${newAdded>1?'s':''} ready for review in Delegated Tasks`);
   }
 }
 
-// Used to render the full thread/files/Approve-Ask-Dismiss panel inline —
-// duplicating everything Notifications already does. Now just a clickable
-// bar that jumps there (closing this modal, switching pages, and reusing
-// highlightProofNotificationForTask — the same scroll-and-flash mechanism
-// the Tasks tab's "Review Proof" button already relies on) instead of
-// maintaining two separate proof-review UIs.
-function goToProofInNotifications(taskId){
+// Opens the same focused review surface used by Delegated Tasks so proof,
+// conversation and approval stay in one workflow.
+function goToProofInTasks(taskId){
+  const task=tasks.find(x=>String(x.id)===String(taskId));
   closeMo('mo-detail');
-  nav('notifications');
-  highlightProofNotificationForTask(String(taskId));
+  window.openTaskProofReview?.({
+    appTaskId:String(taskId),
+    title:task?.title||'Review submitted proof',
+    recipientName:task?.person||'',
+    recipientEmail:task?.email||'',
+  });
 }
 function renderProofPanel(t){
   const panel=document.getElementById('mo-proof-panel');
@@ -7551,9 +7574,9 @@ function renderProofPanel(t){
     ?`${proofFiles.length} file${proofFiles.length>1?'s':''} submitted`
     :'A message was submitted';
   panel.innerHTML=`<div class="mo-section-lbl">Proof Submission</div>
-    <button type="button" onclick="goToProofInNotifications(${t.id})" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:11px 13px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;cursor:pointer;font-family:inherit">
+    <button type="button" onclick="goToProofInTasks(${t.id})" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:11px 13px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;cursor:pointer;font-family:inherit">
       <span style="font-size:12.5px;color:#92400e;line-height:1.4">
-        <strong>${escapeHtml(n.recipientName||n.recipientEmail||'Someone')}</strong> submitted proof — ${summary}. Click to review in Notifications.
+        <strong>${escapeHtml(n.recipientName||n.recipientEmail||'Someone')}</strong> submitted proof — ${summary}. Review the submission and conversation.
       </span>
       <span style="font-size:15px;color:#92400e;flex-shrink:0">→</span>
     </button>`;
@@ -7814,6 +7837,7 @@ function updateNotifBadge(){
     badge.textContent=pending;
     badge.style.display=pending>0?'':'none';
   }
+  window.renderTasksTabList?.();
 }
 
 function markNotifSeen(id){
@@ -7828,6 +7852,119 @@ function markNotifSeen(id){
   }
 }
 
+let taskProofReviewContext=null;
+
+function taskProofReviewNotification(appTaskId,pendingOnly=true){
+  return notifications.find(n=>
+    n.type==='proof_submitted'&&
+    String(n.taskId)===String(appTaskId||'')&&
+    (!pendingOnly||n.status==='pending')
+  )||null;
+}
+
+window.hasPendingTaskProofReview=function hasPendingTaskProofReview(appTaskId){
+  return !!taskProofReviewNotification(appTaskId,true);
+};
+
+window.openTaskProofReview=async function openTaskProofReview(assignment){
+  const appTaskId=String(assignment?.appTaskId||assignment?.taskId||'');
+  if(!appTaskId){toast('Proof submission could not be matched to this task');return;}
+  const modal=document.getElementById('mo-task-proof-review');
+  const body=document.getElementById('task-review-body');
+  if(!modal||!body)return;
+  taskProofReviewContext={assignment,appTaskId,notificationId:null};
+  document.getElementById('task-review-title').textContent=assignment?.title||'Review submitted proof';
+  document.getElementById('task-review-sub').textContent=`Submitted by ${assignment?.recipientName||assignment?.recipientEmail||'the assignee'}`;
+  document.getElementById('task-review-message').value='';
+  document.getElementById('task-review-status').textContent='Loading submission...';
+  body.innerHTML='<div style="padding:28px;text-align:center;font-size:12px;color:var(--muted)">Loading proof and conversation...</div>';
+  modal.classList.add('open');
+  await checkAndLoadProofNotifications().catch(err=>console.warn('Proof notification refresh failed:',err.message));
+  const n=taskProofReviewNotification(appTaskId,false);
+  if(!n){
+    body.innerHTML='<div class="empty-state"><div class="es-text">Submission not available yet</div><div class="es-sub">It may still be syncing. Close this window and try again shortly.</div></div>';
+    document.getElementById('task-review-status').textContent='';
+    setTaskReviewActionsEnabled(false);
+    return;
+  }
+  taskProofReviewContext.notificationId=n.id;
+  markNotifSeen(n.id);
+  renderTaskProofReview(n);
+};
+
+function renderTaskProofReview(n){
+  const body=document.getElementById('task-review-body');
+  if(!body||!n)return;
+  const pending=n.status==='pending';
+  const stateLabel=n.status==='approved'?'Approved':n.status==='dismissed'?'Changes requested':'Awaiting your review';
+  const stateClass=n.status==='approved'?'is-approved':n.status==='dismissed'?'is-changes':'is-pending';
+  body.innerHTML=`<div class="task-review-summary ${stateClass}">
+      <div><div class="task-review-kicker">Proof submission</div><div class="task-review-state">${stateLabel}</div></div>
+      <div class="task-review-person">${escapeHtml(n.recipientName||n.recipientEmail||'Assignee')}</div>
+    </div>${renderNotificationProofs(n)}`;
+  document.getElementById('task-review-status').textContent=pending?'Review the files and note before deciding.':'';
+  setTaskReviewActionsEnabled(pending);
+  scrollProofThreadsToBottom(body);
+}
+
+function setTaskReviewActionsEnabled(enabled){
+  ['task-review-message-btn','task-review-changes-btn','task-review-approve-btn'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.disabled=!enabled;
+  });
+  const input=document.getElementById('task-review-message');if(input)input.disabled=!enabled;
+}
+
+function setTaskReviewBusy(busy,message=''){
+  setTaskReviewActionsEnabled(!busy);
+  const status=document.getElementById('task-review-status');
+  if(status)status.textContent=message;
+}
+
+function closeTaskProofReview(){
+  document.getElementById('mo-task-proof-review')?.classList.remove('open');
+  taskProofReviewContext=null;
+}
+
+async function approveTaskProof(){
+  const id=taskProofReviewContext?.notificationId;if(id==null)return;
+  setTaskReviewBusy(true,'Approving proof...');
+  await approveNotification(id);
+  const n=notifications.find(x=>x.id===id);
+  if(n?.status==='approved'){
+    closeTaskProofReview();
+    await window.renderMyTasks?.(true);
+  }else setTaskReviewBusy(false,'Approval failed. Please try again.');
+}
+
+async function requestTaskProofChanges(){
+  const id=taskProofReviewContext?.notificationId;if(id==null)return;
+  const input=document.getElementById('task-review-message');
+  const reason=String(input?.value||'').trim();
+  if(!reason){input?.focus();toast('Please explain what needs to change');return;}
+  setTaskReviewBusy(true,'Sending requested changes...');
+  await dismissNotification(id,reason);
+  const n=notifications.find(x=>x.id===id);
+  if(n?.status==='dismissed'){
+    closeTaskProofReview();
+    await window.renderMyTasks?.(true);
+  }else setTaskReviewBusy(false,'Could not request changes. Please try again.');
+}
+
+async function sendTaskReviewMessage(){
+  const id=taskProofReviewContext?.notificationId;if(id==null)return;
+  const input=document.getElementById('task-review-message');
+  const message=String(input?.value||'').trim();
+  if(!message){input?.focus();toast('Please type a message');return;}
+  setTaskReviewBusy(true,'Sending message...');
+  const sent=await askNotificationFollowup(id,message);
+  if(sent){
+    input.value='';
+    const refreshed=notifications.find(x=>x.id===id)||taskProofReviewNotification(taskProofReviewContext?.appTaskId,false);
+    if(refreshed)renderTaskProofReview(refreshed);
+    toast('Message sent');
+  }else setTaskReviewBusy(false,'Could not send message. Please try again.');
+}
+
 async function approveNotification(id){
   markNotifSeen(id);
   if(highlightedNotifId===id)highlightedNotifId=null;
@@ -7839,11 +7976,12 @@ async function approveNotification(id){
     try{
       const fnUrl=workerBaseUrl();
       const userToken=await getAccessToken();
-      await fetch(`${fnUrl}/notify`,{
+      const res=await fetch(`${fnUrl}/notify`,{
         method:'POST',
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
         body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||n.message||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'approved',reason:''}),
       });
+      if(!res.ok){const detail=await res.text().catch(()=>'');throw new Error(detail||`Approval failed (${res.status})`);}
       window.updateTasksTabProofState?.(String(n.taskId||''), 'approved');
       if(task){task.status='Done';task.completedAt=new Date().toISOString();task.approvedBy=currentUser?.email||'';delete task._proofNotif;if(Array.isArray(n.proofs)&&n.proofs.length)task.proofs=n.proofs;}
       n.status='approved';
@@ -7873,7 +8011,7 @@ async function approveNotification(id){
   toast('Task approved as Done');
 }
 
-async function dismissNotification(id){
+async function dismissNotification(id,providedReason){
   markNotifSeen(id);
   if(highlightedNotifId===id)highlightedNotifId=null;
   const n=notifications.find(x=>x.id===id);
@@ -7881,16 +8019,17 @@ async function dismissNotification(id){
   // KV-based proof_submitted — route through KV decline endpoint + email
   if(n.type==='proof_submitted'&&n.kvNotifId){
     const task=n.taskId!=null?tasks.find(t=>t.id===n.taskId):null;
-    const reason=prompt('Reason for declining this proof?');
+    const reason=providedReason!==undefined?providedReason:prompt('Reason for declining this proof?');
     if(reason===null)return;
     try{
       const fnUrl=workerBaseUrl();
       const userToken=await getAccessToken();
-      await fetch(`${fnUrl}/notify`,{
+      const res=await fetch(`${fnUrl}/notify`,{
         method:'POST',
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
         body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:task?.recipientTodoListId||'',todoTaskId:task?.recipientTodoTaskId||''}),
       });
+      if(!res.ok){const detail=await res.text().catch(()=>'');throw new Error(detail||`Request failed (${res.status})`);}
       window.updateTasksTabProofState?.(String(n.taskId||''), 'declined');
       if(task)delete task._proofNotif;
       n.status='dismissed';n.dismissReason=String(reason||'').trim();
@@ -8200,11 +8339,11 @@ function renderRelatedProofSubmissions(n){
   </div>`;
 }
 
-async function askNotificationFollowup(id){
+async function askNotificationFollowup(id,providedMessage){
   markNotifSeen(id);
   const n=notifications.find(x=>x.id===id);
-  if(!n)return;
-  const question=prompt('Ask the assignee a follow-up question:');
+  if(!n)return false;
+  const question=providedMessage!==undefined?providedMessage:prompt('Ask the assignee a follow-up question:');
   if(question===null)return;
   const message=String(question||'').trim();
   if(!message){toast('Please type a follow-up question');return;}
@@ -8223,8 +8362,9 @@ async function askNotificationFollowup(id){
       renderNotifications();
     }
     await sendProofFollowupEmail(n.recipientEmail||task?.email,task||{id:n.taskId,title:n.taskTitle||n.message,email:n.recipientEmail},message);
-    toast('Follow-up question sent and emailed');
-  }catch(err){toast('Could not send follow-up: '+(err.message||err));}
+    if(providedMessage===undefined)toast('Follow-up question sent and emailed');
+    return true;
+  }catch(err){toast('Could not send follow-up: '+(err.message||err));return false;}
 }
 
 async function sendDismissalEmail(n){
@@ -8343,7 +8483,7 @@ async function pollToDoCompletions(manual=false){
       updateNotifBadge();
       await saveNotifications();
       renderNotifications();
-      toast(`${added} task completion${added>1?'s':''} need your approval — check Notifications`);
+      toast(`${added} task completion${added>1?'s':''} need your approval in Delegated Tasks`);
     }else if(manual){
       toast(`Polled ${assignments.length} task${assignments.length>1?'s':''} — no completions yet`);
     }

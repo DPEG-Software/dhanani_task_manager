@@ -22,7 +22,7 @@ const ADMIN_EMAILS = new Set(['systemmanager1@dhananipeg.com', 'propertymanageme
 const PROOF_START = 'DPEG_PROOF_START';
 const PROOF_END = 'DPEG_PROOF_END';
 const PROOF_LINK_PREFIX = 'proof-link:';
-let assignmentProofColumnsReady = false;
+let assignmentColumnsReady = false;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -115,13 +115,14 @@ function userEmailFromClaims(claims) {
 }
 
 async function ensureAssignmentProofColumns(env) {
-  if (!env.DPEG_ASSIGNMENTS || assignmentProofColumnsReady) return;
+  if (!env.DPEG_ASSIGNMENTS || assignmentColumnsReady) return;
   const columns = [
     ['proof_status', "TEXT DEFAULT 'none'"],
     ['proof_submitted_at', 'TEXT'],
     ['proof_reviewed_at', 'TEXT'],
     ['proof_notification_id', 'TEXT'],
     ['update_alert_at', 'TEXT'],
+    ['version', 'INTEGER NOT NULL DEFAULT 1'],
   ];
   for (const [name, type] of columns) {
     try {
@@ -130,7 +131,13 @@ async function ensureAssignmentProofColumns(env) {
       if (!String(err?.message || '').toLowerCase().includes('duplicate column')) throw err;
     }
   }
-  assignmentProofColumnsReady = true;
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_assignments_recipient_created ON assignments(recipient_email, created_at)'
+  ).run();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_assignments_assigner_created ON assignments(assigner_email, created_at)'
+  ).run();
+  assignmentColumnsReady = true;
 }
 
 async function updateAssignmentProofState(env, details) {
@@ -154,7 +161,8 @@ async function updateAssignmentProofState(env, details) {
            proof_notification_id = COALESCE(NULLIF(?, ''), proof_notification_id),
            status = CASE WHEN ? = 'approved' THEN 'Done' ELSE status END,
            update_alert_at = CASE WHEN ? IN ('submitted','approved','declined') THEN NULL ELSE update_alert_at END,
-           updated_at = ?
+           updated_at = ?,
+           version = version + 1
      WHERE app_task_id = ?
        AND (? = '' OR recipient_email = ?)
        AND (? = '' OR assigner_email = ?)`
@@ -963,7 +971,8 @@ async function handleCreateAssignment(request, env) {
        recipient_todo_list_id = excluded.recipient_todo_list_id,
        recipient_todo_task_id = excluded.recipient_todo_task_id,
        proof_instructions = excluded.proof_instructions,
-       updated_at = excluded.updated_at`
+       updated_at = excluded.updated_at,
+       version = assignments.version + 1`
   ).bind(
     id,
     String(body.appTaskId || ''),
@@ -1032,6 +1041,7 @@ async function handleAssignments(request, env) {
     updateAlertAt: row.update_alert_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    version: Number(row.version || 1),
   });
 
   return json({
@@ -1058,8 +1068,9 @@ async function handleAssignmentStatus(request, env) {
 
   const id = String(body.id || '').trim();
   const newStatus = String(body.status || '').trim();
-  if (!id || !ASSIGNMENT_STATUSES.has(newStatus)) {
-    return json({ error: 'id and a valid status are required' }, 400);
+  const expectedVersion = Number(body.expectedVersion);
+  if (!id || !ASSIGNMENT_STATUSES.has(newStatus) || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    return json({ error: 'id, a valid status and expectedVersion are required' }, 400);
   }
 
   const row = await env.DPEG_ASSIGNMENTS
@@ -1073,11 +1084,27 @@ async function handleAssignmentStatus(request, env) {
   }
 
   const updatedAt = new Date().toISOString();
-  await env.DPEG_ASSIGNMENTS.prepare(
-    'UPDATE assignments SET status = ?, progress_note = ?, update_alert_at = NULL, updated_at = ? WHERE id = ?'
-  ).bind(newStatus, body.progressNote != null ? String(body.progressNote).slice(0, 2000) : null, updatedAt, id).run();
+  const result = await env.DPEG_ASSIGNMENTS.prepare(
+    `UPDATE assignments
+        SET status = ?, progress_note = ?, update_alert_at = NULL,
+            updated_at = ?, version = version + 1
+      WHERE id = ? AND version = ?`
+  ).bind(
+    newStatus,
+    body.progressNote != null ? String(body.progressNote).slice(0, 2000) : null,
+    updatedAt,
+    id,
+    expectedVersion,
+  ).run();
 
-  return json({ success: true, updatedAt });
+  if (!result.meta?.changes) {
+    return json({
+      error: 'This assignment was changed by another user. Refresh and try again.',
+      code: 'VERSION_CONFLICT',
+    }, 409);
+  }
+
+  return json({ success: true, updatedAt, version: expectedVersion + 1 });
 }
 
 // ── /assignment-alert endpoint: assigner sends a one-click "update required"
@@ -1085,7 +1112,7 @@ async function handleAssignmentStatus(request, env) {
 // on the assignment row, cleared automatically once the recipient updates
 // their status or submits proof.
 async function handleAssignmentAlert(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
   await ensureAssignmentProofColumns(env);
@@ -1121,7 +1148,7 @@ async function handleAssignmentAlert(request, env) {
 // above doesn't cover every case (e.g. an alert sent while proof is already
 // sitting in review, with no status change left for the recipient to make).
 async function handleAssignmentAlertClear(request, env) {
-  const { error, status, claims } = validateUserToken(request);
+  const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
   await ensureAssignmentProofColumns(env);
