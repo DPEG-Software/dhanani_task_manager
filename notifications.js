@@ -51,6 +51,29 @@ async function checkAndLoadProofNotifications(){
   const myEmail=(currentUser?.email||'').toLowerCase();
   tasks.forEach(t=>delete t._proofNotif);
 
+  // Keep the latest approval/change-request result available to My Tasks.
+  // The assignment row carries the status, but the KV result is where the
+  // assignor's reason lives. Without this bridge the assignee only sees
+  // "declined" and has to discover the explanation in email.
+  const proofResults={};
+  kvNotifs.filter(n=>n.type==='proof_result'&&String(n.recipientEmail||'').toLowerCase()===myEmail)
+    .forEach(n=>{
+      const key=String(n.appTaskId||'');
+      if(!key)return;
+      const current=proofResults[key];
+      const nextTime=new Date(n.createdAt||n.updatedAt||0).getTime();
+      const currentTime=current?new Date(current.createdAt||current.updatedAt||0).getTime():0;
+      if(!current||nextTime>=currentTime)proofResults[key]=n;
+    });
+  const proofResultSig=Object.keys(proofResults).sort().map(k=>{
+    const n=proofResults[k];return `${k}:${n.result}:${n.reason||''}:${n.createdAt||''}`;
+  }).join('|');
+  window._proofResultState=proofResults;
+  if(proofResultSig!==window._proofResultStateSig){
+    window._proofResultStateSig=proofResultSig;
+    window.renderTasksTabList?.();
+  }
+
   // Track the latest follow-up thread per (appTaskId, recipientEmail) that
   // involves the current user (as assignor or assignee), so the Tasks tab
   // can show an unread dot on the Follow-up button without a separate fetch.
@@ -374,10 +397,10 @@ async function sendProofDeclineEmail(recipientEmail,taskTitle,reason,senderName,
   if(!addr||!addr.includes('@'))return;
   try{
     const html=`<div style="font-family:Arial,sans-serif;max-width:600px;color:#111">
-      <div style="background:#b91c1c;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Proof Declined — Resubmission Required</div>
+      <div style="background:#b91c1c;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Changes Requested — Resubmission Required</div>
       <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:14px 16px">
         <p style="margin:0 0 8px"><strong>Task:</strong> ${escapeHtml(taskTitle||'Task')}</p>
-        <p style="margin:0 0 8px"><strong>Declined by:</strong> ${escapeHtml(senderName||'The assignor')}</p>
+        <p style="margin:0 0 8px"><strong>Changes requested by:</strong> ${escapeHtml(senderName||'The assignor')}</p>
         <div style="background:#fff1f2;border-left:3px solid #b91c1c;padding:10px 12px;margin:10px 0;font-size:14px;line-height:1.5"><strong>Reason:</strong> ${escapeHtml(reason||'No reason provided')}</div>
         <p style="margin:10px 0 0">Please review the feedback above and resubmit your proof using the link in your Microsoft To Do task.</p>
       </div>
@@ -386,7 +409,7 @@ async function sendProofDeclineEmail(recipientEmail,taskTitle,reason,senderName,
       await replyToTaskEmail(task,html,addr);
     }else{
       const token=await getDraftAccessToken();
-      await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:{subject:`Proof declined: ${taskTitle||'Task'}`,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:addr}}]},saveToSentItems:true})});
+      await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:{subject:`Changes requested: ${taskTitle||'Task'}`,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:addr}}]},saveToSentItems:true})});
     }
   }catch(err){console.warn('Proof decline email failed:',err.message);}
 }
@@ -524,10 +547,20 @@ async function requestTaskProofChanges(){
   const input=document.getElementById('task-review-message');
   const reason=String(input?.value||'').trim();
   if(!reason){input?.focus();toast('Please explain what needs to change');return;}
+  // Empty submissions still have a valid review decision. Fill any metadata
+  // missing from the proof notification from the D1 assignment before sending
+  // the change request; files and proof notes are intentionally not required.
+  const n=notifications.find(x=>x.id===id);
+  const assignment=taskProofReviewContext?.assignment||{};
+  if(n){
+    n.recipientEmail=n.recipientEmail||assignment.recipientEmail||'';
+    n.recipientName=n.recipientName||assignment.recipientName||'';
+    n.taskTitle=n.taskTitle||assignment.title||'';
+  }
   setTaskReviewBusy(true,'Sending requested changes...');
   await dismissNotification(id,reason);
-  const n=notifications.find(x=>x.id===id);
-  if(n?.status==='dismissed'){
+  const updatedNotification=notifications.find(x=>x.id===id);
+  if(updatedNotification?.status==='dismissed'){
     closeTaskProofReview();
     await window.renderMyTasks?.(true);
   }else setTaskReviewBusy(false,'Could not request changes. Please try again.');
@@ -540,7 +573,7 @@ async function approveNotification(id){
   if(!n)return;
   // KV-based proof_submitted — route through KV approve endpoint
   if(n.type==='proof_submitted'&&n.kvNotifId){
-    const task=n.taskId!=null?tasks.find(t=>t.id===n.taskId):null;
+    const task=n.taskId!=null?tasks.find(t=>String(t.id)===String(n.taskId)):null;
     try{
       const fnUrl=workerBaseUrl();
       const userToken=await getAccessToken();
@@ -587,7 +620,9 @@ async function dismissNotification(id,providedReason){
   if(!n)return;
   // KV-based proof_submitted — route through KV decline endpoint + email
   if(n.type==='proof_submitted'&&n.kvNotifId){
-    const task=n.taskId!=null?tasks.find(t=>t.id===n.taskId):null;
+    const task=n.taskId!=null?tasks.find(t=>String(t.id)===String(n.taskId)):null;
+    const assignment=taskProofReviewContext?.assignment||{};
+    const recipientEmail=n.recipientEmail||assignment.recipientEmail||task?.email||'';
     const reason=providedReason!==undefined?providedReason:prompt('Reason for declining this proof?');
     if(reason===null)return;
     try{
@@ -596,7 +631,7 @@ async function dismissNotification(id,providedReason){
       const res=await fetch(`${fnUrl}/notify`,{
         method:'POST',
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
-        body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',result:'declined',reason:reason||'No reason provided',todoListId:task?.recipientTodoListId||'',todoTaskId:task?.recipientTodoTaskId||''}),
+        body:JSON.stringify({type:'proof_result',notifId:n.kvNotifId,appTaskId:String(n.taskId||assignment.appTaskId||''),taskTitle:task?.title||n.taskTitle||assignment.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail,result:'declined',reason:reason||'No reason provided',todoListId:task?.recipientTodoListId||assignment.recipientTodoListId||'',todoTaskId:task?.recipientTodoTaskId||assignment.recipientTodoTaskId||''}),
       });
       if(!res.ok){const detail=await res.text().catch(()=>'');throw new Error(detail||`Request failed (${res.status})`);}
       window.updateTasksTabProofState?.(String(n.taskId||''), 'declined');
@@ -604,9 +639,9 @@ async function dismissNotification(id,providedReason){
       n.status='dismissed';n.dismissReason=String(reason||'').trim();
       updateNotifBadge();renderNotifications();
       await Promise.all([saveNotifications(),saveTasksToOneDrive()]);
-      await sendProofDeclineEmail(n.recipientEmail||'',task?.title||'',reason,currentUser?.name||'');
+      await sendProofDeclineEmail(recipientEmail,task?.title||n.taskTitle||assignment.title||'',reason,currentUser?.name||'');
       refreshAll();
-      toast('Proof declined — email sent to recipient');
+      toast('Changes requested — assignee notified');
     }catch(err){toast('Could not decline: '+err.message);}
     return;
   }

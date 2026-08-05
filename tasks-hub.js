@@ -20,7 +20,11 @@
     try { localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify([...set].slice(-500))); } catch {}
   }
   let seenAssignmentStages = loadSeenStages();
-  function assignmentSeenKey(a) { return `${a.id}::${stageLabel(a)}`; }
+  function assignmentSeenKey(a) {
+    const stage=stageLabel(a);
+    const eventTime=stage==='Submitted'?a.proofSubmittedAt||'':stage==='Changes Requested'?a.proofReviewedAt||'':'';
+    return `${a.id}::${stage}::${eventTime}`;
+  }
 
   // Follow-up "seen" tracking is separate from the stage-badge Set above,
   // since it needs to remember *how many* thread messages were already seen
@@ -162,7 +166,7 @@
 
   function stageLabel(a) {
     const { index, declined } = assignmentStage(a);
-    return declined ? 'Declined' : LIVE_STAGES[index];
+    return declined ? 'Changes Requested' : LIVE_STAGES[index];
   }
 
   function stageSummary(items) {
@@ -171,7 +175,7 @@
       const label = stageLabel(item);
       counts[label] = (counts[label] || 0) + 1;
     });
-    return [...LIVE_STAGES, 'Declined']
+    return [...LIVE_STAGES, 'Changes Requested']
       .filter(label => counts[label])
       .map(label => `${counts[label]} ${label}`)
       .join(' · ');
@@ -179,7 +183,7 @@
 
   function renderStepper(a) {
     const { index, declined } = assignmentStage(a);
-    const labels = ['Assigned', 'In Progress', declined ? 'Declined' : 'Submitted', 'Done'];
+    const labels = ['Assigned', 'In Progress', declined ? 'Changes Requested' : 'Submitted', 'Done'];
     return `<div class="assign-stepper">${labels.map((label, i) => {
       const isDeclinedDot = declined && i === 2;
       // The terminal stage (Done) is a finished state, not an in-flight one —
@@ -276,7 +280,7 @@
       } else if (proof === 'submitted') {
         content = `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>`;
       } else if (proof === 'declined') {
-        content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — check your email, then</span>
+        content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Changes requested — review the reason, then</span>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button>`;
       } else if (proof === 'approved') {
         content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
@@ -286,7 +290,7 @@
     } else if (awaitingApproval(a)) {
       content = `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Review Proof</button>`;
     } else if (proof === 'declined') {
-      content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — awaiting resubmission</span>`;
+      content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Changes requested — awaiting resubmission</span>`;
     } else if (proof === 'approved') {
       content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>
         <button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button>`;
@@ -298,6 +302,12 @@
 
   function assignmentCard(a, received) {
     const hasFollowup = proofState(a) !== 'approved' && followupUnreadCount(a, received) > 0;
+    const result=window._proofResultState?.[String(a.appTaskId||'')];
+    const proofNotice=received&&proofState(a)==='declined'
+      ?`<div style="margin:0 0 10px;padding:9px 11px;background:#fff1f2;border:1px solid #fecdd3;border-left:3px solid #be123c;border-radius:6px;color:#881337;font-size:11.5px;line-height:1.5"><strong>Changes requested${result?.senderName?` by ${escapeHtml(result.senderName)}`:''}:</strong> ${escapeHtml(result?.reason||'Please correct the submission and resubmit proof.')}</div>`
+      :!received&&awaitingApproval(a)
+        ?`<div style="margin:0 0 10px;padding:8px 11px;background:#fffbeb;border:1px solid #fde68a;border-left:3px solid #d97706;border-radius:6px;color:#92400e;font-size:11.5px;font-weight:700">Proof submitted — your review is required.</div>`
+        :'';
     return `<div class="wed-card${hasFollowup ? ' has-followup' : ''}">
       <div class="wed-card-head">
         <div class="wed-card-title">${escapeHtml(a.title || '')}</div>
@@ -305,6 +315,7 @@
         ${pBadge(a.priority)}
       </div>
       <div class="wed-card-body">
+        ${proofNotice}
         <div class="assign-card-meta">${dueDateBadge(a)}</div>
         ${assignmentDescription(a.summary, a.id)}
         ${renderStepper(a)}
