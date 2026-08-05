@@ -6571,7 +6571,25 @@ function emailAuthoredText(email){
   if(!body)return '';
   const isHtml=String(email?.body?.contentType||'').toLowerCase()==='html';
   const authored=threadMessageBody(email,isHtml);
-  return plainizeEmailBody(authored);
+  if(!isHtml)return plainizeEmailBody(authored);
+  // The compose editor is plain text. Convert Outlook's remaining authored
+  // HTML after quote removal so tags/styles never appear in Forward or
+  // Forward All. Do not use stripEmailHtml here because it intentionally
+  // removes some Outlook classes that can also contain the authored reply.
+  try{
+    const div=document.createElement('div');
+    div.innerHTML=authored;
+    div.querySelectorAll('style,script,meta,head,title').forEach(el=>el.remove());
+    div.querySelectorAll('br').forEach(el=>el.replaceWith('\n'));
+    div.querySelectorAll('p,div,li,tr,h1,h2,h3,h4,h5,h6').forEach(el=>{
+      if(el.previousSibling)el.insertAdjacentText('beforebegin','\n');
+      el.insertAdjacentText('beforeend','\n');
+    });
+    div.querySelectorAll('td,th').forEach(el=>el.insertAdjacentText('beforeend',' '));
+    return plainizeEmailBody(div.textContent||div.innerText||'');
+  }catch{
+    return plainizeEmailBody(authored.replace(/<[^>]*>/g,' '));
+  }
 }
 
 function forwardedMessageText(email){
