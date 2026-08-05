@@ -1,5 +1,33 @@
-const CACHE = 'dtm-v1';
-const PRECACHE = ['.', 'contacts.js', 'icon.svg', 'manifest.json'];
+const CACHE = 'dtm-v12';
+const PRECACHE = [
+  '.',
+  'bootstrap.js',
+  'styles.css',
+  'app-state.js',
+  'app-helpers.js',
+  'auth.js',
+  'data-sync.js',
+  'settings-admin.js',
+  'ai-summary.js',
+  'navigation.js',
+  'outlook-shell.js',
+  'outlook-mail.js',
+  'outlook-calendar.js',
+  'notifications.js',
+  'dashboard.js',
+  'action-log.js',
+  'task-details.js',
+  'people-departments.js',
+  'discussion-notes.js',
+  'contacts.js',
+  'tasks-hub.js',
+  'notes-archive.js',
+  'summary-sheet.js',
+  'app.js',
+  'msal.min.js',
+  'icon.svg',
+  'manifest.json'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)));
