@@ -6,6 +6,18 @@
   let tasksTabCache = { assignedToMe: [], assignedByMe: [] };
   const tasksTabOpenGroups = { received: new Set(), given: new Set(), history: new Set() };
 
+  // Proof notifications created from older/manual assignments do not always
+  // contain the assignor email. Let the notification loader verify ownership
+  // against the authoritative D1 Delegated list instead of dropping them.
+  window.isDelegatedTaskProof = function isDelegatedTaskProof(appTaskId, recipientEmail) {
+    const taskKey=String(appTaskId||'');
+    const recipient=String(recipientEmail||'').toLowerCase();
+    return (tasksTabCache.assignedByMe||[]).some(a=>
+      String(a.appTaskId||'')===taskKey&&
+      (!recipient||String(a.recipientEmail||'').toLowerCase()===recipient)
+    );
+  };
+
   // "New" tracking for the red count badge next to each group's name. Keyed by
   // id + current stage (not just id) so a task that was already seen still
   // re-alerts when its stage changes later (e.g. a delegator gets alerted

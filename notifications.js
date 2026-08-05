@@ -105,7 +105,10 @@ async function checkAndLoadProofNotifications(){
 
   // Deduplicate by appTaskId — only the latest proof_submitted per task matters
   const latestByTask=new Map();
-  kvNotifs.filter(n=>n.type==='proof_submitted'&&n.status==='pending'&&n.senderEmail?.toLowerCase()===myEmail)
+  kvNotifs.filter(n=>n.type==='proof_submitted'&&n.status==='pending'&&(
+      String(n.senderEmail||'').toLowerCase()===myEmail||
+      window.isDelegatedTaskProof?.(n.appTaskId,n.recipientEmail)
+    ))
     .forEach(pn=>{
       const key=String(pn.appTaskId);
       const existing=latestByTask.get(key);
