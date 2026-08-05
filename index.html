@@ -98,7 +98,7 @@
     </button>
     <button class="ni" onclick="nav('archive')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" stroke-width="2" stroke-linecap="round"/></svg>
-      Archive
+      Notes Archive
     </button>
     <button class="ni" onclick="nav('summary')">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 10v6m0 0l-3-3m3 3l3-3M3 17v3a2 2 0 002 2h14a2 2 0 002-2v-3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -225,7 +225,7 @@
       <button class="wn-btn" onclick="chWeek(-1)">&#8249;</button>
       <div><span class="wn-lbl" id="wn-l">This Week</span> <span class="wn-range" id="wn-r"></span></div>
       <button class="wn-btn" onclick="chWeek(1)">&#8250;</button>
-      <span style="margin-left:auto;font-size:11.5px;color:var(--muted)">Use + Wed to add tasks to the agenda</span>
+      <span id="action-notes-hint" style="margin-left:auto;font-size:11.5px;color:var(--muted)">Use + Wed to add tasks to your notes</span>
     </div>
     <div class="tbl-wrap">
       <div class="tbl-hdr">
@@ -245,8 +245,8 @@
               <th style="width:110px">Status</th>
               <th style="width:80px">Priority</th>
               <th style="width:80px">Agenda</th>
-              <th style="width:112px">Date</th>
-              <th style="width:84px"></th>
+              <th style="width:220px">Timeline</th>
+              <th style="width:74px"></th>
             </tr>
           </thead>
           <tbody id="master-tbody"></tbody>
@@ -784,12 +784,11 @@
     <div class="mo-body task-review-body" id="task-review-body"></div>
     <div class="mo-foot task-review-foot">
       <label class="task-review-message-wrap" for="task-review-message">
-        <span>Message or reason for changes</span>
-        <textarea id="task-review-message" class="ag-ta" placeholder="Add a message, ask a question, or explain what needs to change..."></textarea>
+        <span>Reason for requesting changes</span>
+        <textarea id="task-review-message" class="ag-ta" placeholder="Explain what must be corrected before proof can be resubmitted..."></textarea>
       </label>
       <div class="task-review-actions">
         <span id="task-review-status" class="task-review-status"></span>
-        <button class="btn btn-ghost btn-sm" id="task-review-message-btn" onclick="sendTaskReviewMessage()">Send Message</button>
         <button class="btn btn-ghost btn-sm task-review-changes-btn" id="task-review-changes-btn" onclick="requestTaskProofChanges()">Request Changes</button>
         <button class="btn btn-primary btn-sm" id="task-review-approve-btn" onclick="approveTaskProof()">Approve Proof</button>
       </div>
@@ -925,7 +924,7 @@
     </div>
     <div class="mo-foot">
       <button class="btn btn-ghost btn-sm" id="mo-refresh-summary" onclick="refreshTaskSummary()">Refresh Summary</button>
-      <button class="btn btn-ghost btn-sm" onclick="movToWed()">Move to Wednesday</button>
+      <button class="btn btn-ghost btn-sm" id="mo-notes-btn" onclick="movToWed()">Move to Wednesday</button>
       <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="removeTask(curTaskId)">Remove Task</button>
       <button class="btn btn-primary btn-sm" onclick="saveDetail()">Save Changes</button>
     </div>
@@ -1249,6 +1248,8 @@ function updateUI() {
   const agendaTitle = document.getElementById("agenda-title");
   const wedSaveBtn = document.getElementById("wed-save-btn");
   const dWedLbl = document.getElementById("d-wed-lbl");
+  const actionNotesHint=document.getElementById('action-notes-hint');
+  const modalNotesBtn=document.getElementById('mo-notes-btn');
 
   if (isWednesdayUser) {
     PT.wednesday = "Wednesday Review";
@@ -1257,6 +1258,8 @@ function updateUI() {
     if (agendaTitle) agendaTitle.textContent = "Agenda";
     if (wedSaveBtn) wedSaveBtn.textContent = "Save Agenda";
     if (dWedLbl) dWedLbl.textContent = "Wednesday Queue";
+    if(actionNotesHint)actionNotesHint.textContent='Use + Wed to add tasks to your private Wednesday notes';
+    if(modalNotesBtn)modalNotesBtn.textContent='Move to Wednesday';
   } else {
     PT.wednesday = "Discussion Notes";
     if (wedLabel) wedLabel.textContent = "Discussion Notes";
@@ -1264,6 +1267,8 @@ function updateUI() {
     if (agendaTitle) agendaTitle.textContent = "Notes";
     if (wedSaveBtn) wedSaveBtn.textContent = "Save Notes";
     if (dWedLbl) dWedLbl.textContent = "Discussion Notes";
+    if(actionNotesHint)actionNotesHint.textContent='Use + Discussion to add tasks to your private notes';
+    if(modalNotesBtn)modalNotesBtn.textContent='Move to Discussion';
   }
 }
 
@@ -1605,59 +1610,17 @@ async function renderProofFollowupBox(params){
   const formArea=document.getElementById('proof-form-area');
 
   if(!n){
-    // State 1: no proof submitted yet — show submit form normally
+    // No active submission: initial submission or a declined proof that can
+    // now be resubmitted.
     host.innerHTML='';
     if(formArea)formArea.style.display='';
     return;
   }
-
-  if(!n.followupStatus){
-    // State 2: proof submitted, manager has not asked any question yet
-    host.innerHTML='';
-    if(formArea)formArea.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:14px 16px;margin-bottom:4px">
-      <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:3px">✓ Proof submitted — under review</div>
-      <div style="font-size:12px;color:#166534">The assignor will review your submission. You will be notified if they have any questions.</div>
-    </div>`;
-    return;
-  }
-
-  // State 3/4: there is an active follow-up thread
-  const thread=Array.isArray(n.thread)?n.thread:[];
-  const last=thread[thread.length-1];
-  const needsAnswer=last?.by==='assignor';
-
-  host.innerHTML=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;margin-bottom:14px">
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#92400e;margin-bottom:8px">Follow-up from manager</div>
-    ${renderProofThread(n)}
-    ${needsAnswer?`<div style="border:1px solid #fcd34d;border-radius:7px;overflow:hidden;margin-top:10px;background:#fff">
-      <textarea id="proof-followup-answer" placeholder="Type your reply here..." style="display:block;width:100%;min-height:72px;border:none;padding:11px 13px;font-family:Inter,sans-serif;font-size:13px;resize:vertical;box-sizing:border-box;outline:none;color:#111;line-height:1.5;background:#fff"></textarea>
-      <div style="border-top:1px solid #fde68a;padding:7px 10px;display:flex;align-items:center;gap:8px;background:#fefce8;flex-wrap:wrap">
-        <input id="proof-followup-files" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" style="display:none">
-        <button type="button" onclick="document.getElementById('proof-followup-files').click()" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px solid #fcd34d;border-radius:5px;background:#fff;color:#92400e;font-size:11.5px;font-weight:600;cursor:pointer">📎 Attach files</button>
-        <div id="proof-followup-file-list" style="flex:1;font-size:11px;color:#374151;min-width:0"></div>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
-      <button class="btn btn-primary btn-sm" id="proof-followup-btn" onclick="submitProofFollowupAnswer('${escapeHtml(n.id)}')" style="background:#92400e;border-color:#92400e">Send Reply</button>
-      <span id="proof-followup-status" style="font-size:12px;color:#6b7280"></span>
-    </div>`
-    :`<div style="margin-top:8px;font-size:12px;color:#166534;font-weight:600;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px">✓ Reply sent — waiting for the manager to review.</div>`}
+  host.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:14px 16px;margin-bottom:4px">
+    <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:3px">✓ Proof submitted — under review</div>
+    <div style="font-size:12px;color:#166534">Proof is locked while awaiting a decision. Use the task's Follow Up conversation for any messages or additional context.</div>
   </div>`;
-
-  // Always hide the original submit form once a follow-up thread is active
   if(formArea)formArea.style.display='none';
-
-  if(needsAnswer){
-    pendingFollowupFiles=[];
-    document.getElementById('proof-followup-files')?.addEventListener('change',function(){
-      Array.from(this.files||[]).forEach(f=>{
-        if(!pendingFollowupFiles.some(p=>p.name===f.name&&p.size===f.size))pendingFollowupFiles.push(f);
-      });
-      this.value='';
-      renderProofFollowupFileList();
-    });
-  }
-  scrollProofThreadsToBottom(host);
 }
 
 function renderProofFollowupFileList(){
@@ -3283,6 +3246,43 @@ function taskCompletedWeekOffset(t){
   const toMon=x=>{const r=new Date(x);r.setDate(r.getDate()-(r.getDay()||7)+1);r.setHours(0,0,0,0);return r;};
   return Math.max(0,Math.round((toMon(new Date())-toMon(d))/(7*24*60*60*1000)));
 }
+function taskAssignedAt(t){
+  if(t.assignedAt||t.createdAt)return t.assignedAt||t.createdAt;
+  const numericId=Number(t.id);
+  return Number.isFinite(numericId)?new Date(Math.floor(numericId)).toISOString():'';
+}
+function taskDeadlineAt(t){return Object.prototype.hasOwnProperty.call(t,'deadline')?(t.deadline||''):(t.date||'');}
+function taskSubmittedAt(t){
+  if(t.proofSubmittedAt||t.submittedAt)return t.proofSubmittedAt||t.submittedAt;
+  const uploads=(t.proofs||[]).map(p=>p?.uploadedAt).filter(Boolean).sort();
+  return uploads.length?uploads[uploads.length-1]:'';
+}
+function actionTimelineDate(value){
+  if(!value)return '';
+  const d=new Date(value);
+  return Number.isNaN(d.getTime())?'':d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+function submittedAfterDeadline(t){
+  const submitted=taskSubmittedAt(t),deadline=taskDeadlineAt(t);
+  if(!submitted||!deadline)return false;
+  const m=String(deadline).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const due=m?new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),23,59,59,999):new Date(deadline);
+  const sent=new Date(submitted);
+  return !Number.isNaN(due.getTime())&&!Number.isNaN(sent.getTime())&&sent>due;
+}
+function completedTaskTimelineHTML(t){
+  const assigned=actionTimelineDate(taskAssignedAt(t));
+  const deadline=actionTimelineDate(taskDeadlineAt(t));
+  const submitted=actionTimelineDate(taskSubmittedAt(t));
+  const approved=actionTimelineDate(t.completedAt||t.approvedAt||t.proofReviewedAt);
+  const late=submittedAfterDeadline(t);
+  return `<div style="display:grid;gap:2px;font-size:10.5px;line-height:1.35">
+    <div><span style="color:var(--muted)">Assigned:</span> ${assigned||'Unavailable'}</div>
+    <div><span style="color:var(--muted)">Deadline:</span> ${deadline||'No deadline'}</div>
+    <div><span style="color:var(--muted)">Submitted:</span> ${submitted||'Unavailable'}${late?' <span style="color:#b91c1c;font-weight:800">• Submitted overdue</span>':''}</div>
+    <div style="color:var(--leaf);font-weight:700">Approved: ${approved||'Unavailable'}</div>
+  </div>`;
+}
 function completedActionCount(){
   return tasks.filter(t=>nstt(t.status)==="Done"&&taskCompletedWeekOffset(t)===curWeek).length;
 }
@@ -3295,6 +3295,8 @@ function syncMasterCompletedToggle(){
   btn.style.background=showMasterCompleted?'var(--leaf-bg)':'';
   btn.style.borderColor=showMasterCompleted?'var(--leaf-bd)':'';
   btn.style.color=showMasterCompleted?'var(--leaf)':'';
+  const statusFilter=document.getElementById('sf-status');
+  if(statusFilter){if(showMasterCompleted)statusFilter.value='all';statusFilter.style.display=showMasterCompleted?'none':'';}
 }
 function toggleMasterCompleted(){
   showMasterCompleted=!showMasterCompleted;
@@ -3328,7 +3330,7 @@ function getVis(){
     const wm=curSearch?true:inRelevantWeek;
     const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
     const stm=sf==="all"||(sf==="Overdue"?isOverdueTask(t):nstt(t.status)===sf);
-    const completionVisible=!isDone||showMasterCompleted;
+    const completionVisible=showMasterCompleted?isDone:!isDone;
     return wm&&completionVisible&&sm&&stm&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
   }));
 }
@@ -3336,13 +3338,15 @@ function renderMaster(){
   syncMasterCompletedToggle();
   const list=getVis(),tb=document.getElementById("master-tbody");
   if(!list.length){
-    tb.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
+    tb.innerHTML=showMasterCompleted
+      ?`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No completed tasks this week</div><div class="es-sub">Approved tasks will appear here based on their approval date</div></div></td></tr>`
+      :`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No active tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
     return;
   }
   tb.innerHTML=list.map(t=>{
     const priorityNote=String(t.priority||"Normal").toLowerCase()==="high"?`<div style="margin-top:4px;color:#b91c1c;font-size:10.5px;font-weight:700">Prioritized from Outlook</div>`:'';
     return `
-    <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6;':''}">
+    <tr onclick="openDetail(${t.id})">
       <td style="padding:10px 14px 10px 16px">
         <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}</div>
         ${t.replyCount>1?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${t.replyCount} msgs</div>`:""}
@@ -3355,12 +3359,12 @@ function renderMaster(){
       <td style="padding:10px 8px">${sbadge(t)}</td>
       <td style="padding:10px 8px">${pBadge(t.priority)}</td>
       <td onclick="event.stopPropagation()" style="padding:10px 8px">
-        <div class="wed-btn${t.wednesday?" on":""}" style="width:auto;padding:0 8px;font-size:10.5px;white-space:nowrap" onclick="togWed(${t.id})">${t.wednesday?"On Wed":"+ Wed"}</div>
+        <div class="wed-btn${t.wednesday?" on":""}" style="width:auto;padding:0 8px;font-size:10.5px;white-space:nowrap" onclick="togWed(${t.id})">${t.wednesday?(isWednesdayUser?"On Wed":"In Discussion"):(isWednesdayUser?"+ Wed":"+ Discussion")}</div>
       </td>
-      <td onclick="event.stopPropagation()" style="padding:10px 8px;font-size:11.5px;color:var(--muted);white-space:nowrap">${nstt(t.status)==="Done"?`<div style="font-weight:600;color:var(--leaf)">${t.approvedBy?'Approved':'Completed'} ${fmtD(t.completedAt||t.approvedAt||t.proofReviewedAt||t.date)}</div>${t.date?`<div style="font-size:10px;margin-top:2px">Assigned ${fmtD(t.date)}</div>`:''}`:(t.date?fmtD(t.date):'No deadline')}</td>
+      <td onclick="event.stopPropagation()" style="padding:10px 8px;font-size:11.5px;color:var(--body);white-space:normal;line-height:1.35">${nstt(t.status)==="Done"?completedTaskTimelineHTML(t):(t.date?fmtD(t.date):'No deadline')}</td>
       <td onclick="event.stopPropagation()" style="padding:6px 10px 6px 4px;text-align:right;white-space:nowrap">
         <div style="display:inline-flex;gap:5px;align-items:center">
-          <button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:13px;min-width:0;border-color:#d1d5db;color:#374151;line-height:1" onclick="openDetail(${t.id})" title="Edit department, deadline, or priority">✏️</button>
+          ${nstt(t.status)!=="Done"?`<button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:13px;min-width:0;border-color:#d1d5db;color:#374151;line-height:1" onclick="openDetail(${t.id})" title="Edit department, deadline, or priority">✏️</button>`:''}
           <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:3px 8px;font-size:11px;min-width:0;line-height:1;font-weight:700" onclick="removeTask(${t.id})" title="Remove">&#10005;</button>
         </div>
       </td>
@@ -3406,7 +3410,7 @@ async function deleteSelectedTasks(){
 async function togWed(id){
   const t=tasks.find(x=>x.id===id);if(!t)return;
   t.wednesday=!t.wednesday;
-  toast(t.wednesday?"Added to agenda":"Removed from agenda");
+  toast(t.wednesday?(isWednesdayUser?"Added to Wednesday notes":"Added to Discussion Notes"):(isWednesdayUser?"Removed from Wednesday notes":"Removed from Discussion Notes"));
   syncBadges();renderMaster();await saveTasksToOneDrive();
 }
 
@@ -3559,6 +3563,16 @@ function firstSummaryField(fields,names){
   }
   return '';
 }
+function openNotesProofReview(taskId){
+  const task=tasks.find(t=>String(t.id)===String(taskId));
+  if(!task||!task._proofNotif){toast('No proof is currently waiting for review');return;}
+  if(typeof window.openTaskProofReview!=='function'){toast('Proof review is still loading — try again');return;}
+  window.openTaskProofReview({
+    appTaskId:String(task.id),title:task.title||task.emailSubject||'Task',
+    recipientName:task.person||'',recipientEmail:task.email||'',
+    proofInstructions:task.proofInstructions||''
+  });
+}
 function renderWed(){
   const wt=tasks.filter(t=>t.wednesday);
   const total=wt.length+customNotes.length;
@@ -3567,7 +3581,7 @@ function renderWed(){
   document.getElementById('ws-o').textContent=wt.filter(isOverdueTask).length;
   const el=document.getElementById('wed-list');
   if(!total){
-    el.innerHTML=`<div class="empty-state"><div class="es-text">Nothing added yet</div><div class="es-sub">Use the Wed button in the Action Log to add tasks, or type a note above</div></div>`;
+    el.innerHTML=`<div class="empty-state"><div class="es-text">Nothing added yet</div><div class="es-sub">Use the ${isWednesdayUser?'+ Wed':'+ Discussion'} button in the Action Log to add tasks, or type a note above</div></div>`;
     return;
   }
   let html='';
@@ -3644,7 +3658,7 @@ function renderWed(){
             </div>
             <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="1" style="min-height:32px">${t.meetingNote||''}</textarea>
             <div class="ag-foot" style="margin-top:6px">
-              <span title="Status is updated from the Tasks workflow">${sbadge(t)}</span>
+              ${t._proofNotif?`<button class="btn btn-primary btn-xs" onclick="openNotesProofReview(${t.id})" style="font-size:10.5px">Review Proof</button>`:`<span title="Status is updated from the Tasks workflow">${sbadge(t)}</span>`}
               <button class="btn btn-ghost btn-xs" onclick="removeFromWed(${t.id})" style="margin-left:auto;font-size:10.5px">Remove</button>
             </div>
           </div>
@@ -3683,7 +3697,7 @@ function renderWed(){
 
 async function addCN(){const v=document.getElementById("cn-in").value.trim();if(!v)return;customNotes.unshift({text:v,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),meetingNote:""});document.getElementById("cn-in").value="";renderWed();syncBadges();toast("Note added");await saveTasksToOneDrive();}
 async function removeCN(i){const el=document.getElementById("cn-note-"+i);if(el)customNotes[i].meetingNote=el.value;customNotes.splice(i,1);renderWed();syncBadges();await saveTasksToOneDrive();}
-async function removeFromWed(id){const t=tasks.find(x=>x.id===id);if(t)t.wednesday=false;renderWed();toast("Removed from agenda");await saveTasksToOneDrive();}
+async function removeFromWed(id){const t=tasks.find(x=>x.id===id);if(t)t.wednesday=false;renderWed();toast(isWednesdayUser?"Removed from Wednesday notes":"Removed from Discussion Notes");await saveTasksToOneDrive();}
 async function clearWed(){tasks.forEach(t=>t.wednesday=false);customNotes=[];renderWed();syncBadges();toast("Cleared");await saveTasksToOneDrive();}
 function dpegPrint(){
   const dateLabel=document.getElementById('print-date-label');
@@ -3921,7 +3935,7 @@ async function refreshTaskSummary(){
     if(btn){btn.disabled=false;btn.textContent="Refresh Summary";}
   }
 }
-async function movToWed(){const t=tasks.find(x=>x.id===curTaskId);if(t)t.wednesday=true;closeMo("mo-detail");refreshAll();toast("Moved to agenda");await saveTasksToOneDrive();}
+async function movToWed(){const t=tasks.find(x=>x.id===curTaskId);if(t)t.wednesday=true;closeMo("mo-detail");refreshAll();toast(isWednesdayUser?"Moved to Wednesday notes":"Moved to Discussion Notes");await saveTasksToOneDrive();}
 function closeMo(id){document.getElementById(id).classList.remove("open");}
 document.querySelectorAll(".mo,.drill-overlay").forEach(m=>m.addEventListener("click",e=>{if(e.target===m)m.classList.remove("open");}));
 
@@ -4166,7 +4180,7 @@ function renderCharts(){
 // ============================================================
 // NAVIGATION
 // ============================================================
-const PT={dashboard:"Dashboard",master:"Action Log",people:"People & Departments",wednesday:isWednesdayUser?"Wednesday Review":"Discussion Notes",archive:"Archive",summary:"Summary Sheet",outlook:"Outlook",notifications:"Notifications",tasks:"Tasks"};
+const PT={dashboard:"Dashboard",master:"Action Log",people:"People & Departments",wednesday:isWednesdayUser?"Wednesday Review":"Discussion Notes",archive:"Notes Archive",summary:"Summary Sheet",outlook:"Outlook",notifications:"Notifications",tasks:"Tasks"};
 const PS={dashboard:"Real-time overview of task activity",master:"All dispatched tasks",people:"Team members and departments",wednesday:"Weekly agenda and notes",archive:"Past meeting records",summary:"Task report and CSV export",outlook:"Send and receive emails. Tasks are created automatically for emails sent to DPEG staff.",notifications:"Task completion alerts and approvals",tasks:"Tasks assigned to you and by you"};
 function nav(name,mode){
   if(name==="departments"){name="people";mode="departments";}
@@ -4177,7 +4191,7 @@ function nav(name,mode){
   document.getElementById("tb-sub").textContent=PS[name]||"";
   document.querySelectorAll(".ni").forEach(btn=>{
     const t=btn.textContent.trim().toLowerCase();
-    if((name==="dashboard"&&t.startsWith("dash"))||(name==="master"&&t.startsWith("action"))||(name==="people"&&(t.startsWith("people")||t.startsWith("dept")))||(name==="wednesday"&&(t.startsWith("wed")||t.startsWith("disc")))||(name==="archive"&&t.startsWith("arch"))||(name==="summary"&&t.startsWith("sum"))||(name==="outlook"&&t.startsWith("out"))||(name==="notifications"&&t.startsWith("notif"))||(name==="tasks"&&t.startsWith("tasks")))
+    if((name==="dashboard"&&t.startsWith("dash"))||(name==="master"&&t.startsWith("action"))||(name==="people"&&(t.startsWith("people")||t.startsWith("dept")))||(name==="wednesday"&&(t.startsWith("wed")||t.startsWith("disc")))||(name==="archive"&&t.startsWith("notes archive"))||(name==="summary"&&t.startsWith("sum"))||(name==="outlook"&&t.startsWith("out"))||(name==="notifications"&&t.startsWith("notif"))||(name==="tasks"&&t.startsWith("tasks")))
       btn.classList.add("active");
   });
   curSearch="";document.getElementById("srch").value="";
@@ -7735,6 +7749,7 @@ async function checkAndLoadProofNotifications(){
       note:pn.note||'',
       thread:Array.isArray(pn.thread)?pn.thread:[],
       followupStatus:pn.followupStatus||'',
+      submittedAt:pn.submittedAt||'',
       timestamp:pn.updatedAt||pn.submittedAt||new Date().toISOString(),
       status:'pending',
       recipientEmail:pn.recipientEmail||'',
@@ -8125,17 +8140,20 @@ function renderTaskProofReview(n){
   const pending=n.status==='pending';
   const stateLabel=n.status==='approved'?'Approved':n.status==='dismissed'?'Changes requested':'Awaiting your review';
   const stateClass=n.status==='approved'?'is-approved':n.status==='dismissed'?'is-changes':'is-pending';
+  const task=tasks.find(t=>String(t.id)===String(n.taskId||''));
+  const instructions=String(taskProofReviewContext?.assignment?.proofInstructions||task?.proofInstructions||'').trim();
+  const instructionsHtml=instructions?`<div style="margin:10px 0;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#166534;margin-bottom:4px">Proof instructions</div><div style="font-size:12px;color:#14532d;line-height:1.5;white-space:pre-wrap">${escapeHtml(instructions)}</div></div>`:'';
   body.innerHTML=`<div class="task-review-summary ${stateClass}">
       <div><div class="task-review-kicker">Proof submission</div><div class="task-review-state">${stateLabel}</div></div>
       <div class="task-review-person">${escapeHtml(n.recipientName||n.recipientEmail||'Assignee')}</div>
-    </div>${renderNotificationProofs(n)}`;
+    </div>${instructionsHtml}${renderNotificationProofs(n)}`;
   document.getElementById('task-review-status').textContent=pending?'Review the files and note before deciding.':'';
   setTaskReviewActionsEnabled(pending);
   scrollProofThreadsToBottom(body);
 }
 
 function setTaskReviewActionsEnabled(enabled){
-  ['task-review-message-btn','task-review-changes-btn','task-review-approve-btn'].forEach(id=>{
+  ['task-review-changes-btn','task-review-approve-btn'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.disabled=!enabled;
   });
   const input=document.getElementById('task-review-message');if(input)input.disabled=!enabled;
@@ -8177,21 +8195,6 @@ async function requestTaskProofChanges(){
   }else setTaskReviewBusy(false,'Could not request changes. Please try again.');
 }
 
-async function sendTaskReviewMessage(){
-  const id=taskProofReviewContext?.notificationId;if(id==null)return;
-  const input=document.getElementById('task-review-message');
-  const message=String(input?.value||'').trim();
-  if(!message){input?.focus();toast('Please type a message');return;}
-  setTaskReviewBusy(true,'Sending message...');
-  const sent=await askNotificationFollowup(id,message);
-  if(sent){
-    input.value='';
-    const refreshed=notifications.find(x=>x.id===id)||taskProofReviewNotification(taskProofReviewContext?.appTaskId,false);
-    if(refreshed)renderTaskProofReview(refreshed);
-    toast('Message sent');
-  }else setTaskReviewBusy(false,'Could not send message. Please try again.');
-}
-
 async function approveNotification(id){
   markNotifSeen(id);
   if(highlightedNotifId===id)highlightedNotifId=null;
@@ -8210,7 +8213,7 @@ async function approveNotification(id){
       });
       if(!res.ok){const detail=await res.text().catch(()=>'');throw new Error(detail||`Approval failed (${res.status})`);}
       window.updateTasksTabProofState?.(String(n.taskId||''), 'approved');
-      if(task){task.status='Done';task.completedAt=new Date().toISOString();task.approvedBy=currentUser?.email||'';delete task._proofNotif;if(Array.isArray(n.proofs)&&n.proofs.length)task.proofs=n.proofs;}
+      if(task){task.status='Done';task.completedAt=new Date().toISOString();task.proofSubmittedAt=n.submittedAt||n.timestamp||task._proofNotif?.submittedAt||'';task.approvedBy=currentUser?.email||'';delete task._proofNotif;if(Array.isArray(n.proofs)&&n.proofs.length)task.proofs=n.proofs;}
       n.status='approved';
       updateNotifBadge();renderNotifications();
       await Promise.all([saveNotifications(),saveTasksToOneDrive()]);
@@ -8226,6 +8229,7 @@ async function approveNotification(id){
     if(task){
       task.status='Done';
       task.completedAt=new Date().toISOString();
+      task.proofSubmittedAt=n.submittedAt||n.timestamp||task.proofSubmittedAt||'';
       task.approvedBy=currentUser?.email||'';
       if(Array.isArray(n.proofs)&&n.proofs.length)task.proofs=n.proofs;
       syncBadges();refreshAll();
@@ -8380,8 +8384,7 @@ function renderNotificationCard(n){
         ${n.taskId!=null?`<button class="btn btn-ghost btn-sm" onclick="goToNotificationTask(${n.id})">Go to Action Log</button>`:''}
         ${n.status==='pending'?`
         ${(n.type==='task_completion'||n.type==='proof_submitted')?`<button class="btn btn-primary btn-sm" onclick="approveNotification(${n.id})">Approve</button>`:''}
-        ${(n.type==='proof_submitted'||n.type==='task_completion')?`<button class="btn btn-ghost btn-sm" onclick="askNotificationFollowup(${n.id})">Ask</button>`:''}
-        <button class="btn btn-ghost btn-sm" onclick="dismissNotification(${n.id})">Dismiss</button>
+        <button class="btn btn-ghost btn-sm" onclick="dismissNotification(${n.id})">${n.type==='proof_submitted'?'Request Changes':'Dismiss'}</button>
         `:''}
       </div>
     </div>
@@ -8541,8 +8544,7 @@ function renderNotificationProofs(n){
       ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700;flex-shrink:0">Open</a>`:''}
     </div>`).join('')}
   </div>`:(note?'':`<div style="margin:6px 0;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:6px 8px">No proof files were attached.</div>`);
-  const threadHtml=renderProofThread(n);
-  return relatedHtml+noteHtml+threadHtml+filesHtml;
+  return relatedHtml+noteHtml+filesHtml;
 }
 
 function renderRelatedProofSubmissions(n){

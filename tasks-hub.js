@@ -274,8 +274,7 @@
         content = `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`;
       } else if (proof === 'submitted') {
-        content = `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>
-          <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Update Proof</button>`;
+        content = `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>`;
       } else if (proof === 'declined') {
         content = `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Declined — check your email, then</span>
           <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button>`;
