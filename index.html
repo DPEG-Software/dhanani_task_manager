@@ -230,7 +230,8 @@
     <div class="tbl-wrap">
       <div class="tbl-hdr">
         <div class="tbl-title">All dispatched tasks</div>
-        <select class="sel-f" id="sf-status" onchange="renderMaster()"><option value="all">All Statuses</option><option>Pending</option><option>Done</option><option>Overdue</option></select>
+        <button class="btn btn-ghost btn-sm" id="master-done-toggle" onclick="toggleMasterCompleted()" aria-pressed="false">Show completed</button>
+        <select class="sel-f" id="sf-status" onchange="renderMaster()"><option value="all">All Active Statuses</option><option>Pending</option><option>Overdue</option></select>
         <select class="sel-f" id="sf-dept" onchange="renderMaster()"><option value="all">All Departments</option></select>
         <select class="sel-f" id="sf-priority" onchange="renderMaster()"><option value="all">All Priorities</option><option>High</option><option>Normal</option></select>
       </div>
@@ -238,7 +239,6 @@
         <table>
           <thead>
             <tr>
-              <th style="width:44px"></th>
               <th>Task</th>
               <th style="width:140px">Assigned To</th>
               <th style="width:130px">Department</th>
@@ -624,6 +624,11 @@
       <button class="mo-x" onclick="closeMo('mo-department-settings')">&#10005;</button>
     </div>
     <div class="mo-body">
+      <div style="display:flex;gap:8px;align-items:end;margin-bottom:14px;padding:10px 12px;background:var(--leaf-bg);border:1px solid var(--leaf-bd);border-radius:7px">
+        <div style="flex:1"><label class="form-lbl" style="margin-bottom:4px">Add Department</label><input class="form-in" id="dept-new-name" placeholder="Department name" style="padding:7px 9px;font-size:12.5px" onkeydown="if(event.key==='Enter'){event.preventDefault();createDepartmentSetting()}"></div>
+        <button class="btn btn-primary btn-sm" onclick="createDepartmentSetting()">+ Add</button>
+      </div>
+      <div id="department-settings-catalog" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px"></div>
       <div style="display:grid;grid-template-columns:minmax(130px,1fr) minmax(170px,1.2fr) minmax(140px,.9fr) auto;gap:8px;align-items:end;margin-bottom:14px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:7px;position:relative">
         <div><label class="form-lbl" style="margin-bottom:4px">Person</label><input class="form-in" id="dept-assign-name" placeholder="Name" autocomplete="off" oninput="showDeptAssignAC('name')" onfocus="showDeptAssignAC('name')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
         <div><label class="form-lbl" style="margin-bottom:4px">Email</label><input class="form-in" id="dept-assign-email" placeholder="email@dhananipeg.com" autocomplete="off" oninput="showDeptAssignAC('email')" onfocus="showDeptAssignAC('email')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
@@ -904,17 +909,17 @@
     <div class="mo-hdr"><div style="min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="mo-title" id="mo-title" style="font-size:18px"></div><span id="mo-person-badge" style="display:none;align-items:center;gap:5px;padding:3px 10px;background:var(--sage3);border:1px solid var(--sage);border-radius:20px;font-size:12px;font-weight:700;color:var(--forest);white-space:nowrap"></span></div><div class="mo-sub" id="mo-sub"></div></div><button class="mo-x" onclick="closeMo('mo-detail')">&#10005;</button></div>
     <div class="mo-body">
       <div class="mo-section-lbl mo-section-lbl-first">Details</div>
-      <div class="form-grp" style="margin-bottom:8px"><label class="form-lbl">Title</label><input type="text" class="form-in" id="mo-edit-title" placeholder="Task title"></div>
+      <div class="form-grp" style="margin-bottom:8px"><label class="form-lbl">Title</label><input type="text" class="form-in" id="mo-edit-title" placeholder="Task title" disabled></div>
       <div class="sum-box" id="mo-sum"></div>
 
       <div class="mo-section-lbl">Assignment</div>
-      <div class="d-row"><div class="d-lbl">Assigned To</div><div style="flex:1;display:flex;gap:6px"><input type="text" class="form-in" id="mo-edit-person" placeholder="Name" style="flex:1;padding:4px 8px;font-size:12px"><input type="email" class="form-in" id="mo-edit-email" placeholder="Email" style="flex:1;padding:4px 8px;font-size:12px"></div></div>
+      <div class="d-row"><div class="d-lbl">Assigned To</div><div style="flex:1;display:flex;gap:6px"><input type="text" class="form-in" id="mo-edit-person" placeholder="Name" style="flex:1;padding:4px 8px;font-size:12px" disabled><input type="email" class="form-in" id="mo-edit-email" placeholder="Email" style="flex:1;padding:4px 8px;font-size:12px" disabled></div></div>
       <div class="d-row"><div class="d-lbl">Department</div><select class="form-sel" id="mo-dept" style="width:auto"></select></div>
 
-      <div class="mo-section-lbl">Schedule &amp; Status</div>
-      <div class="d-row"><div class="d-lbl">Date</div><input type="date" class="form-in" id="mo-edit-date" style="font-size:12px;padding:4px 8px;width:auto"></div>
+      <div class="mo-section-lbl">Assignment Settings</div>
+      <div class="d-row"><div class="d-lbl">Deadline</div><input type="date" class="form-in" id="mo-edit-date" style="font-size:12px;padding:4px 8px;width:auto"></div>
       <div class="d-row"><div class="d-lbl">Priority</div><select class="form-sel" id="mo-edit-priority" style="width:auto"><option>Normal</option><option>High</option></select></div>
-      <div class="d-row"><div class="d-lbl">Status</div><select class="form-sel" id="mo-status" style="width:auto"><option>Pending</option><option>Done</option></select></div>
+      <div class="d-row"><div class="d-lbl">Status</div><div id="mo-status-display"></div><span style="font-size:10.5px;color:var(--muted)">Updated from Tasks</span></div>
 
       <div id="mo-proof-panel"></div>
     </div>
@@ -952,7 +957,7 @@
         <div class="form-grp"><label class="form-lbl">Priority</label><select class="form-sel" id="nt-priority"><option>Normal</option><option>High</option></select></div>
       </div>
       <div class="form-row">
-        <div class="form-grp"><label class="form-lbl">Status</label><select class="form-sel" id="nt-status"><option>Pending</option><option>Done</option></select></div>
+        <div class="form-grp"><label class="form-lbl">Status</label><select class="form-sel" id="nt-status" disabled title="New tasks begin as Pending"><option>Pending</option></select></div>
         <div class="form-grp">
           <label class="form-lbl">Deadline</label>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:5px">
@@ -1052,12 +1057,14 @@ let archives = [];
 let staffConfig = {};
 let userContacts = {};
 let customDepartments = [];
+let sharedDepartmentsVersion = null;
 let customNotes = [];
 let sharedDataActive = false;
 let sharedDataVersion = null;
 let selectedTaskIds = new Set();
 let ntAssignees = [];
 let curTaskId = null, curWeek = 0, curSearch = "", curPplSel = null, curDeptSel = null, curPplFilter = "", directoryMode = "people";
+let showMasterCompleted = false;
 let CH = {};
 const PROOF_RETURN_KEY='dpeg_proof_return_search';
 
@@ -1798,6 +1805,7 @@ async function loadTasksFromOneDrive() {
       tasks=[];archives=[];staffConfig={};customDepartments=[];customNotes=[];notifications=[];
       await saveTasksToOneDrive();
     }
+    await loadSharedDepartmentSettings();
     setSyncStatus("synced", "Synced with OneDrive");
     finishDataLoad();
   } catch (err) {
@@ -1947,6 +1955,63 @@ async function saveSharedCompanyData(){
     console.warn("Shared data save skipped:",err.message);
     return false;
   }
+}
+
+async function loadSharedDepartmentSettings(){
+  const base=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+  if(!base)return false;
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`${base}/departments`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)return false;
+    const data=await res.json();
+    const sharedList=Array.isArray(data.departments)?data.departments.filter(Boolean):[];
+    // The server registry is authoritative. Personal OneDrive files may still
+    // contain older department choices, but they must not differ by user.
+    customDepartments=[...new Set(sharedList)];
+    const sharedAssignments=data.assignments||{};
+    Object.values(staffConfig||{}).forEach(person=>{
+      const email=normEmail(person?.email||'');
+      if(email&&isInternalEmail(email)&&!sharedAssignments[email])person.dept='Needs Department';
+    });
+    Object.values(sharedAssignments).forEach(row=>{
+      const email=normEmail(row?.email||'');
+      if(!email||!row?.dept)return;
+      const key=staffKey(email,row.name||email);
+      staffConfig[key]={...(staffConfig[key]||{}),name:row.name||staffConfig[key]?.name||email.split('@')[0],email,dept:row.dept,role:staffConfig[key]?.role||''};
+    });
+    tasks.forEach(task=>{
+      const email=normEmail(task?.email||'');
+      if(!email||!isInternalEmail(email)||nstt(task.status)==='Done')return;
+      task.dept=sharedAssignments[email]?.dept||'Needs Department';
+    });
+    sharedDepartmentsVersion=data.updatedAt||null;
+    return true;
+  }catch(err){console.warn('Shared departments load skipped:',err.message);return false;}
+}
+
+async function saveSharedDepartmentSettings(){
+  if(!isAdmin())return false;
+  const base=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+  if(!base)return false;
+  const assignments={};
+  Object.values(staffConfig||{}).forEach(p=>{
+    const email=normEmail(p?.email||'');
+    const dept=String(p?.dept||'').trim();
+    if(email&&isInternalEmail(email)&&dept&&dept!=='Needs Department')assignments[email]={email,name:p.name||'',dept};
+  });
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`${base}/departments`,{
+      method:'PUT',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({departments:customDepartments,assignments,baseUpdatedAt:sharedDepartmentsVersion})
+    });
+    if(res.status===409){toast('Departments changed elsewhere. Reopen Department Settings and try again.');return false;}
+    if(!res.ok)return false;
+    const data=await res.json().catch(()=>({}));
+    sharedDepartmentsVersion=data.updatedAt||sharedDepartmentsVersion;
+    return true;
+  }catch(err){console.warn('Shared departments save skipped:',err.message);return false;}
 }
 
 // ============================================================
@@ -2145,6 +2210,7 @@ function deptAssignACNav(e){
   else if(e.key==='Escape'){ac.style.display='none';}
 }
 async function saveDepartmentAssignmentSetting(){
+  if(!isAdmin()){toast('Admin access only');return;}
   completeDeptAssignFromText();
   const name=String(document.getElementById('dept-assign-name')?.value||'').trim().replace(/\s+/g,' ');
   const email=String(document.getElementById('dept-assign-email')?.value||'').trim().toLowerCase();
@@ -2173,8 +2239,9 @@ async function saveDepartmentAssignmentSetting(){
   syncBadges();
   if(document.getElementById("page-master")?.classList.contains("active"))renderMaster();
   if(document.getElementById("page-dashboard")?.classList.contains("active")){syncPulse();renderCharts();renderActivity();}
+  const sharedSaved=await saveSharedDepartmentSettings();
   await saveTasksToOneDrive();
-  toast(`Department saved for ${finalName}`);
+  toast(sharedSaved?`Department saved for ${finalName} across the app`:`Department saved locally; shared save failed`);
 }
 function emailSubject(t){return t.emailSubject||t.subject||t.title||"(no subject)";}
 function taskEmailId(t){return t.lastMessageId||t.emailId||"";}
@@ -2923,7 +2990,8 @@ function upsertTaskFromEmail(email,person,address,dept,date){
     existing.lastMessageId=email.id||existing.lastMessageId||"";
     existing.emailSubject=email.subject||existing.emailSubject||existing.title;
     existing.title=existing.title||email.subject||"(no subject)";
-    existing.summary=email.threadSummary||email.bodyPreview||existing.summary||"";
+    const refreshedContext=email.threadSummary||email.bodyPreview||existing.threadSummary||existing.summary||"";
+    existing.summary=taskSummaryWithInstruction(existing.taskInstruction,refreshedContext);
     existing.threadSummary=email.threadSummary||existing.threadSummary||"";
     existing.person=person||existing.person;
     existing.email=address||existing.email||"";
@@ -2956,14 +3024,14 @@ async function refreshTaskFromThreadMessages(messages,subject=''){
   t.lastReplyAt=latest.receivedDateTime||latest.sentDateTime||t.lastReplyAt;
   if(hasHigh)t.priority="High";
   const local=localThreadSummary(ordered);
-  if(local&&!t.aiGenerated)t.summary=local;
+  if(local&&!t.aiGenerated)t.summary=taskSummaryWithInstruction(t.taskInstruction,local);
   // Only call AI if: no summary yet, or new messages arrived since last summary was generated
   const lastSumAt=t.summaryGeneratedAt?new Date(t.summaryGeneratedAt).getTime():0;
   const hasNewMessages=ordered.some(m=>new Date(m.receivedDateTime||m.sentDateTime||0).getTime()>lastSumAt);
   if(!t.aiGenerated||hasNewMessages){
     try{
       const ai=await callAISummary(ordered,t.emailSubject||subject||'');
-      if(ai){t.summary=ai;t.threadSummary=ai;t.aiGenerated=true;t.summaryGeneratedAt=new Date().toISOString();}
+      if(ai){t.summary=taskSummaryWithInstruction(t.taskInstruction,ai);t.threadSummary=ai;t.aiGenerated=true;t.summaryGeneratedAt=new Date().toISOString();}
     }catch{}
     syncBadges();
     renderMaster();
@@ -2973,8 +3041,8 @@ async function refreshTaskFromThreadMessages(messages,subject=''){
 }
 
 function sbadge(t) {
-  const st=isOverdueTask(t)?"Overdue":nstt(t.status);
-  const m={Pending:"bp",Done:"bd",Overdue:"bo"};
+  const st=nstt(t.status)==="Done"?"Done":(t._proofNotif?"Awaiting Approval":(isOverdueTask(t)?"Overdue":"Pending"));
+  const m={Pending:"bp",Done:"bd",Overdue:"bo","Awaiting Approval":"bo"};
   return `<span class="badge ${m[st]||"bp"}">${st}</span>`;
 }
 function av(name,size) {
@@ -3000,9 +3068,31 @@ function peopleOptions(){
   return [...map.values()].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
 }
 function openDepartmentSettings(){
+  if(!isAdmin()){toast('Admin access only');return;}
   initSelects();
   renderDepartmentSettingsList();
+  renderDepartmentSettingsCatalog();
   document.getElementById('mo-department-settings')?.classList.add('open');
+}
+function renderDepartmentSettingsCatalog(){
+  const el=document.getElementById('department-settings-catalog');
+  if(!el)return;
+  el.innerHTML=allDepartments().map(dept=>`<span class="dept-pill" style="font-size:11px;padding:4px 8px"><span class="dept-dot" style="background:${dcolor(dept)}"></span>${escapeHtml(dept)}</span>`).join('');
+}
+async function createDepartmentSetting(){
+  if(!isAdmin()){toast('Admin access only');return;}
+  const input=document.getElementById('dept-new-name');
+  const name=String(input?.value||'').trim().replace(/\s+/g,' ');
+  if(!name){toast('Enter a department name');return;}
+  if(allDepartments().some(d=>d.toLowerCase()===name.toLowerCase())){toast('Department already exists');return;}
+  customDepartments=[...(customDepartments||[]),name].sort((a,b)=>a.localeCompare(b));
+  if(input)input.value='';
+  initSelects();
+  renderDepartmentSettingsCatalog();
+  renderDepartmentSettingsList();
+  const sharedSaved=await saveSharedDepartmentSettings();
+  await saveTasksToOneDrive();
+  toast(sharedSaved?`${name} added for everyone`:`${name} added locally; shared save failed`);
 }
 function renderDepartmentSettingsList(){
   const el=document.getElementById('department-settings-list');
@@ -3186,8 +3276,39 @@ function taskWeekOffset(t){
   const toMon=x=>{const r=new Date(x);r.setDate(r.getDate()-(r.getDay()||7)+1);r.setHours(0,0,0,0);return r;};
   return Math.max(0,Math.round((toMon(new Date())-toMon(d))/(7*24*60*60*1000)));
 }
+function taskCompletedWeekOffset(t){
+  const raw=t.completedAt||t.approvedAt||t.proofReviewedAt||t.date||t.id;
+  const d=new Date(raw);
+  if(Number.isNaN(d.getTime()))return taskWeekOffset(t);
+  const toMon=x=>{const r=new Date(x);r.setDate(r.getDate()-(r.getDay()||7)+1);r.setHours(0,0,0,0);return r;};
+  return Math.max(0,Math.round((toMon(new Date())-toMon(d))/(7*24*60*60*1000)));
+}
+function completedActionCount(){
+  return tasks.filter(t=>nstt(t.status)==="Done"&&taskCompletedWeekOffset(t)===curWeek).length;
+}
+function syncMasterCompletedToggle(){
+  const btn=document.getElementById("master-done-toggle");
+  if(!btn)return;
+  const count=completedActionCount();
+  btn.textContent=`${showMasterCompleted?'Hide':'Show'} completed (${count})`;
+  btn.setAttribute('aria-pressed',showMasterCompleted?'true':'false');
+  btn.style.background=showMasterCompleted?'var(--leaf-bg)':'';
+  btn.style.borderColor=showMasterCompleted?'var(--leaf-bd)':'';
+  btn.style.color=showMasterCompleted?'var(--leaf)':'';
+}
+function toggleMasterCompleted(){
+  showMasterCompleted=!showMasterCompleted;
+  renderMaster();
+}
 function sortActionTasks(list){
   return [...list].sort((a,b)=>{
+    const ad=nstt(a.status)==="Done",bd=nstt(b.status)==="Done";
+    if(ad!==bd)return ad?1:-1;
+    if(ad&&bd){
+      const at=new Date(a.completedAt||a.approvedAt||a.proofReviewedAt||a.date||a.id).getTime()||0;
+      const bt=new Date(b.completedAt||b.approvedAt||b.proofReviewedAt||b.date||b.id).getTime()||0;
+      if(at!==bt)return bt-at;
+    }
     const ao=isOverdueTask(a)?0:1;
     const bo=isOverdueTask(b)?0:1;
     if(ao!==bo)return ao-bo;
@@ -3202,28 +3323,28 @@ function getVis(){
   const df=document.getElementById("sf-dept")?.value||"all";
   const pf=document.getElementById("sf-priority")?.value||"all";
   return sortActionTasks(tasks.filter(t=>{
-    const createdInWeek=taskWeekOffset(t)===curWeek;
-    const wm=curSearch?true:createdInWeek;
+    const isDone=nstt(t.status)==="Done";
+    const inRelevantWeek=isDone?taskCompletedWeekOffset(t)===curWeek:taskWeekOffset(t)===curWeek;
+    const wm=curSearch?true:inRelevantWeek;
     const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
     const stm=sf==="all"||(sf==="Overdue"?isOverdueTask(t):nstt(t.status)===sf);
-    return wm&&sm&&stm&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
+    const completionVisible=!isDone||showMasterCompleted;
+    return wm&&completionVisible&&sm&&stm&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
   }));
 }
 function renderMaster(){
+  syncMasterCompletedToggle();
   const list=getVis(),tb=document.getElementById("master-tbody");
   if(!list.length){
-    tb.innerHTML=`<tr><td colspan="9"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
+    tb.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
     return;
   }
   tb.innerHTML=list.map(t=>{
     const priorityNote=String(t.priority||"Normal").toLowerCase()==="high"?`<div style="margin-top:4px;color:#b91c1c;font-size:10.5px;font-weight:700">Prioritized from Outlook</div>`:'';
     return `
     <tr onclick="openDetail(${t.id})" style="${nstt(t.status)==='Done'?'opacity:.6;':''}">
-      <td onclick="event.stopPropagation()" style="padding:10px 12px 10px 16px">
-        <input type="checkbox" class="chk" ${nstt(t.status)==="Done"?"checked":""} onchange="toggleDone(${t.id},this.checked)">
-      </td>
-      <td style="padding:10px 14px">
-        <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}${t._proofNotif?`<span style="margin-left:7px;padding:1px 7px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;font-size:10px;font-weight:700;color:#92400e;vertical-align:middle">Proof Ready</span>`:''}</div>
+      <td style="padding:10px 14px 10px 16px">
+        <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}</div>
         ${t.replyCount>1?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${t.replyCount} msgs</div>`:""}
         ${priorityNote}
       </td>
@@ -3236,10 +3357,10 @@ function renderMaster(){
       <td onclick="event.stopPropagation()" style="padding:10px 8px">
         <div class="wed-btn${t.wednesday?" on":""}" style="width:auto;padding:0 8px;font-size:10.5px;white-space:nowrap" onclick="togWed(${t.id})">${t.wednesday?"On Wed":"+ Wed"}</div>
       </td>
-      <td onclick="event.stopPropagation()" style="padding:10px 8px;font-size:11.5px;color:var(--muted);white-space:nowrap">${t.date?fmtD(t.date):`<button class="btn btn-ghost btn-sm" onclick="openDetail(${t.id})" style="font-size:10px;padding:1px 6px;color:#6b7280;border-color:#e5e7eb;white-space:nowrap;line-height:1.4">+ Add deadline</button>`}</td>
+      <td onclick="event.stopPropagation()" style="padding:10px 8px;font-size:11.5px;color:var(--muted);white-space:nowrap">${nstt(t.status)==="Done"?`<div style="font-weight:600;color:var(--leaf)">${t.approvedBy?'Approved':'Completed'} ${fmtD(t.completedAt||t.approvedAt||t.proofReviewedAt||t.date)}</div>${t.date?`<div style="font-size:10px;margin-top:2px">Assigned ${fmtD(t.date)}</div>`:''}`:(t.date?fmtD(t.date):'No deadline')}</td>
       <td onclick="event.stopPropagation()" style="padding:6px 10px 6px 4px;text-align:right;white-space:nowrap">
         <div style="display:inline-flex;gap:5px;align-items:center">
-          <button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:13px;min-width:0;border-color:#d1d5db;color:#374151;line-height:1" onclick="openDetail(${t.id})" title="Edit task">✏️</button>
+          <button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:13px;min-width:0;border-color:#d1d5db;color:#374151;line-height:1" onclick="openDetail(${t.id})" title="Edit department, deadline, or priority">✏️</button>
           <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:3px 8px;font-size:11px;min-width:0;line-height:1;font-weight:700" onclick="removeTask(${t.id})" title="Remove">&#10005;</button>
         </div>
       </td>
@@ -3281,10 +3402,6 @@ async function deleteSelectedTasks(){
   refreshAll();
   toast(`${selected.length} task${selected.length!==1?"s":""} removed`);
   await saveTasksToOneDrive();
-}
-async function toggleDone(id,checked){
-  const t=tasks.find(x=>x.id===id);
-  if(t){t.status=checked?"Done":"Pending";syncBadges();renderMaster();renderActivity();toast(checked?"Marked as done":"Marked as pending");await saveTasksToOneDrive();}
 }
 async function togWed(id){
   const t=tasks.find(x=>x.id===id);if(!t)return;
@@ -3527,7 +3644,7 @@ function renderWed(){
             </div>
             <textarea class="ag-ta" placeholder="Meeting notes — what was discussed, decided or deferred..." id="wn-${t.id}" rows="1" style="min-height:32px">${t.meetingNote||''}</textarea>
             <div class="ag-foot" style="margin-top:6px">
-              ${['Pending','Done'].map(s=>`<button class="ag-status-btn ${s.toLowerCase()}${nstt(t.status)===s?' on':''}" onclick="updStatus(${t.id},'${s}')">${s}</button>`).join('')}
+              <span title="Status is updated from the Tasks workflow">${sbadge(t)}</span>
               <button class="btn btn-ghost btn-xs" onclick="removeFromWed(${t.id})" style="margin-left:auto;font-size:10.5px">Remove</button>
             </div>
           </div>
@@ -3587,11 +3704,6 @@ function dpegPrint(){
   window.print();
 }
 window.addEventListener('afterprint',()=>document.body.classList.remove('printing-summary'));
-async function updStatus(id,v){
-  const t=tasks.find(x=>x.id===id);const note=document.getElementById("wn-"+id);
-  if(t){if(note)t.meetingNote=note.value;t.status=v;}
-  syncBadges();renderWed();await saveTasksToOneDrive();
-}
 async function saveMeeting(){
   const wt=tasks.filter(t=>t.wednesday);
   wt.forEach(t=>{const el=document.getElementById("wn-"+t.id);if(el)t.meetingNote=el.value;});
@@ -3747,7 +3859,8 @@ function openDetail(id){
   document.getElementById("mo-edit-date").value=t.date||"";
   document.getElementById("mo-edit-priority").value=t.priority||"Normal";
   document.getElementById("mo-dept").innerHTML=deptOptions(t.dept);
-  document.getElementById("mo-status").value=nstt(t.status);
+  const statusDisplay=document.getElementById("mo-status-display");
+  if(statusDisplay)statusDisplay.innerHTML=sbadge(t);
   const rs=document.getElementById("mo-refresh-summary");
   if(rs)rs.style.display=t.conversationId||t.emailId?"inline-flex":"none";
   renderProofPanel(t);
@@ -3761,7 +3874,7 @@ async function saveDetail(){
   const newEmail=(document.getElementById("mo-edit-email").value||"").trim();
   const newDate=document.getElementById("mo-edit-date").value||t.date;
   const newPriority=document.getElementById("mo-edit-priority").value||t.priority||"Normal";
-  const newStatus=document.getElementById("mo-status").value;
+  const newStatus=nstt(t.status);
   const newDept=document.getElementById("mo-dept").value;
   const changes=[];
   if(newTitle!==t.title)changes.push(`Title: "${t.title}" → "${newTitle}"`);
@@ -3769,7 +3882,7 @@ async function saveDetail(){
   if(newEmail&&newEmail!==t.email)changes.push(`Email updated`);
   if(newDate&&newDate!==t.date)changes.push(`Date: ${fmtD(t.date)} → ${fmtD(newDate)}`);
   if(newPriority!==(t.priority||"Normal"))changes.push(`Priority: ${t.priority||"Normal"} → ${newPriority}`);
-  if(newStatus!==nstt(t.status))changes.push(`Status: ${nstt(t.status)} → ${newStatus}`);
+  if(newDept!==t.dept)changes.push(`Department: ${t.dept||'Unassigned'} → ${newDept}`);
   t.title=newTitle;t.person=newPerson;if(newEmail)t.email=newEmail;
   t.date=newDate;t.priority=newPriority;t.status=newStatus;
   saveStaffDeptForTask(t,newDept);
@@ -3796,7 +3909,7 @@ async function refreshTaskSummary(){
   try{
     const email={id:t.emailId||t.lastMessageId,subject:t.emailSubject||t.title,conversationId:t.conversationId,bodyPreview:t.summary||""};
     await attachFreeThreadSummary(email);
-    t.summary=email.threadSummary||t.summary;
+    t.summary=taskSummaryWithInstruction(t.taskInstruction,email.threadSummary||t.threadSummary||t.summary);
     t.threadSummary=email.threadSummary||t.threadSummary||"";
     document.getElementById("mo-sum").innerHTML=renderSumBox(t);
     refreshAll();
@@ -6346,6 +6459,23 @@ async function sendDraftMessage(token,message,toAttach=[],inlineAttachments=[]){
   }
 }
 
+function forwardComposeInstruction(body){
+  const text=String(body||'');
+  const markerIndex=text.search(/(?:^|\n)\s*(?:---|———)\s*Forwarded Message\s*(?:---|———)/i);
+  const instruction=markerIndex>=0?text.slice(0,markerIndex):text;
+  return plainizeEmailBody(instruction);
+}
+
+function taskSummaryWithInstruction(instruction,context){
+  const cleanInstruction=plainizeEmailBody(instruction);
+  const cleanContext=plainizeEmailBody(context);
+  if(!cleanInstruction)return cleanContext;
+  return [
+    `Action needed:\n${cleanInstruction}`,
+    cleanContext?`Email context:\n${cleanContext}`:''
+  ].filter(Boolean).join('\n\n');
+}
+
 async function sendForwardedOutlookMessage(token,emailId,toRecipients,ccRecipients,bccRecipients,subject,body,importance,toAttach=[],composed=null){
   const markerIndex=String(body||'').search(/\n\s*(?:---|———)\s*Forwarded Message\s*(?:---|———)/i);
   const commentBody=markerIndex>=0?String(body||'').slice(0,markerIndex).trim():body;
@@ -6487,7 +6617,9 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
       if(dpegRecipients.length){
         let forwardedEmail=null;
         let forwardedFullBody='';
+        let taskInstruction='';
         if(currentComposeType==='Forward'&&currentComposeEmailId){
+          taskInstruction=forwardComposeInstruction(body);
           forwardedEmail=emailCache[currentComposeEmailId]||null;
           if(forwardedEmail){
             await attachFreeThreadSummary(forwardedEmail).catch(()=>{});
@@ -6499,6 +6631,11 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
         for(const email of dpegRecipients){
           const p=findPersonByEmail(email);
           const person=p?.name||email.split('@')[0];
+          const emailContext=forwardedFullBody||forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body;
+          const taskSummary=[
+            taskSummaryWithInstruction(taskInstruction,emailContext),
+            [...forwardAttachmentNames,...manualAttachmentNames].length?`Attachments: ${[...forwardAttachmentNames,...manualAttachmentNames].join(', ')}`:''
+          ].filter(Boolean).join('\n\n');
           const newTask={
             id:Date.now()+Math.random(),
             title:forwardedEmail?.subject||subject,
@@ -6506,7 +6643,8 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
             emailId:forwardedEmail?.id||'',
             conversationId:forwardedEmail?.conversationId||'',
             lastMessageId:forwardedEmail?.id||'',
-            summary:[forwardedFullBody||forwardedEmail?.threadSummary||forwardedEmail?.bodyPreview||body,[...forwardAttachmentNames,...manualAttachmentNames].length?`Attachments: ${[...forwardAttachmentNames,...manualAttachmentNames].join(', ')}`:''].filter(Boolean).join('\n'),
+            summary:taskSummary,
+            taskInstruction,
             threadSummary:forwardedEmail?.threadSummary||'',
             attachmentNames:[...forwardAttachmentNames,...manualAttachmentNames],
             aiGenerated:!!forwardedEmail?.aiGenerated,

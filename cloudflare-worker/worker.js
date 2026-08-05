@@ -433,6 +433,10 @@ async function handleData(request, env) {
       staffConfig: ADMIN_EMAILS.has(userEmail) && body.staffConfig && typeof body.staffConfig === 'object'
         ? body.staffConfig
         : (existing.staffConfig && typeof existing.staffConfig === 'object' ? existing.staffConfig : {}),
+      customDepartments: Array.isArray(existing.customDepartments) ? existing.customDepartments : [],
+      departmentAssignments: existing.departmentAssignments && typeof existing.departmentAssignments === 'object'
+        ? existing.departmentAssignments : {},
+      departmentsUpdatedAt: existing.departmentsUpdatedAt || null,
       customNotes: Array.isArray(body.customNotes) ? body.customNotes : [],
       notifications: Array.isArray(body.notifications) ? body.notifications : [],
       updatedAt: new Date().toISOString(),
@@ -442,6 +446,53 @@ async function handleData(request, env) {
   }
 
   return json({ error: 'Method not allowed' }, 405);
+}
+
+// Shared department registry. Microsoft remains the contact/name source; this
+// stores only company department names and email-to-department overrides.
+async function handleDepartments(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_DATA) return json({ error: 'DPEG_DATA KV binding is not configured' }, 501);
+  const existing = await env.DPEG_DATA.get(DATA_KEY, 'json') || {};
+
+  if (request.method === 'GET') {
+    return json({
+      departments: Array.isArray(existing.customDepartments) ? existing.customDepartments : [],
+      assignments: existing.departmentAssignments && typeof existing.departmentAssignments === 'object'
+        ? existing.departmentAssignments : {},
+      updatedAt: existing.departmentsUpdatedAt || null,
+    });
+  }
+
+  if (request.method !== 'PUT' && request.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, 405);
+  }
+  const userEmail = extractEmailAddress(claims.preferred_username || claims.upn || claims.email || '');
+  if (!ADMIN_EMAILS.has(userEmail)) return json({ error: 'Admin access only' }, 403);
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+  if (existing.departmentsUpdatedAt && body.baseUpdatedAt !== existing.departmentsUpdatedAt) {
+    return json({ error: 'conflict', message: 'Departments changed since they were loaded.' }, 409);
+  }
+
+  const seen = new Set();
+  const departments = (Array.isArray(body.departments) ? body.departments : [])
+    .map(value => String(value || '').trim().replace(/\s+/g, ' '))
+    .filter(value => value && !seen.has(value.toLowerCase()) && seen.add(value.toLowerCase()))
+    .slice(0, 200);
+  const assignments = {};
+  for (const row of Object.values(body.assignments && typeof body.assignments === 'object' ? body.assignments : {})) {
+    const email = extractEmailAddress(row?.email || '');
+    const dept = String(row?.dept || '').trim();
+    if (!email || !dept || !email.endsWith('@dhananipeg.com')) continue;
+    assignments[email] = { email, name: String(row?.name || '').trim(), dept };
+  }
+  const now = new Date().toISOString();
+  const payload = { ...existing, customDepartments: departments, departmentAssignments: assignments, departmentsUpdatedAt: now };
+  await env.DPEG_DATA.put(DATA_KEY, JSON.stringify(payload));
+  return json({ success: true, updatedAt: now });
 }
 
 // ── / endpoint (existing AI summary) ─────────────────────────────────────────
@@ -1189,6 +1240,7 @@ export default {
     const proofMatch = path.match(/^\/p\/([A-Za-z0-9_%-]+)/);
     if (proofMatch && request.method === 'GET') return handleProofRedirect(request, env, proofMatch[1]);
     if (path === '/data') return handleData(request, env);
+    if (path === '/departments') return handleDepartments(request, env);
     if (path === '/notify') return handleNotify(request, env);
     if (path === '/assignments') return handleAssignments(request, env);
 
