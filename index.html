@@ -5066,17 +5066,76 @@ function removeNodeAndFollowing(node){
   }
 }
 
+// Remove a quoted-history boundary and everything after it, even when Outlook
+// nests the boundary several levels deep inside Word-generated divs/tables.
+// The old helper only removed siblings inside the immediate parent, leaving
+// the rest of the quoted thread behind when the wrapper was nested.
+function removeNodeAndFollowingThroughRoot(node,root){
+  if(!node||!root)return;
+  const immediateParent=node.parentNode;
+  if(!immediateParent)return;
+  let tail=node;
+  while(tail){
+    const next=tail.nextSibling;
+    immediateParent.removeChild(tail);
+    tail=next;
+  }
+  // At higher levels, remove only siblings after the branch containing the
+  // boundary. Removing the branch itself would also delete the authored text
+  // that appeared before the nested Outlook quote marker.
+  let branch=immediateParent;
+  while(branch&&branch!==root){
+    const parent=branch.parentNode;
+    if(!parent)break;
+    let sibling=branch.nextSibling;
+    while(sibling){
+      const next=sibling.nextSibling;
+      parent.removeChild(sibling);
+      sibling=next;
+    }
+    branch=parent;
+  }
+}
+
+function findOutlookQuoteBoundary(root){
+  if(!root)return null;
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  let node;
+  while((node=walker.nextNode())){
+    const text=String(node.nodeValue||'').replace(/\u00a0/g,' ').trim();
+    if(!text)continue;
+    const startsHeader=/^(from|sent|to|cc|subject|date)\s*:/i.test(text);
+    const replyLead=/^on .{5,220} wrote:\s*$/i.test(text);
+    const originalLead=/^(begin forwarded message:|-{2,}\s*original message\s*-{2,}|_{5,})/i.test(text);
+    if(replyLead||originalLead)return node;
+    if(startsHeader){
+      const containerText=String(node.parentNode?.parentNode?.textContent||node.parentNode?.textContent||'')
+        .replace(/\u00a0/g,' ').slice(0,1200);
+      const headerMatches=containerText.match(/\b(?:from|sent|date|to|cc|subject)\s*:/gi)||[];
+      if(headerMatches.length>=3)return node;
+    }
+  }
+  return null;
+}
+
 function stripQuotedHTML(html){
   const raw=String(html||'');
   if(!raw)return raw;
   try{
     const wrap=document.createElement('div');
     wrap.innerHTML=raw;
-    wrap.querySelectorAll('blockquote,.gmail_quote,.yahoo_quoted,.moz-cite-prefix,[id^="divRplyFwdMsg"],[class*="OutlookMessageHeader"],[id*="appendonsend"]').forEach(removeNodeAndFollowing);
+    const structural=wrap.querySelector([
+      'blockquote','.gmail_quote','.x_gmail_quote','.yahoo_quoted','.moz-cite-prefix',
+      '[id^="divRplyFwdMsg"]','[id*="divRplyFwdMsg"]','[class*="OutlookMessageHeader"]',
+      '[id*="appendonsend"]','[class*="replyForwardMsg"]','[class*="ms-outlook-mobile-reference-message"]'
+    ].join(','));
+    if(structural)removeNodeAndFollowingThroughRoot(structural,wrap);
     wrap.querySelectorAll('hr').forEach(hr=>{
       const tail=(hr.nextSibling?.textContent||hr.parentNode?.textContent||'').slice(0,400);
-      if(/From:\s|Sent:\s|To:\s|Subject:\s/i.test(tail))removeNodeAndFollowing(hr);
+      if(/From:\s|Sent:\s|To:\s|Subject:\s/i.test(tail))removeNodeAndFollowingThroughRoot(hr,wrap);
     });
+    const textBoundary=findOutlookQuoteBoundary(wrap);
+    if(textBoundary)removeNodeAndFollowingThroughRoot(textBoundary,wrap);
     const text=wrap.textContent||'';
     if(/^\s*$/.test(text))return raw;
     return wrap.innerHTML;
@@ -5087,6 +5146,9 @@ function stripQuotedHTML(html){
 
 function threadMessageBody(m,isHtml){
   const body=m.body?.content||m.bodyPreview||'';
+  // A true forwarded message intentionally contains the forwarded payload.
+  // Ordinary replies should show only the text authored for this message.
+  if(/^\s*(fw|fwd)\s*:/i.test(String(m.subject||'')))return body;
   return isHtml?stripQuotedHTML(body):stripQuotedPlainText(body);
 }
 
@@ -5160,13 +5222,10 @@ function buildThreadHTML(messages){
     const dt=new Date(m.receivedDateTime||m.sentDateTime);
     const isHtml=m.body?.contentType==='html';
     const isLatest=i===0;
-    // Only strip quoted/forwarded history from older messages, whose content is
-    // already shown in full by a newer message above. The latest message is the
-    // one the user actually opened to read — a forwarded email's real content
-    // (images, formatting) often sits right after the "Forwarded message" header
-    // as a sibling, not nested inside it, so stripping it here would delete the
-    // entire point of the email.
-    const displayBody=isLatest?(m.body?.content||m.bodyPreview||''):threadMessageBody(m,isHtml);
+    // Every reply gets the same extraction rule. Each Graph message already
+    // exists as its own block, so quoted copies of older messages must not be
+    // repeated inside the newer block.
+    const displayBody=threadMessageBody(m,isHtml);
     const bIdx=isHtml?(window._emailFrameBodies.push(displayBody)-1):-1;
     const preview=escapeHtml((m.bodyPreview||'').slice(0,140).replace(/\s+/g,' '));
     const msgId=`tv-${m.id.replace(/[^a-zA-Z0-9]/g,'_')}`;
@@ -5428,13 +5487,16 @@ async function processMeetingMsg(m,token){
   const bodyContent=m.body?.content||m.bodyPreview||'';
   const isHtml=m.body?.contentType==='html';
   const isEventMsg=String(m['@odata.type']||'').toLowerCase().includes('eventmessage');
-  const rawBody=isHtml?(()=>{try{const d=document.createElement('div');d.innerHTML=bodyContent;return d.textContent||'';}catch{return bodyContent;}})():bodyContent;
+  // Meeting detection must inspect only this message's authored content.
+  // A Teams link in quoted history does not make a normal reply a meeting.
+  const authoredBody=isHtml?stripQuotedHTML(bodyContent):stripQuotedPlainText(bodyContent);
+  const rawBody=isHtml?(()=>{try{const d=document.createElement('div');d.innerHTML=authoredBody;return d.textContent||'';}catch{return authoredBody;}})():authoredBody;
   const icalText=extractICalText(rawBody);
-  const teamsJoinUrl=extractMeetingJoinLink(bodyContent);
-  if(!isEventMsg&&!icalText&&!teamsJoinUrl)return m;
+  const teamsJoinUrl=extractMeetingJoinLink(authoredBody);
+  if(!isEventMsg&&!icalText)return m;
   const toAll=m.toRecipients||[];
   const ccAll=m.ccRecipients||[];
-  let meetingData=icalText?parseICalData(icalText):(teamsJoinUrl?{
+  let meetingData=icalText?parseICalData(icalText):(isEventMsg?{
     summary:m.subject||'Teams meeting',location:'',description:m.bodyPreview||'',
     organizer:m.from?.emailAddress?.name||m.from?.emailAddress?.address||'',
     dtstart:null,dtend:null,status:'',
@@ -5649,11 +5711,12 @@ async function readEmail(emailId,folder,el){
     const isHtml=email.body?.contentType==='html';
     // Detect meeting: @odata.type tells us it's an EventMessage; also scan body for iCal
     const isEventMsg=String(email['@odata.type']||'').toLowerCase().includes('eventmessage');
-    const rawBodyForIcal=isHtml?(()=>{const d=document.createElement('div');d.innerHTML=bodyContent;return d.textContent||'';})():bodyContent;
+    const authoredBody=isHtml?stripQuotedHTML(bodyContent):stripQuotedPlainText(bodyContent);
+    const rawBodyForIcal=isHtml?(()=>{const d=document.createElement('div');d.innerHTML=authoredBody;return d.textContent||'';})():authoredBody;
     const icalText=extractICalText(rawBodyForIcal);
-    const teamsJoinUrl=extractMeetingJoinLink(bodyContent);
-    const isMeeting=isEventMsg||!!icalText||!!teamsJoinUrl;
-    let meetingData=icalText?parseICalData(icalText):(teamsJoinUrl?{
+    const teamsJoinUrl=extractMeetingJoinLink(authoredBody);
+    const isMeeting=isEventMsg||!!icalText;
+    let meetingData=icalText?parseICalData(icalText):(isEventMsg?{
       summary:email.subject||'Teams meeting',
       location:'',
       description:email.bodyPreview||'',
@@ -6503,6 +6566,14 @@ function emailFullText(email){
   return plainizeEmailBody(email?.bodyPreview||'');
 }
 
+function emailAuthoredText(email){
+  const body=email?.body?.content||email?.bodyPreview||'';
+  if(!body)return '';
+  const isHtml=String(email?.body?.contentType||'').toLowerCase()==='html';
+  const authored=threadMessageBody(email,isHtml);
+  return plainizeEmailBody(authored);
+}
+
 function forwardedMessageText(email){
   const from=email?.from?.emailAddress;
   const toLine=forwardRecipientsLine('To',email?.toRecipients||[]);
@@ -6516,7 +6587,7 @@ function forwardedMessageText(email){
     dateLine?`Date: ${dateLine}`:'',
     `Subject: ${email?.subject||''}`,
   ].filter(Boolean);
-  return `\n\n${lines.join('\n')}\n\n${emailFullText(email)}`.trimEnd();
+  return `\n\n${lines.join('\n')}\n\n${emailAuthoredText(email)}`.trimEnd();
 }
 
 function repliedMessageText(email){
@@ -6633,12 +6704,10 @@ async function forwardFullThread(emailId){
   try{
     const messages=await getMessagesForForwardAll(emailId);
     if(!messages.length){toast('Could not load thread to forward');return;}
-    // Forward the thread's newest message through the native Outlook forward path
-    // (createForward) rather than rebuilding text by hand: Outlook already nests
-    // every earlier reply inside the latest message's own HTML body, so a native
-    // forward of it carries the full conversation, images, and attachments intact.
     const latest=messages[messages.length-1];
-    await forwardEmail(latest.id);
+    const subject=String(latest.subject||'').startsWith('Fw:')?latest.subject:`Fw: ${latest.subject||'Email thread'}`;
+    const cleanThread=messages.map(m=>forwardedMessageText(m)).join('\n\n');
+    openCompose('',subject,`\n\n${cleanThread}`,'Forward',latest.id);
   }catch(err){
     console.error('Forward all error:',err);
     toast('Could not prepare full thread forward');
