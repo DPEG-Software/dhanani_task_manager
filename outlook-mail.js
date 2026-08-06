@@ -3003,6 +3003,28 @@ async function sendTaskUpdateNotification(task,changes){
 // ============================================================
 // REMOVE TASK
 // ============================================================
+async function cancelActionTask(id){
+  const task=tasks.find(t=>t.id===id);if(!task)return;
+  if(!confirm(`Cancel "${task.title||'this task'}"?\n\nIt will be removed from active tasks and moved to Cancelled History.`))return;
+  try{
+    if(!task.assignmentId){
+      await window.renderMyTasks?.(true);
+      task.assignmentId=window.findDelegatedAssignmentByAppTaskId?.(task.id)?.id||'';
+    }
+    if(task.assignmentId){
+      const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
+      const token=await getAccessToken();
+      const res=await fetch(`${fnUrl}/assignment-cancel`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({id:task.assignmentId,reason:''})});
+      if(!res.ok){const detail=await res.json().catch(()=>({}));throw new Error(detail.error||`HTTP ${res.status}`);}
+      const data=await res.json();task.cancelledAt=data.cancelledAt||new Date().toISOString();
+    }else task.cancelledAt=new Date().toISOString();
+    task.status='Cancelled';task.cancelReason='';
+    closeMo('mo-detail');syncBadges();refreshAll();await saveTasksToOneDrive();
+    await window.renderMyTasks?.(false);
+    toast('Task cancelled and moved to Cancelled History');
+  }catch(err){toast('Could not cancel task: '+(err.message||err));}
+}
+
 async function removeTask(id){
   if(!confirm('Remove this task from the Action Log?'))return;
   tasks=tasks.filter(t=>t.id!==id);

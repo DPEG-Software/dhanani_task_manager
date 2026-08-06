@@ -238,6 +238,10 @@
       <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Delegated <span class="nb red" id="tasks-given-badge" style="margin-left:6px;display:none">0</span></button>
       <button id="tasks-history-btn" onclick="setTasksTabMode('history')">History <span class="nb red" id="tasks-history-badge" style="margin-left:6px;display:none">0</span></button>
     </div>
+    <div class="directory-toggle" id="tasks-history-filter" style="display:none;margin-top:-5px;margin-bottom:10px">
+      <button id="tasks-history-completed-btn" class="active" onclick="setTasksHistoryFilter('completed')">Completed</button>
+      <button id="tasks-history-cancelled-btn" onclick="setTasksHistoryFilter('cancelled')">Cancelled</button>
+    </div>
     <div id="tasks-tab-description" style="font-size:12px;color:var(--sub);margin:-4px 0 10px">
       Your active assignments, status updates, proof, and conversations.
     </div>
@@ -759,14 +763,11 @@
     </div>
     <div class="mo-body task-review-body" id="task-review-body"></div>
     <div class="mo-foot task-review-foot">
-      <label class="task-review-message-wrap" for="task-review-message">
-        <span>Reason for requesting changes</span>
-        <textarea id="task-review-message" class="ag-ta" placeholder="Explain what must be corrected before proof can be resubmitted..."></textarea>
-      </label>
       <div class="task-review-actions">
         <span id="task-review-status" class="task-review-status"></span>
-        <button class="btn btn-ghost btn-sm task-review-changes-btn" id="task-review-changes-btn" onclick="requestTaskProofChanges()">Request Changes</button>
-        <button class="btn btn-primary btn-sm" id="task-review-approve-btn" onclick="approveTaskProof()">Approve Proof</button>
+        <button class="btn btn-ghost btn-sm" onclick="closeTaskProofReview()">Close</button>
+        <button class="btn btn-ghost btn-sm task-review-changes-btn" id="task-review-changes-btn" onclick="requestTaskProofChanges()">Ask for Changes</button>
+        <button class="btn btn-primary btn-sm" id="task-review-approve-btn" onclick="approveTaskProof()">Approve</button>
       </div>
     </div>
   </div>

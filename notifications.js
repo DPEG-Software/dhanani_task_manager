@@ -311,15 +311,21 @@ async function showTaskFollowupModal(params){
   _taskFollowupCtx=params;
   const titleEl=document.getElementById('tf-modal-title');
   const subEl=document.getElementById('tf-modal-sub');
+  const sendBtn=document.getElementById('tf-modal-send');
   const otherName=params.role==='assignee'?(params.assignerName||params.assignerEmail):(params.recipientName||params.recipientEmail);
-  if(titleEl)titleEl.textContent=`Follow up — ${otherName||'the other party'}`;
-  if(subEl)subEl.textContent=params.title||'';
+  if(titleEl)titleEl.textContent=params.requestChanges?'Ask for Changes':`Follow up — ${otherName||'the other party'}`;
+  if(subEl)subEl.textContent=params.requestChanges?`Tell ${otherName||'the assignee'} exactly what needs to be changed.`:(params.title||'');
+  if(sendBtn)sendBtn.textContent=params.requestChanges?'Send Request':'Send';
   const input=document.getElementById('tf-modal-input');
-  if(input)input.value='';
+  if(input){
+    input.value=params.requestChanges?'Please make these changes: ':'';
+    input.placeholder=params.requestChanges?'What needs to be changed?':'Type a message...';
+  }
   const statusEl=document.getElementById('tf-modal-status');
   if(statusEl)statusEl.textContent='';
   document.getElementById('mo-task-followup')?.classList.add('open');
   await refreshTaskFollowupThread();
+  if(params.requestChanges){input?.focus();input?.setSelectionRange(input.value.length,input.value.length);}
 }
 
 async function refreshTaskFollowupThread(){
@@ -392,7 +398,15 @@ async function sendTaskFollowupMessage(){
     if(input)input.value='';
     if(statusEl)statusEl.textContent='';
     const otherEmail=ctx.role==='assignor'?ctx.recipientEmail:ctx.assignerEmail;
-    await sendTaskFollowupEmail(otherEmail,ctx,message);
+    if(ctx.requestChanges){
+      await dismissNotification(ctx.notificationId,message);
+      const proofNotice=notifications.find(n=>n.id===ctx.notificationId);
+      if(proofNotice?.status!=='dismissed')throw new Error('The message was sent, but the proof status could not be updated');
+      toast('Changes requested — the assignee was notified');
+      closeTaskFollowup();
+    }else{
+      await sendTaskFollowupEmail(otherEmail,ctx,message);
+    }
     await refreshTaskFollowupThread();
     window.renderMyTasks?.(true);
   }catch(err){
@@ -486,7 +500,6 @@ window.openTaskProofReview=async function openTaskProofReview(assignment){
   taskProofReviewContext={assignment,appTaskId,notificationId:null};
   document.getElementById('task-review-title').textContent=assignment?.title||'Review submitted proof';
   document.getElementById('task-review-sub').textContent=`Submitted by ${assignment?.recipientName||assignment?.recipientEmail||'the assignee'}`;
-  document.getElementById('task-review-message').value='';
   document.getElementById('task-review-status').textContent='Loading submission...';
   body.innerHTML='<div style="padding:28px;text-align:center;font-size:12px;color:var(--muted)">Loading proof and conversation...</div>';
   modal.classList.add('open');
@@ -525,7 +538,6 @@ function setTaskReviewActionsEnabled(enabled){
   ['task-review-changes-btn','task-review-approve-btn'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.disabled=!enabled;
   });
-  const input=document.getElementById('task-review-message');if(input)input.disabled=!enabled;
 }
 
 function setTaskReviewBusy(busy,message=''){
@@ -552,12 +564,6 @@ async function approveTaskProof(){
 
 async function requestTaskProofChanges(){
   const id=taskProofReviewContext?.notificationId;if(id==null)return;
-  const input=document.getElementById('task-review-message');
-  const reason=String(input?.value||'').trim();
-  if(!reason){input?.focus();toast('Please explain what needs to change');return;}
-  // Empty submissions still have a valid review decision. Fill any metadata
-  // missing from the proof notification from the D1 assignment before sending
-  // the change request; files and proof notes are intentionally not required.
   const n=notifications.find(x=>x.id===id);
   const assignment=taskProofReviewContext?.assignment||{};
   if(n){
@@ -565,13 +571,13 @@ async function requestTaskProofChanges(){
     n.recipientName=n.recipientName||assignment.recipientName||'';
     n.taskTitle=n.taskTitle||assignment.title||'';
   }
-  setTaskReviewBusy(true,'Sending requested changes...');
-  await dismissNotification(id,reason);
-  const updatedNotification=notifications.find(x=>x.id===id);
-  if(updatedNotification?.status==='dismissed'){
-    closeTaskProofReview();
-    await window.renderMyTasks?.(true);
-  }else setTaskReviewBusy(false,'Could not request changes. Please try again.');
+  closeTaskProofReview();
+  await showTaskFollowupModal({
+    assignmentId:assignment.id||'',appTaskId:assignment.appTaskId||n?.taskId||'',
+    title:assignment.title||n?.taskTitle||'',assignerEmail:assignment.assignerEmail||currentUser?.email||'',
+    assignerName:assignment.assignerName||currentUser?.name||'',recipientEmail:assignment.recipientEmail||n?.recipientEmail||'',
+    recipientName:assignment.recipientName||n?.recipientName||'',role:'assignor',requestChanges:true,notificationId:id,
+  });
 }
 
 async function approveNotification(id){

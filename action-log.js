@@ -106,12 +106,13 @@ function getVis(){
   const pf=document.getElementById("sf-priority")?.value||"all";
   return sortActionTasks(tasks.filter(t=>{
     const isDone=nstt(t.status)==="Done";
+    const isCancelled=nstt(t.status)==="Cancelled";
     const inRelevantWeek=isDone?taskCompletedWeekOffset(t)===curWeek:taskWeekOffset(t)===curWeek;
     const wm=curSearch?true:inRelevantWeek;
     const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
     const stm=sf==="all"||(sf==="Overdue"?isOverdueTask(t):nstt(t.status)===sf);
     const completionVisible=showMasterCompleted?isDone:!isDone;
-    return wm&&completionVisible&&sm&&stm&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
+    return !isCancelled&&wm&&completionVisible&&sm&&stm&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
   }));
 }
 function renderMaster(){
@@ -145,7 +146,7 @@ function renderMaster(){
       <td onclick="event.stopPropagation()" style="padding:6px 10px 6px 4px;text-align:right;white-space:nowrap">
         <div style="display:inline-flex;gap:5px;align-items:center">
           ${nstt(t.status)!=="Done"?`<button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:13px;min-width:0;border-color:#d1d5db;color:#374151;line-height:1" onclick="openDetail(${t.id})" title="Edit department, deadline, or priority">✏️</button>`:''}
-          <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:3px 8px;font-size:11px;min-width:0;line-height:1;font-weight:700" onclick="removeTask(${t.id})" title="Remove">&#10005;</button>
+          ${nstt(t.status)!=="Done"?`<button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:3px 8px;font-size:11px;min-width:0;line-height:1;font-weight:700" onclick="cancelActionTask(${t.id})" title="Cancel task">Cancel</button>`:''}
         </div>
       </td>
     </tr>`}).join("");
