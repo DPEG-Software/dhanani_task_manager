@@ -123,6 +123,8 @@ async function ensureAssignmentProofColumns(env) {
     ['proof_notification_id', 'TEXT'],
     ['update_alert_at', 'TEXT'],
     ['version', 'INTEGER NOT NULL DEFAULT 1'],
+    ['cancel_reason', 'TEXT'],
+    ['cancelled_at', 'TEXT'],
   ];
   for (const [name, type] of columns) {
     try {
@@ -1090,6 +1092,8 @@ async function handleAssignments(request, env) {
     proofNotificationId: row.proof_notification_id,
     proofInstructions: row.proof_instructions,
     updateAlertAt: row.update_alert_at || null,
+    cancelReason: row.cancel_reason || '',
+    cancelledAt: row.cancelled_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     version: Number(row.version || 1),
@@ -1230,6 +1234,48 @@ async function handleAssignmentAlertClear(request, env) {
   return json({ success: true });
 }
 
+// ── /assignment-cancel endpoint: assigner calls off a delegated task (D1) ────
+// Assigner-only, mirroring the ownership check on /assignment-alert. Sets a
+// terminal 'Cancelled' status distinct from the proof-approval 'Done' path —
+// the recipient's copy simply stops accepting status/proof changes once they
+// see it, the same way an approved task already does.
+async function handleAssignmentCancel(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const id = String(body.id || '').trim();
+  if (!id) return json({ error: 'id is required' }, 400);
+  const reason = String(body.reason || '').trim().slice(0, 2000);
+
+  const row = await env.DPEG_ASSIGNMENTS
+    .prepare('SELECT assigner_email, status, proof_status FROM assignments WHERE id = ?')
+    .bind(id).first();
+  if (!row) return json({ error: 'Assignment not found' }, 404);
+
+  const tokenEmail = userEmailFromClaims(claims);
+  if (extractEmailAddress(row.assigner_email) !== tokenEmail) {
+    return json({ error: 'Only the assigner can cancel this task' }, 403);
+  }
+  if (row.status === 'Cancelled') return json({ error: 'This task is already cancelled' }, 409);
+  if (row.proof_status === 'approved') return json({ error: 'A completed task cannot be cancelled' }, 409);
+
+  const now = new Date().toISOString();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    `UPDATE assignments
+        SET status = 'Cancelled', cancel_reason = ?, cancelled_at = ?,
+            update_alert_at = NULL, updated_at = ?, version = version + 1
+      WHERE id = ?`
+  ).bind(reason, now, now, id).run();
+
+  return json({ success: true, cancelledAt: now, reason });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -1258,6 +1304,7 @@ export default {
     if (path === '/assignment-status') return handleAssignmentStatus(request, env);
     if (path === '/assignment-alert') return handleAssignmentAlert(request, env);
     if (path === '/assignment-alert-clear') return handleAssignmentAlertClear(request, env);
+    if (path === '/assignment-cancel') return handleAssignmentCancel(request, env);
     return handleSummary(request, env);
   },
 };

@@ -63,9 +63,23 @@
     return String(name || email || 'Unassigned').trim();
   }
 
+  // Most-recent-activity signal used to order both individual cards and the
+  // person-groups they sit in — a task (and the person it's grouped under)
+  // should float back toward the top the moment anything happens on it
+  // (status change, proof event, cancellation, or a new follow-up message),
+  // not just sit wherever it landed when first assigned.
+  function assignmentRecency(a) {
+    const followupTs = followupThreadState(a)?.updatedAt;
+    const times = [a.updatedAt, a.cancelledAt, a.createdAt, followupTs]
+      .map(t => (t ? new Date(t).getTime() : NaN))
+      .filter(Number.isFinite);
+    return times.length ? Math.max(...times) : 0;
+  }
+
   // Completed tasks sink to the bottom of their group; everything else stays
-  // newest-assigned-first, so a task that just finished doesn't linger mixed
-  // in among active ones, and the most recent active task is what you see first.
+  // most-recently-active-first, so a task that just finished doesn't linger
+  // mixed in among active ones, and whatever just got touched (assigned,
+  // updated, or replied to) is what you see first.
   function sortAssignmentItems(a, b) {
     const aReview = awaitingApproval(a);
     const bReview = awaitingApproval(b);
@@ -73,13 +87,15 @@
     const aDone = stageLabel(a) === 'Done';
     const bDone = stageLabel(b) === 'Done';
     if (aDone !== bDone) return aDone ? 1 : -1;
-    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    return assignmentRecency(b) - assignmentRecency(a);
   }
 
-  // History is all-Done already, so sort by when it was approved (falling
-  // back to creation date) instead of when it was assigned.
+  // History is all Done/Cancelled already, so sort by when it was resolved
+  // (approved or cancelled, falling back to any later update, then creation)
+  // instead of when it was originally assigned.
   function sortHistoryItems(a, b) {
-    return new Date(b.proofReviewedAt || b.createdAt || 0) - new Date(a.proofReviewedAt || a.createdAt || 0);
+    const resolvedAt = x => x.proofReviewedAt || x.cancelledAt || x.updatedAt || x.createdAt || 0;
+    return new Date(resolvedAt(b)) - new Date(resolvedAt(a));
   }
 
   // `received` is either a fixed boolean (Received/Delegated tabs, one
@@ -98,8 +114,12 @@
       if (!grouped.has(key)) grouped.set(key, { key, name: groupLabel(name, email), received: isReceived, items: [] });
       grouped.get(key).items.push(a);
     });
-    const groups = [...grouped.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const groups = [...grouped.values()];
     groups.forEach(g => g.items.sort(sortFn));
+    // Whoever has the most recently active task floats to the top of the
+    // name list too, instead of a static alphabetical order that never
+    // reflects what just happened.
+    groups.sort((a, b) => assignmentRecency(b.items[0]) - assignmentRecency(a.items[0]));
     return groups;
   }
 
@@ -107,12 +127,14 @@
   // exact same list/grouping for a given tab mode.
   function tasksTabModeSource(mode) {
     if (mode === 'history') {
-      const toMe = (tasksTabCache.assignedToMe || []).filter(a => stageLabel(a) === 'Done').map(a => ({ ...a, _received: true }));
-      const byMe = (tasksTabCache.assignedByMe || []).filter(a => stageLabel(a) === 'Done').map(a => ({ ...a, _received: false }));
+      const isPast = a => stageLabel(a) === 'Done' || stageLabel(a) === 'Cancelled';
+      const toMe = (tasksTabCache.assignedToMe || []).filter(isPast).map(a => ({ ...a, _received: true }));
+      const byMe = (tasksTabCache.assignedByMe || []).filter(isPast).map(a => ({ ...a, _received: false }));
       return { list: [...toMe, ...byMe], received: a => a._received, sortFn: sortHistoryItems };
     }
     const received = mode === 'received';
-    const list = (received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || [])).filter(a => stageLabel(a) !== 'Done');
+    const list = (received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []))
+      .filter(a => stageLabel(a) !== 'Done' && stageLabel(a) !== 'Cancelled');
     return { list, received, sortFn: sortAssignmentItems };
   }
 
@@ -159,15 +181,23 @@
     return String(a?.proofStatus || 'none').toLowerCase();
   }
 
+  function isCancelled(a) {
+    return a?.status === 'Cancelled';
+  }
+
   function awaitingApproval(a) {
-    return proofState(a) === 'submitted' || !!window.hasPendingTaskProofReview?.(a?.appTaskId);
+    return !isCancelled(a) && (proofState(a) === 'submitted' || !!window.hasPendingTaskProofReview?.(a?.appTaskId));
   }
 
   // Derives the single live stage (0-3, LIVE_STAGES index) an assignment is
   // in. Proof is the source of truth once submitted — it always overrides
   // the recipient-controlled `status` field, so "Done" can only ever be
   // reached through approval, never picked directly from the dropdown.
+  // Cancelled is checked first since it's assigner-set independent of proof
+  // state — a task can be cancelled even mid-review, with a proof already
+  // sitting as 'submitted' underneath it.
   function assignmentStage(a) {
+    if (isCancelled(a)) return { index: -1, declined: false, cancelled: true };
     const proof = proofState(a);
     if (proof === 'approved') return { index: 3, declined: false };
     if (proof === 'declined') return { index: 2, declined: true };
@@ -177,8 +207,8 @@
   }
 
   function stageLabel(a) {
-    const { index, declined } = assignmentStage(a);
-    return declined ? 'Changes Requested' : LIVE_STAGES[index];
+    const { index, declined, cancelled } = assignmentStage(a);
+    return cancelled ? 'Cancelled' : declined ? 'Changes Requested' : LIVE_STAGES[index];
   }
 
   function stageSummary(items) {
@@ -187,14 +217,17 @@
       const label = stageLabel(item);
       counts[label] = (counts[label] || 0) + 1;
     });
-    return [...LIVE_STAGES, 'Changes Requested']
+    return [...LIVE_STAGES, 'Changes Requested', 'Cancelled']
       .filter(label => counts[label])
       .map(label => `${counts[label]} ${label}`)
       .join(' · ');
   }
 
   function renderStepper(a) {
-    const { index, declined } = assignmentStage(a);
+    const { index, declined, cancelled } = assignmentStage(a);
+    if (cancelled) {
+      return `<div class="assign-cancelled-banner">✕ Cancelled${a.cancelReason ? `: ${escapeHtml(a.cancelReason)}` : ''}</div>`;
+    }
     const labels = ['Assigned', 'In Progress', declined ? 'Changes Requested' : 'Submitted', 'Done'];
     return `<div class="assign-stepper">${labels.map((label, i) => {
       const isDeclinedDot = declined && i === 2;
@@ -213,7 +246,8 @@
 
   function dueDateBadge(a) {
     if (!a.dueDate) return '';
-    const overdue = a.dueDate < new Date().toISOString().slice(0, 10) && stageLabel(a) !== 'Done';
+    const stage = stageLabel(a);
+    const overdue = a.dueDate < new Date().toISOString().slice(0, 10) && stage !== 'Done' && stage !== 'Cancelled';
     return `<span class="assign-due${overdue ? ' is-overdue' : ''}">Due ${fmtD(a.dueDate)}${overdue ? ' (overdue)' : ''}</span>`;
   }
 
@@ -274,17 +308,32 @@
     return `<span class="assign-alert-label">${ALERT_LABEL}<button type="button" class="assign-alert-dismiss" title="Dismiss alert" onclick="event.stopPropagation();dismissUpdateAlert('${a.id}')">&times;</button></span>`;
   }
 
+  function moreMenuButton(a) {
+    return `<button type="button" class="assign-more-btn" title="More actions" onclick="openAssignMoreMenu(event,'${a.id}')">⋯</button>`;
+  }
+
   function assignmentActions(a, received) {
     const proof = proofState(a);
-    // A task that's Done has nothing left to follow up or alert about — once
-    // it sinks into the completed/"history" part of its group (see
-    // sortAssignmentItems), these controls are retired along with it.
-    const isDone = proof === 'approved';
-    const followBtn = isDone ? '' : followupButton(a, received);
-    const bellBtn = isDone ? '' : alertBellButton(a, received);
-    const alertBadge = isDone ? '' : alertLabel(a, received);
+    const cancelled = isCancelled(a);
+    // A task that's Done — or Cancelled — has nothing left to follow up or
+    // alert about; both are terminal states the same way, they just got
+    // there through different doors. Once a task lands in either, it sinks
+    // into the completed/"history" part of its group (see sortAssignmentItems
+    // and tasksTabModeSource) and these controls retire along with it.
+    const isTerminal = proof === 'approved' || cancelled;
+    const followBtn = isTerminal ? '' : followupButton(a, received);
+    const bellBtn = isTerminal ? '' : alertBellButton(a, received);
+    const alertBadge = isTerminal ? '' : alertLabel(a, received);
+    // Cancelling is an assigner-only action, and only makes sense while a
+    // task is still live — nothing left to call off once it's Done or
+    // already Cancelled.
+    const moreBtn = (!received && !isTerminal) ? moreMenuButton(a) : '';
     let content;
-    if (received) {
+    if (cancelled) {
+      content = received
+        ? `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Cancelled by ${escapeHtml(a.assignerName || a.assignerEmail || 'the assignor')}</span>`
+        : `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">✕ Cancelled</span>`;
+    } else if (received) {
       if (proof === 'none') {
         const opts = MANUAL_STATUSES.map(s => `<option value="${s}" ${s === (a.status || 'Assigned') ? 'selected' : ''}>${s}</option>`).join('');
         content = `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
@@ -309,13 +358,13 @@
     } else {
       content = `<span style="font-size:11.5px;color:var(--muted);font-weight:600">In progress</span>`;
     }
-    return `${content}<span class="assign-actions-trailing">${alertBadge}${followBtn}${bellBtn}</span>`;
+    return `${content}<span class="assign-actions-trailing">${alertBadge}${followBtn}${bellBtn}${moreBtn}</span>`;
   }
 
   function assignmentCard(a, received) {
-    const hasFollowup = proofState(a) !== 'approved' && followupUnreadCount(a, received) > 0;
+    const hasFollowup = proofState(a) !== 'approved' && !isCancelled(a) && followupUnreadCount(a, received) > 0;
     const result=window._proofResultState?.[String(a.appTaskId||'')];
-    const proofNotice=received&&proofState(a)==='declined'
+    const proofNotice=received&&proofState(a)==='declined'&&!isCancelled(a)
       ?`<div style="margin:0 0 10px;padding:9px 11px;background:#fff1f2;border:1px solid #fecdd3;border-left:3px solid #be123c;border-radius:6px;color:#881337;font-size:11.5px;line-height:1.5"><strong>Changes requested${result?.senderName?` by ${escapeHtml(result.senderName)}`:''}:</strong> ${escapeHtml(result?.reason||'Please correct the submission and resubmit proof.')}</div>`
       :!received&&awaitingApproval(a)
         ?`<div style="margin:0 0 10px;padding:8px 11px;background:#fffbeb;border:1px solid #fde68a;border-left:3px solid #d97706;border-radius:6px;color:#92400e;font-size:11.5px;font-weight:700">Proof submitted — your review is required.</div>`
@@ -426,11 +475,11 @@
     const toMe = tasksTabCache.assignedToMe || [];
     const byMe = tasksTabCache.assignedByMe || [];
     const unseen = a => !seenAssignmentStages.has(assignmentSeenKey(a));
-    const notDone = a => stageLabel(a) !== 'Done';
-    const isDone = a => stageLabel(a) === 'Done';
-    const receivedCount = toMe.filter(a => notDone(a) && unseen(a)).length;
-    const givenCount = byMe.filter(a => notDone(a) && (unseen(a) || awaitingApproval(a))).length;
-    const historyCount = [...toMe, ...byMe].filter(a => isDone(a) && unseen(a)).length;
+    const isPast = a => stageLabel(a) === 'Done' || stageLabel(a) === 'Cancelled';
+    const notPast = a => !isPast(a);
+    const receivedCount = toMe.filter(a => notPast(a) && unseen(a)).length;
+    const givenCount = byMe.filter(a => notPast(a) && (unseen(a) || awaitingApproval(a))).length;
+    const historyCount = [...toMe, ...byMe].filter(a => isPast(a) && unseen(a)).length;
     const setBadge = (id, count) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -467,7 +516,7 @@
       const safeGroupKey = escapeHtml(JSON.stringify(group.key));
       const newCount = group.items.filter(a => !seenAssignmentStages.has(assignmentSeenKey(a))).length;
       const newBadge = newCount > 0 ? `<span class="assign-new-badge">${newCount > 9 ? '9+' : newCount}</span>` : '';
-      const followupTotal = group.items.reduce((sum, a) => sum + (proofState(a) === 'approved' ? 0 : followupUnreadCount(a, received)), 0);
+      const followupTotal = group.items.reduce((sum, a) => sum + ((proofState(a) === 'approved' || isCancelled(a)) ? 0 : followupUnreadCount(a, received)), 0);
       const followupGroupBadge = followupTotal > 0
         ? `<span class="assign-followup-group-badge">+${followupTotal > 9 ? '9+' : followupTotal} follow-up${followupTotal > 1 ? 's' : ''}</span>`
         : '';
@@ -582,6 +631,65 @@
     } catch (err) {
       console.warn('Dismiss alert failed:', err.message);
       toast('Could not dismiss alert — try again');
+    }
+  };
+
+  // Shared single dropdown (same pattern as the Outlook right-click menu)
+  // repositioned per click rather than one dropdown DOM per card — there can
+  // be dozens of Delegated cards on screen at once.
+  let _moreMenuAssignmentId = null;
+  window.openAssignMoreMenu = function openAssignMoreMenu(e, id) {
+    e.preventDefault(); e.stopPropagation();
+    _moreMenuAssignmentId = id;
+    const m = document.getElementById('assign-more-menu');
+    if (!m) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.min(rect.left, window.innerWidth - 180);
+    const y = Math.min(rect.bottom + 4, window.innerHeight - 60);
+    m.style.left = x + 'px'; m.style.top = y + 'px'; m.style.display = 'block';
+  };
+  function hideAssignMoreMenu() {
+    const m = document.getElementById('assign-more-menu');
+    if (m) m.style.display = 'none';
+  }
+  document.addEventListener('click', hideAssignMoreMenu);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') hideAssignMoreMenu(); });
+
+  // Assigner-only. Confirms, then optionally collects a reason, before
+  // calling off the task — mirrors the existing "Request Changes" reason
+  // pattern. The recipient's copy is notified both in-app (status flips to
+  // Cancelled next refresh) and by email, same as a declined proof today.
+  window.cancelAssignmentPrompt = async function cancelAssignmentPrompt() {
+    hideAssignMoreMenu();
+    const id = _moreMenuAssignmentId;
+    const a = (tasksTabCache.assignedByMe || []).find(x => x.id === id);
+    if (!a) return;
+    const who = a.recipientName || a.recipientEmail || 'the assignee';
+    if (!confirm(`Cancel "${a.title}"? This will notify ${who} and cannot be undone.`)) return;
+    const reason = prompt('Reason for cancelling (optional):') || '';
+    try {
+      const userToken = await getAccessToken();
+      const res = await fetch(`${fnBaseUrl()}/assignment-cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userToken}` },
+        body: JSON.stringify({ id, reason }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.error || `HTTP ${res.status}`);
+      }
+      const { cancelledAt } = await res.json();
+      a.status = 'Cancelled';
+      a.cancelReason = reason;
+      a.cancelledAt = cancelledAt || new Date().toISOString();
+      a.updatedAt = a.cancelledAt;
+      a.updateAlertAt = null;
+      renderTasksTabList();
+      toast(`Task cancelled — notifying ${who}`);
+      window.sendTaskCancelledEmail?.(a);
+    } catch (err) {
+      console.warn('Cancel assignment failed:', err.message);
+      toast('Could not cancel task: ' + err.message);
     }
   };
 

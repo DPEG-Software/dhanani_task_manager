@@ -997,6 +997,31 @@ async function sendDismissalEmail(n){
   await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
 }
 
+// Notifies the recipient that a Delegated task (tasks-hub.js: cancelAssignmentPrompt)
+// was called off. Built straight from the D1 assignment record rather than a local
+// Action Log task — an assignment made purely through the Tasks Hub doesn't always
+// have a matching entry in the assigner's own per-account Action Log.
+async function sendTaskCancelledEmail(a){
+  const recipient=a?.recipientEmail;
+  if(!recipient)return;
+  try{
+    const token=await getAccessToken();
+    const reason=String(a.cancelReason||'').trim();
+    const html=`<div style="font-family:Arial,sans-serif;max-width:620px">
+      <h2 style="color:#991b1b">Task cancelled</h2>
+      <p><strong>Task:</strong> ${escapeHtml(a.title||'Task')}</p>
+      <p><strong>Cancelled by:</strong> ${escapeHtml(currentUser?.name||currentUser?.email||'DPEG Task Manager')}</p>
+      ${reason?`<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>`:''}
+      <p>No further action is needed on this task.</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
+      <p style="color:#9ca3af;font-size:12px">DPEG Task Manager - automated notification</p>
+    </div>`;
+    const message={subject:`Task cancelled: ${a.title||'Task'}`,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:recipient}}]};
+    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
+  }catch(err){console.warn('Task-cancelled email failed:',err.message);}
+}
+window.sendTaskCancelledEmail=sendTaskCancelledEmail;
+
 async function listTaskProofFiles(task){
   if(!task?.proofFolderItemId)return [];
   const token=await getAccessToken();
