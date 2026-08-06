@@ -118,14 +118,19 @@ async function checkAndLoadProofNotifications(){
     });
 
   latestByTask.forEach((pn,taskKey)=>{
-    const task=tasks.find(t=>String(t.id)===taskKey);
-    if(!task)return;
-    task._proofNotif=pn;
+    // A proof submission for a task assigned purely through the Tasks Hub
+    // (D1) doesn't always have a matching entry in this user's own Action
+    // Log — that array is per-account OneDrive data, not shared — so a
+    // missing local match must not stop the notification (and the Review
+    // Proof modal it powers) from surfacing. Fall back to the appTaskId
+    // itself when there's no local task to enrich the record with.
+    const task=tasks.find(t=>String(t.id)===taskKey)||null;
+    if(task)task._proofNotif=pn;
     const localData={
       type:'proof_submitted',
       message:`${pn.recipientName||pn.recipientEmail||'Someone'} submitted proof for "${pn.taskTitle||'a task'}"`,
-      taskTitle:pn.taskTitle||task.title||'',
-      taskId:task.id,
+      taskTitle:pn.taskTitle||task?.title||'',
+      taskId:task?task.id:taskKey,
       proofs:Array.isArray(pn.proofs)?pn.proofs:[],
       note:pn.note||'',
       thread:Array.isArray(pn.thread)?pn.thread:[],
@@ -135,7 +140,7 @@ async function checkAndLoadProofNotifications(){
       status:'pending',
       recipientEmail:pn.recipientEmail||'',
       recipientName:pn.recipientName||'',
-      assignmentGroupId:task.assignmentGroupId||'',
+      assignmentGroupId:task?.assignmentGroupId||'',
     };
     // Remove any stale local notifications for this same task before adding/updating
     const staleIndices=notifications.reduce((acc,n,i)=>{
