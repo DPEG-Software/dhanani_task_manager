@@ -29,6 +29,8 @@ let _notifPollTimer=null;
 let _notifPollCycle=0;
 let pendingProofFiles=[];
 let pendingFollowupFiles=[];
+let _taskMessagePollInitialized=false;
+let _taskMessagePollCursor='';
 
 function renderPendingProofFileList(){
   const list=document.getElementById('proof-file-list');
@@ -45,9 +47,14 @@ async function checkAndLoadProofNotifications(){
   const fnUrl=workerBaseUrl();
   if(!fnUrl||!currentUser?.email)return;
   const userToken=await getAccessToken();
-  const res=await fetch(`${fnUrl}/notify`,{headers:{Authorization:`Bearer ${userToken}`}});
+  const messageQuery=_taskMessagePollInitialized&&_taskMessagePollCursor
+    ?`messagesSince=${encodeURIComponent(_taskMessagePollCursor)}`
+    :'includeMessages=1';
+  const res=await fetch(`${fnUrl}/notify?${messageQuery}`,{headers:{Authorization:`Bearer ${userToken}`}});
   if(!res.ok)return;
   const data=await res.json();
+  _taskMessagePollInitialized=true;
+  if(data.messageCursor)_taskMessagePollCursor=String(data.messageCursor);
   const kvNotifs=Array.isArray(data.notifications)?data.notifications:[];
   const myEmail=(currentUser?.email||'').toLowerCase();
   tasks.forEach(t=>delete t._proofNotif);
@@ -102,7 +109,13 @@ async function checkAndLoadProofNotifications(){
       const key=`${n.appTaskId}::${String(n.recipientEmail||'').toLowerCase()}`;
       const existing=window._taskFollowupState[key];
       if(isBetterFollowupCandidate(n,existing)){
-        window._taskFollowupState[key]={notifId:n.id,appTaskId:n.appTaskId,recipientEmail:n.recipientEmail,thread:n.thread,type:n.type,updatedAt:n.updatedAt||n.submittedAt||n.createdAt||0};
+        let thread=n.thread;
+        if(n.type==='task_followup'&&existing&&Array.isArray(existing.thread)){
+          const byId=new Map();
+          [...existing.thread,...n.thread].forEach(item=>byId.set(String(item.id||''),item));
+          thread=[...byId.values()].sort((a,b)=>new Date(a.createdAt||0)-new Date(b.createdAt||0)||String(a.id||'').localeCompare(String(b.id||'')));
+        }
+        window._taskFollowupState[key]={notifId:n.id,appTaskId:n.appTaskId,recipientEmail:n.recipientEmail,thread,type:n.type,updatedAt:n.updatedAt||n.submittedAt||n.createdAt||0};
       }
     });
   // renderMyTasks(true) below only redraws the Tasks tab when the D1
@@ -288,9 +301,9 @@ async function sendProofFollowupEmail(recipientEmail,task,question){
 // ── Generic task follow-up (Tasks tab — Received & Delegated cards) ──────────
 // Unlike askProofFollowup/askNotificationFollowup above, this does not require
 // a proof to have been submitted first: either party can start or continue
-// the conversation about a task at any time. It reuses the same KV thread
-// schema (and renderProofThread) as the proof follow-up feature so the two
-// stay visually and structurally consistent.
+// the conversation about a task at any time. New messages are separate D1
+// rows; the Worker merges them with legacy KV history into the same thread
+// shape so the UI stays visually and structurally consistent.
 let _taskFollowupCtx=null;
 
 // A dedicated task_followup record always wins over a proof_submitted one,
@@ -313,7 +326,11 @@ async function fetchTaskFollowupThread(appTaskId,recipientEmail){
   try{
     const fnUrl=workerBaseUrl();
     const userToken=await getAccessToken();
-    const res=await fetch(`${fnUrl}/notify`,{headers:{Authorization:`Bearer ${userToken}`}});
+    const query=new URLSearchParams({
+      taskId:String(appTaskId||''),
+      recipientEmail:String(recipientEmail||''),
+    });
+    const res=await fetch(`${fnUrl}/notify?${query}`,{headers:{Authorization:`Bearer ${userToken}`}});
     if(!res.ok)return null;
     const data=await res.json();
     const notifs=Array.isArray(data.notifications)?data.notifications:[];

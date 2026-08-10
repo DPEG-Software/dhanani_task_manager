@@ -32,6 +32,7 @@ const PROOF_START = 'DPEG_PROOF_START';
 const PROOF_END = 'DPEG_PROOF_END';
 const PROOF_LINK_PREFIX = 'proof-link:';
 let assignmentColumnsReady = false;
+let taskMessagesTableReady = false;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -215,6 +216,193 @@ async function updateAssignmentProofState(env, details) {
     senderEmail,
     senderEmail,
   ).run();
+}
+
+// Task conversations use D1 rather than the shared KV document. Each message
+// is an independent INSERT, so two people sending at the same time cannot
+// overwrite one another. KV remains the source for proof records and legacy
+// conversation history while the app is migrated.
+async function ensureTaskMessagesTable(env) {
+  if (!env.DPEG_ASSIGNMENTS || taskMessagesTableReady) return;
+  await env.DPEG_ASSIGNMENTS.prepare(
+    `CREATE TABLE IF NOT EXISTS task_messages (
+       id TEXT PRIMARY KEY,
+       app_task_id TEXT NOT NULL,
+       task_title TEXT NOT NULL DEFAULT '',
+       assigner_email TEXT NOT NULL,
+       recipient_email TEXT NOT NULL,
+       recipient_name TEXT NOT NULL DEFAULT '',
+       sender_email TEXT NOT NULL,
+       sender_name TEXT NOT NULL DEFAULT '',
+       sender_role TEXT NOT NULL CHECK (sender_role IN ('assignor','assignee')),
+       message TEXT NOT NULL,
+       created_at TEXT NOT NULL
+     )`
+  ).run();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_task_messages_thread ON task_messages(app_task_id, recipient_email, created_at)'
+  ).run();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_task_messages_assigner ON task_messages(assigner_email, created_at)'
+  ).run();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_task_messages_recipient ON task_messages(recipient_email, created_at)'
+  ).run();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_assignments_task_recipient ON assignments(app_task_id, recipient_email)'
+  ).run();
+  taskMessagesTableReady = true;
+}
+
+async function insertTaskMessage(env, body, claims) {
+  if (!env.DPEG_ASSIGNMENTS) {
+    return { error: json({ error: 'D1 task-message storage is not configured' }, 501) };
+  }
+  await ensureTaskMessagesTable(env);
+  const appTaskId = String(body.appTaskId || '').trim();
+  const recipientEmail = extractEmailAddress(body.recipientEmail || '');
+  const assignerEmail = extractEmailAddress(body.assignerEmail || '');
+  const senderEmail = userEmailFromClaims(claims);
+  const message = String(body.message || '').trim();
+  if (!appTaskId || !recipientEmail || !assignerEmail) {
+    return { error: json({ error: 'Task and both participants are required' }, 400) };
+  }
+  if (!message) return { error: json({ error: 'Message is required' }, 400) };
+  const assignment = await env.DPEG_ASSIGNMENTS.prepare(
+    `SELECT title, assigner_email, recipient_email, recipient_name
+       FROM assignments
+      WHERE app_task_id = ? AND recipient_email = ?
+      ORDER BY created_at DESC LIMIT 1`
+  ).bind(appTaskId, recipientEmail).first();
+  if (!assignment) {
+    return { error: json({ error: 'Task assignment was not found' }, 404) };
+  }
+  const canonicalAssigner = extractEmailAddress(assignment.assigner_email || '');
+  const canonicalRecipient = extractEmailAddress(assignment.recipient_email || '');
+  if (senderEmail !== canonicalAssigner && senderEmail !== canonicalRecipient) {
+    return { error: json({ error: 'You are not a participant in this task conversation' }, 403) };
+  }
+  const senderRole = senderEmail === canonicalRecipient ? 'assignee' : 'assignor';
+  const id = `fm-${crypto.randomUUID()}`;
+  const createdAt = new Date().toISOString();
+  await env.DPEG_ASSIGNMENTS.prepare(
+    `INSERT INTO task_messages
+       (id, app_task_id, task_title, assigner_email, recipient_email, recipient_name,
+        sender_email, sender_name, sender_role, message, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    id,
+    appTaskId,
+    String(assignment.title || body.taskTitle || ''),
+    canonicalAssigner,
+    canonicalRecipient,
+    String(assignment.recipient_name || body.recipientName || ''),
+    senderEmail,
+    String(body.senderName || claims.name || ''),
+    senderRole,
+    message,
+    createdAt,
+  ).run();
+  return { id, createdAt };
+}
+
+async function loadTaskMessageThreads(env, claims, options = {}) {
+  if (!env.DPEG_ASSIGNMENTS) return [];
+  await ensureTaskMessagesTable(env);
+  const email = userEmailFromClaims(claims);
+  const taskId = String(options.taskId || '').trim();
+  const recipientEmail = extractEmailAddress(options.recipientEmail || '');
+  const since = String(options.since || '').trim();
+  let sql = `SELECT id, app_task_id, task_title, assigner_email, recipient_email, recipient_name,
+                    sender_email, sender_name, sender_role, message, created_at
+               FROM task_messages
+              WHERE (assigner_email = ? OR recipient_email = ?)`;
+  const bindings = [email, email];
+  if (taskId) {
+    sql += ' AND app_task_id = ?';
+    bindings.push(taskId);
+  }
+  if (recipientEmail) {
+    sql += ' AND recipient_email = ?';
+    bindings.push(recipientEmail);
+  }
+  if (since) {
+    // Inclusive comparison intentionally repeats at most the newest timestamp;
+    // the browser deduplicates by message id. This avoids missing messages
+    // created in the same millisecond as the previous polling cursor.
+    sql += ' AND created_at >= ?';
+    bindings.push(since);
+  }
+  sql += ' ORDER BY created_at ASC, id ASC';
+  const result = await env.DPEG_ASSIGNMENTS.prepare(sql).bind(...bindings).all();
+  const groups = new Map();
+  for (const row of result.results || []) {
+    const key = `${row.app_task_id}|${extractEmailAddress(row.recipient_email)}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: `d1-thread-${row.app_task_id}-${extractEmailAddress(row.recipient_email)}`,
+        type: 'task_followup',
+        appTaskId: String(row.app_task_id || ''),
+        taskTitle: String(row.task_title || ''),
+        senderEmail: String(row.assigner_email || ''),
+        recipientEmail: String(row.recipient_email || ''),
+        recipientName: String(row.recipient_name || ''),
+        thread: [],
+        followupStatus: '',
+        status: 'open',
+        createdAt: String(row.created_at || ''),
+        seen: false,
+      });
+    }
+    const group = groups.get(key);
+    group.thread.push({
+      id: String(row.id),
+      by: row.sender_role === 'assignee' ? 'assignee' : 'assignor',
+      email: String(row.sender_email || ''),
+      name: String(row.sender_name || ''),
+      message: String(row.message || ''),
+      createdAt: String(row.created_at || ''),
+    });
+    group.taskTitle ||= String(row.task_title || '');
+    group.updatedAt = String(row.created_at || '');
+    group.followupStatus = row.sender_role === 'assignee' ? 'answered' : 'question';
+  }
+  return [...groups.values()];
+}
+
+function mergeD1TaskThreads(notifications, d1Threads) {
+  const output = [...notifications];
+  for (const d1Thread of d1Threads) {
+    const sameTask = n =>
+      String(n.appTaskId || '') === String(d1Thread.appTaskId || '') &&
+      extractEmailAddress(n.recipientEmail || '') === extractEmailAddress(d1Thread.recipientEmail || '');
+    const legacyIndex = output.findIndex(n => n.type === 'task_followup' && sameTask(n));
+    let legacyThread = legacyIndex >= 0 && Array.isArray(output[legacyIndex].thread)
+      ? output[legacyIndex].thread
+      : [];
+    if (!legacyThread.length) {
+      let newestProofTime = -Infinity;
+      output.forEach(n => {
+        if (n.type === 'proof_submitted' && sameTask(n) && Array.isArray(n.thread) && n.thread.length) {
+          const time = new Date(n.updatedAt || n.submittedAt || n.createdAt || 0).getTime();
+          if (time >= newestProofTime) { legacyThread = n.thread; newestProofTime = time; }
+        }
+      });
+    }
+    const byId = new Map();
+    [...legacyThread, ...d1Thread.thread].forEach(item => byId.set(String(item.id || ''), item));
+    const merged = {
+      ...(legacyIndex >= 0 ? output[legacyIndex] : {}),
+      ...d1Thread,
+      thread: [...byId.values()].sort((a, b) => {
+        const timeDiff = new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+        return timeDiff || String(a.id || '').localeCompare(String(b.id || ''));
+      }),
+    };
+    if (legacyIndex >= 0) output[legacyIndex] = merged;
+    else output.push(merged);
+  }
+  return output;
 }
 
 function todoTaskUrl(userEmail, listId, taskId) {
@@ -818,7 +1006,24 @@ async function handleNotify(request, env) {
 
   if (request.method === 'GET') {
     const data = await env.DPEG_DATA.get(DATA_KEY, 'json') || {};
-    return json({ notifications: Array.isArray(data.notifications) ? data.notifications : [] });
+    const legacyNotifications = Array.isArray(data.notifications) ? data.notifications : [];
+    const url = new URL(request.url);
+    const includeMessages = url.searchParams.get('includeMessages') === '1';
+    const taskId = url.searchParams.get('taskId') || '';
+    const recipientEmail = url.searchParams.get('recipientEmail') || '';
+    const messagesSince = url.searchParams.get('messagesSince') || '';
+    const wantsMessages = includeMessages || Boolean(taskId) || Boolean(messagesSince);
+    const d1Threads = wantsMessages
+      ? await loadTaskMessageThreads(env, claims, { taskId, recipientEmail, since: messagesSince })
+      : [];
+    const messageCursor = d1Threads.reduce((latest, thread) => {
+      const value = String(thread.updatedAt || '');
+      return value > latest ? value : latest;
+    }, messagesSince);
+    return json({
+      notifications: wantsMessages ? mergeD1TaskThreads(legacyNotifications, d1Threads) : legacyNotifications,
+      messageCursor,
+    });
   }
 
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -942,68 +1147,11 @@ async function handleNotify(request, env) {
     // Generic per-task follow-up, usable from the Tasks tab regardless of
     // proof status — unlike proof_followup_question/answer above, this does
     // not require a prior proof submission to exist.
-    const appTaskId = String(body.appTaskId || '');
-    const recipientEmail = extractEmailAddress(body.recipientEmail || '');
-    if (!appTaskId || !recipientEmail) return json({ error: 'appTaskId and recipientEmail are required' }, 400);
-    const message = String(body.message || '').trim();
-    if (!message) return json({ error: 'Message is required' }, 400);
-    const by = body.by === 'assignee' ? 'assignee' : 'assignor';
-
-    // The conversation lives in a single, permanent task_followup record per
-    // (appTaskId, recipientEmail) — created once and reused forever. A proof
-    // resubmission creates a brand-new proof_submitted record with a fresher
-    // timestamp than the existing conversation, so picking "most recently
-    // updated" would silently fork the thread onto that empty new record and
-    // orphan the real history. Once a task_followup exists, it always wins.
-    let idx = notifications.findIndex(n =>
-      n.type === 'task_followup' &&
-      String(n.appTaskId) === appTaskId &&
-      extractEmailAddress(n.recipientEmail) === recipientEmail
-    );
-    if (idx < 0) {
-      // First message ever for this task+recipient — seed from the most
-      // recent proof_submitted's thread (if any) so earlier Ask-Follow-up
-      // conversation from the proof-review flow isn't lost, then this
-      // record becomes the permanent home for all future messages.
-      let seedThread = [];
-      let seedTime = -Infinity;
-      notifications.forEach(n => {
-        if (n.type === 'proof_submitted' &&
-            String(n.appTaskId) === appTaskId &&
-            extractEmailAddress(n.recipientEmail) === recipientEmail &&
-            Array.isArray(n.thread) && n.thread.length) {
-          const t = new Date(n.updatedAt || n.submittedAt || n.createdAt || 0).getTime();
-          if (t >= seedTime) { seedThread = n.thread; seedTime = t; }
-        }
-      });
-      notifications.push({
-        id: `tf-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-        type: 'task_followup',
-        appTaskId,
-        taskTitle: String(body.taskTitle || ''),
-        senderEmail: String(body.assignerEmail || ''),
-        recipientEmail: String(body.recipientEmail || ''),
-        recipientName: String(body.recipientName || ''),
-        thread: [...seedThread],
-        followupStatus: '',
-        status: 'open',
-        createdAt: new Date().toISOString(),
-        seen: false,
-      });
-      idx = notifications.length - 1;
-    }
-    const thread = Array.isArray(notifications[idx].thread) ? notifications[idx].thread : [];
-    thread.push({
-      id: `fm-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-      by,
-      email: String(body.senderEmail || userEmailFromClaims(claims)),
-      name: String(body.senderName || claims.name || ''),
-      message,
-      createdAt: new Date().toISOString(),
-    });
-    notifications[idx].thread = thread;
-    notifications[idx].followupStatus = by === 'assignor' ? 'question' : 'answered';
-    notifications[idx].updatedAt = new Date().toISOString();
+    const inserted = await insertTaskMessage(env, body, claims);
+    if (inserted.error) return inserted.error;
+    // Do not rewrite company-state here. That shared KV read/modify/write was
+    // the source of lost simultaneous messages.
+    return json({ success: true, messageId: inserted.id, createdAt: inserted.createdAt });
   } else {
     return json({ error: 'Unknown notification type' }, 400);
   }
