@@ -133,7 +133,63 @@ function initSelects() {
 // ============================================================
 // DETAIL MODAL
 // ============================================================
-function openDetail(id){
+let detailEditLockTaskId='';
+let detailEditLockGranted=false;
+let detailEditLockTimer=null;
+function setDetailEditAvailability(enabled,message=''){
+  ['mo-edit-date','mo-edit-priority','mo-save-detail-btn'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.disabled=!enabled;
+  });
+  const notice=document.getElementById('mo-edit-lock-notice');
+  if(notice){notice.style.display=message?'block':'none';notice.textContent=message;}
+}
+async function acquireDetailEditLock(task){
+  const taskId=String(task?.assignmentId||task?.id||'');
+  detailEditLockTaskId=taskId;
+  detailEditLockGranted=false;
+  setDetailEditAvailability(false,'Checking whether this task is being edited…');
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`${workerBaseUrl()}/task-edit-lock`,{
+      method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({taskId,title:task?.title||''})
+    });
+    const data=await res.json().catch(()=>({}));
+    if(res.status===423){
+      setDetailEditAvailability(false,`${data.editorName||'Another user'} is currently editing this task. Please wait.`);
+      return false;
+    }
+    if(!res.ok||!data.success)throw new Error(data.error||`HTTP ${res.status}`);
+    if(data.version!=null)task.assignmentVersion=Number(data.version);
+    detailEditLockGranted=true;
+    setDetailEditAvailability(true,'');
+    clearInterval(detailEditLockTimer);
+    detailEditLockTimer=setInterval(()=>{
+      if(detailEditLockGranted&&detailEditLockTaskId===taskId){
+        fetch(`${workerBaseUrl()}/task-edit-lock`,{
+          method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({taskId})
+        }).catch(()=>{});
+      }
+    },45000);
+    return true;
+  }catch(err){
+    console.warn('Task edit presence check unavailable:',err.message);
+    detailEditLockGranted=true;
+    setDetailEditAvailability(true,'Live editing check is temporarily unavailable. Save carefully.');
+    return true;
+  }
+}
+function releaseDetailEditLock(){
+  clearInterval(detailEditLockTimer);detailEditLockTimer=null;
+  const taskId=detailEditLockTaskId;
+  const held=detailEditLockGranted;
+  detailEditLockTaskId='';detailEditLockGranted=false;
+  if(!taskId||!held)return;
+  getAccessToken().then(token=>fetch(`${workerBaseUrl()}/task-edit-lock`,{
+    method:'DELETE',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({taskId})
+  })).catch(()=>{});
+}
+async function openDetail(id){
   const t=tasks.find(x=>x.id===id);if(!t)return;curTaskId=id;
   document.getElementById("mo-title").textContent=emailSubject(t);
   const personBadge=document.getElementById("mo-person-badge");
@@ -155,10 +211,12 @@ function openDetail(id){
   if(rs)rs.style.display=t.conversationId||t.emailId?"inline-flex":"none";
   renderProofPanel(t);
   document.getElementById("mo-detail").classList.add("open");
+  await acquireDetailEditLock(t);
 }
 async function saveDetail(){
   const t=tasks.find(x=>x.id===curTaskId);
   if(!t){closeMo("mo-detail");return;}
+  if(!detailEditLockGranted){toast('This task is currently being edited by another user');return;}
   const newTitle=(document.getElementById("mo-edit-title").value||"").trim()||t.title;
   const newPerson=(document.getElementById("mo-edit-person").value||"").trim()||t.person;
   const newEmail=(document.getElementById("mo-edit-email").value||"").trim();
@@ -172,13 +230,19 @@ async function saveDetail(){
   if(newEmail&&newEmail!==t.email)changes.push(`Email updated`);
   if(newDate&&newDate!==t.date)changes.push(`Date: ${fmtD(t.date)} → ${fmtD(newDate)}`);
   if(newPriority!==(t.priority||"Normal"))changes.push(`Priority: ${t.priority||"Normal"} → ${newPriority}`);
+  const previous={title:t.title,person:t.person,email:t.email,date:t.date,priority:t.priority,status:t.status};
   t.title=newTitle;t.person=newPerson;if(newEmail)t.email=newEmail;
   t.date=newDate;t.priority=newPriority;t.status=newStatus;
   saveStaffDeptForTask(t,newDept);
-  closeMo("mo-detail");refreshAll();
   if(changes.length){
+    if(t.assignmentId&&await recordAssignment(t)===false){
+      Object.assign(t,previous);
+      refreshAll();
+      toast('This task was updated elsewhere. Close and reopen it before saving.');
+      return;
+    }
+    closeMo("mo-detail");refreshAll();
     updateTodoTask(t,changes).catch(()=>{});
-    if(t.assignmentId)recordAssignment(t);
     if(t.email){
       sendTaskUpdateNotification(t,changes).catch(()=>{});
       toast(`Saved — alert sent to ${t.person}`);
@@ -186,6 +250,7 @@ async function saveDetail(){
       toast("Changes saved — To Do updated");
     }
   }else{
+    closeMo("mo-detail");refreshAll();
     toast("Changes saved");
   }
   await saveTasksToOneDrive();
@@ -211,8 +276,11 @@ async function refreshTaskSummary(){
   }
 }
 async function movToWed(){const t=tasks.find(x=>x.id===curTaskId);if(t)t.wednesday=true;closeMo("mo-detail");refreshAll();toast(isWednesdayUser?"Moved to Wednesday notes":"Moved to Discussion Notes");await saveTasksToOneDrive();}
-function closeMo(id){document.getElementById(id).classList.remove("open");}
-document.querySelectorAll(".mo,.drill-overlay").forEach(m=>m.addEventListener("click",e=>{if(e.target===m)m.classList.remove("open");}));
+function closeMo(id){
+  if(id==='mo-detail')releaseDetailEditLock();
+  document.getElementById(id).classList.remove("open");
+}
+document.querySelectorAll(".mo,.drill-overlay").forEach(m=>m.addEventListener("click",e=>{if(e.target===m){if(m.classList.contains('mo'))closeMo(m.id);else m.classList.remove("open");}}));
 
 // ============================================================
 // ADD TASK

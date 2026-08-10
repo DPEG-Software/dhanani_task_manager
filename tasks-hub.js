@@ -521,7 +521,7 @@
     try {
       task.assignmentId = task.assignmentId || crypto.randomUUID();
       const userToken = await getAccessToken();
-      await fetch(`${fnBaseUrl()}/assignment`, {
+      const res=await fetch(`${fnBaseUrl()}/assignment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${userToken}` },
         body: JSON.stringify({
@@ -539,10 +539,17 @@
           recipientTodoListId: task.recipientTodoListId || '',
           recipientTodoTaskId: task.recipientTodoTaskId || '',
           proofInstructions: task.proofInstructions || '',
+          expectedVersion: task.assignmentVersion??null,
         }),
       });
+      const data=await res.json().catch(()=>({}));
+      if(res.status===409){toast(data.message||'This task changed. Reload before saving.');return false;}
+      if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);
+      task.assignmentVersion=Number(data.version||task.assignmentVersion||1);
+      return true;
     } catch (err) {
       console.warn('Assignment record (D1) failed:', err.message);
+      return false;
     }
   };
 
@@ -979,6 +986,12 @@
       if (res.status === 409) {
         await renderMyTasks(false);
         toast('This task changed elsewhere. Latest version loaded — please try again.');
+        return;
+      }
+      if(res.status===423){
+        const data=await res.json().catch(()=>({}));
+        await renderMyTasks(true);
+        toast(`${data.editorName||'Another user'} is currently editing this task. Please wait.`);
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

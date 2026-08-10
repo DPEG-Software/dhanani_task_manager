@@ -747,6 +747,22 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
 .sync-dot.error{background:#b91c1c}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
+/* Laptop widths and Windows 125% scaling: keep the desktop structure while
+   preventing wide tables and dialogs from being clipped by the viewport. */
+@media (max-width:1400px) and (min-width:761px){
+  .sb{width:170px}
+  .sb-foot{width:170px}
+  .main{margin-left:170px;max-width:calc(100vw - 170px)}
+  .content{padding:10px 12px}
+  .topbar{padding-left:12px;padding-right:12px}
+  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #page-master table{min-width:1040px}
+  #page-summary table{min-width:900px}
+  .wed-card-head,.assign-compact-summary{min-width:0;flex-wrap:wrap}
+  .wed-card-title{overflow-wrap:anywhere}
+  .mo-box{max-width:calc(100vw - 48px);max-height:calc(100vh - 32px)}
+}
+
 @media print{
   @page{
     margin:1.8cm 2cm 2.4cm;

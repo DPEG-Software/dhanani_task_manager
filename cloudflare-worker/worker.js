@@ -49,7 +49,7 @@ function withRequestCors(response, request) {
   const allowedOrigin = ALLOWED_ORIGINS.has(origin) ? origin : ALLOWED_ORIGIN;
   const headers = new Headers(response.headers);
   headers.set('Access-Control-Allow-Origin', allowedOrigin);
-  headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   headers.append('Vary', 'Origin');
   return new Response(response.body, {
@@ -480,6 +480,43 @@ async function handleData(request, env) {
   }
 
   return json({ error: 'Method not allowed' }, 405);
+}
+
+// A short presence lock prevents two people from editing the same task form
+// at once. It expires automatically if a browser closes without releasing it.
+async function handleTaskEditLock(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_DATA) return json({ error: 'DPEG_DATA KV binding is not configured' }, 501);
+  let body = {};
+  if (request.method !== 'GET') {
+    try { body = await request.json(); }
+    catch { return json({ error: 'Invalid JSON body' }, 400); }
+  }
+  const url = new URL(request.url);
+  const taskId = String(body.taskId || url.searchParams.get('taskId') || '').trim().slice(0, 160);
+  if (!taskId) return json({ error: 'taskId is required' }, 400);
+  const key = `task-edit-lock:${taskId}`;
+  const email = userEmailFromClaims(claims);
+  const now = Date.now();
+  const existing = await env.DPEG_DATA.get(key, 'json');
+  if (request.method === 'GET') return json({ lock: existing && Number(existing.expiresAt || 0) > now ? existing : null });
+  if (request.method === 'DELETE') {
+    if (existing && extractEmailAddress(existing.email) === email) await env.DPEG_DATA.delete(key);
+    return json({ success: true });
+  }
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  if (existing && Number(existing.expiresAt || 0) > now && extractEmailAddress(existing.email) !== email) {
+    return json({ error: 'currently_editing', editorName: existing.name || existing.email, expiresAt: existing.expiresAt }, 423);
+  }
+  const lock = { taskId, email, name: String(claims.name || email), expiresAt: now + 120000 };
+  await env.DPEG_DATA.put(key, JSON.stringify(lock), { expirationTtl: 120 });
+  let version=null;
+  if(env.DPEG_ASSIGNMENTS){
+    const row=await env.DPEG_ASSIGNMENTS.prepare('SELECT version FROM assignments WHERE id = ?').bind(taskId).first();
+    if(row)version=Number(row.version||1);
+  }
+  return json({ success: true, lock, version });
 }
 
 // Shared department registry. Microsoft remains the contact/name source; this
@@ -1056,9 +1093,18 @@ async function handleCreateAssignment(request, env) {
     return json({ error: 'Only @dhananipeg.com addresses are supported' }, 403);
   }
 
-  const assignerEmail = extractEmailAddress(body.assignerEmail || userEmailFromClaims(claims));
+  const assignerEmail = userEmailFromClaims(claims);
   const assignerName = String(body.assignerName || claims.name || assignerEmail || '').trim();
   const now = new Date().toISOString();
+  const existingRow = await env.DPEG_ASSIGNMENTS.prepare(
+    'SELECT assigner_email, version FROM assignments WHERE id = ?'
+  ).bind(id).first();
+  if(existingRow&&extractEmailAddress(existingRow.assigner_email)!==assignerEmail){
+    return json({error:'Only the assigner can edit this task'},403);
+  }
+  if(existingRow&&body.expectedVersion!=null&&Number(body.expectedVersion)!==Number(existingRow.version||1)){
+    return json({error:'version_conflict',message:'This task was updated by another user. Reload it before making changes.',currentVersion:Number(existingRow.version||1)},409);
+  }
 
   // Single atomic upsert: on conflict, only touch assigner-owned columns.
   // Recipient-owned columns (status, progress_note, proof_*) and created_at
@@ -1107,7 +1153,8 @@ async function handleCreateAssignment(request, env) {
     now,
   ).run();
 
-  return json({ success: true, id });
+  const updatedRow=await env.DPEG_ASSIGNMENTS.prepare('SELECT version FROM assignments WHERE id = ?').bind(id).first();
+  return json({ success: true, id, version:Number(updatedRow?.version||1) });
 }
 
 // ── /assignments endpoint: fetch both directions for the current user (D1) ───
@@ -1202,6 +1249,12 @@ async function handleAssignmentStatus(request, env) {
   const tokenEmail = userEmailFromClaims(claims);
   if (extractEmailAddress(row.recipient_email) !== tokenEmail) {
     return json({ error: 'Only the recipient can update this assignment' }, 403);
+  }
+  if(env.DPEG_DATA){
+    const editLock=await env.DPEG_DATA.get(`task-edit-lock:${id}`,'json');
+    if(editLock&&Number(editLock.expiresAt||0)>Date.now()&&extractEmailAddress(editLock.email)!==tokenEmail){
+      return json({error:'currently_editing',editorName:editLock.name||editLock.email},423);
+    }
   }
 
   const updatedAt = new Date().toISOString();
@@ -1405,6 +1458,7 @@ async function routeRequest(request, env) {
     if (path === '/data') return handleData(request, env);
     if (path === '/departments') return handleDepartments(request, env);
     if (path === '/department-assignment') return handleDepartments(request, env);
+    if (path === '/task-edit-lock') return handleTaskEditLock(request, env);
     if (path === '/notify') return handleNotify(request, env);
     if (path === '/assignments') return handleAssignments(request, env);
 

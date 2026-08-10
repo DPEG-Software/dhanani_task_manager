@@ -909,6 +909,7 @@
   <div class="mo-box" style="width:620px;max-height:92vh">
     <div class="mo-hdr"><div style="min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="mo-title" id="mo-title" style="font-size:18px"></div><span id="mo-person-badge" style="display:none;align-items:center;gap:5px;padding:3px 10px;background:var(--sage3);border:1px solid var(--sage);border-radius:20px;font-size:12px;font-weight:700;color:var(--forest);white-space:nowrap"></span></div><div class="mo-sub" id="mo-sub"></div></div><button class="mo-x" onclick="closeMo('mo-detail')">&#10005;</button></div>
     <div class="mo-body">
+      <div id="mo-edit-lock-notice" style="display:none;margin-bottom:10px;padding:9px 11px;border:1px solid #f6c453;background:#fff8e1;border-radius:6px;font-size:12px;color:#7c4a03;font-weight:600"></div>
       <div class="mo-section-lbl mo-section-lbl-first">Details</div>
       <div class="form-grp" style="margin-bottom:8px"><label class="form-lbl">Title</label><input type="text" class="form-in" id="mo-edit-title" placeholder="Task title" disabled></div>
       <div class="sum-box" id="mo-sum"></div>
@@ -927,8 +928,7 @@
     <div class="mo-foot">
       <button class="btn btn-ghost btn-sm" id="mo-refresh-summary" onclick="refreshTaskSummary()">Refresh Summary</button>
       <button class="btn btn-ghost btn-sm" id="mo-notes-btn" onclick="movToWed()">Move to Wednesday</button>
-      <button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5" onclick="removeTask(curTaskId)">Remove Task</button>
-      <button class="btn btn-primary btn-sm" onclick="saveDetail()">Save Changes</button>
+      <button class="btn btn-primary btn-sm" id="mo-save-detail-btn" onclick="saveDetail()">Save Changes</button>
     </div>
   </div>
 </div>
