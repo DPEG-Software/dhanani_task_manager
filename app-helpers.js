@@ -85,6 +85,84 @@ function saveStaffDeptForTask(t,dept) {
     if ((t.email && normEmail(x.email)===normEmail(t.email)) || (!t.email && x.person===t.person)) x.dept = dept;
   });
 }
+function hasAssignedDepartment(dept){
+  const value=String(dept||'').trim();
+  return !!value&&!['Needs Department','Unknown','Outside DPEG'].includes(value);
+}
+function applyDepartmentAssignment(email,name,dept){
+  const normalized=normEmail(email);
+  const key=staffKey(normalized,name);
+  if(!key)return;
+  const existing=(normalized&&findPersonByEmail(normalized))||findPersonByName(name)||{};
+  staffConfig[key]={...(staffConfig[key]||{}),name:name||existing.name||normalized,email:normalized,dept,role:staffConfig[key]?.role||existing.role||''};
+  tasks.forEach(t=>{if(normalized&&normEmail(t.email)===normalized)t.dept=dept;});
+}
+function requestDepartmentSelection(person,currentDept='',proposedDept=''){
+  return new Promise(resolve=>{
+    const modal=document.getElementById('mo-department-required');
+    const select=document.getElementById('department-required-select');
+    const title=document.getElementById('department-required-title');
+    const personEl=document.getElementById('department-required-person');
+    const message=document.getElementById('department-required-message');
+    const save=document.getElementById('department-required-save');
+    const cancel=document.getElementById('department-required-cancel');
+    if(!modal||!select){resolve(null);return;}
+    const changing=hasAssignedDepartment(currentDept)&&hasAssignedDepartment(proposedDept)&&currentDept!==proposedDept;
+    title.textContent=changing?'Change Department?':'Select Department';
+    personEl.textContent=[person.name,person.email].filter(Boolean).join(' • ');
+    message.innerHTML=changing
+      ?`This email is currently assigned to <strong>${escapeHtml(currentDept)}</strong>. Do you want to change it to <strong>${escapeHtml(proposedDept)}</strong>? The change will apply across the entire app.`
+      :'Select the department for this email. The selection will stay the same for future emails and tasks until someone changes it.';
+    const departments=allDepartments().filter(hasAssignedDepartment);
+    select.innerHTML=departments.map(d=>`<option${d===(proposedDept||currentDept)?' selected':''}>${escapeHtml(d)}</option>`).join('');
+    select.style.display=changing?'none':'';
+    save.textContent=changing?'Yes, Change Department':'Save Department';
+    cancel.textContent=changing?'No, Keep Current':'Cancel';
+    let settled=false;
+    const finish=value=>{if(settled)return;settled=true;modal.classList.remove('open');save.onclick=null;cancel.onclick=null;resolve(value);};
+    save.onclick=()=>finish(changing?proposedDept:select.value);
+    cancel.onclick=()=>finish(changing?currentDept:null);
+    modal.onclick=e=>{if(e.target===modal)finish(null);};
+    modal.classList.add('open');
+  });
+}
+async function ensureDepartmentForPerson(person,proposedDept=''){
+  const email=normEmail(person?.email||'');
+  const name=String(person?.name||email.split('@')[0]||'').trim();
+  if(!email){
+    if(name&&name!=='Unassigned'){
+      toast('Select the person from Microsoft contacts so their exact email can be saved');
+      return null;
+    }
+    return person?.dept||'Needs Department';
+  }
+  if(!isInternalEmail(email))return person?.dept||'Outside DPEG';
+  const current=configuredDept(email,name);
+  let selected=current;
+  if(!hasAssignedDepartment(current))selected=await requestDepartmentSelection({name,email},'',hasAssignedDepartment(proposedDept)?proposedDept:'');
+  else if(hasAssignedDepartment(proposedDept)&&proposedDept!==current)selected=await requestDepartmentSelection({name,email},current,proposedDept);
+  if(!selected)return null;
+  if(selected!==current){
+    const saved=await saveSharedDepartmentAssignment(email,name,selected);
+    if(!saved){toast(window.lastDepartmentSaveError||'Department could not be saved. Please try again.');return null;}
+    applyDepartmentAssignment(email,name,selected);
+    initSelects();
+    // The shared registry and D1 assignment rows are authoritative. Do not
+    // leave the underlying edit window hanging while OneDrive performs a
+    // secondary personal backup.
+    saveTasksToOneDrive().catch(err=>console.warn('Department backup save skipped:',err.message));
+    toast(`${name}'s department changed to ${selected} across the app`);
+  }
+  person.dept=selected;
+  return selected;
+}
+async function ensureDepartmentsForPeople(people,proposedDept=''){
+  for(const person of people){
+    const dept=await ensureDepartmentForPerson(person,people.length===1?proposedDept:'');
+    if(dept===null)return false;
+  }
+  return true;
+}
 function saveStaffEmail(name,email){
   const key=String(name||"").trim().toLowerCase();
   if(!key)return;
@@ -205,8 +283,19 @@ async function saveDepartmentAssignmentSetting(){
   const existing=(email&&findPersonByEmail(email))||findPersonByName(name)||{};
   const finalName=name||existing.name||email.split('@')[0];
   const finalEmail=normEmail(email||existing.email||'');
+  if(!finalEmail){toast('Select a Microsoft contact with an email address');return;}
   const finalNameKey=String(finalName||'').trim().toLowerCase();
   const key=staffKey(email,finalName);
+  const previousDept=configuredDept(finalEmail,finalName);
+  if(hasAssignedDepartment(previousDept)&&previousDept!==dept){
+    const confirmed=await requestDepartmentSelection({name:finalName,email:finalEmail},previousDept,dept);
+    if(confirmed===previousDept){
+      setDeptAssignDepartment(previousDept);
+      renderDepartmentSettingsList();
+      toast(`Kept ${finalName} in ${previousDept}`);
+      return;
+    }
+  }
   staffConfig[key]={...(staffConfig[key]||{}),name:finalName,email:finalEmail,dept,role:staffConfig[key]?.role||existing.role||''};
   tasks.forEach(t=>{
     const taskEmail=normEmail(t.email);

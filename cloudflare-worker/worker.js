@@ -8,8 +8,17 @@
 // POST /assignment-alert-clear → Either party dismisses that alert (D1)
 
 const ALLOWED_ORIGIN  = 'https://dpeg-software.github.io';
+const ALLOWED_ORIGINS = new Set([
+  ALLOWED_ORIGIN,
+  'http://localhost:8765',
+]);
 const DPEG_TENANT_ID  = '9152bf5c-22ff-4e4a-8624-784a2d243006';
 const AZURE_CLIENT_ID = '8d523e65-0163-49c7-881b-407c0222527e';
+const STANDARD_DEPARTMENTS = new Set([
+  'investor relations','accounting','acquisitions','development','software development','construction',
+  'property management','maintenance','marketing','legal and title','leasing',
+  'it','operations','lending','insurance','multifamily','eb-5',
+]);
 
 const CORS = {
   'Access-Control-Allow-Origin':  ALLOWED_ORIGIN,
@@ -28,6 +37,25 @@ function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...CORS, 'Content-Type': 'application/json' },
+  });
+}
+
+// Apply CORS after routing so every endpoint—including redirects and errors—
+// gets the correct origin. Browsers accept only one Allow-Origin value, so a
+// comma-separated list would not work; echo the requesting origin only when
+// it is one of the two explicitly trusted app addresses.
+function withRequestCors(response, request) {
+  const origin = request.headers.get('Origin') || '';
+  const allowedOrigin = ALLOWED_ORIGINS.has(origin) ? origin : ALLOWED_ORIGIN;
+  const headers = new Headers(response.headers);
+  headers.set('Access-Control-Allow-Origin', allowedOrigin);
+  headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  headers.append('Vary', 'Origin');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }
 
@@ -122,6 +150,10 @@ async function ensureAssignmentProofColumns(env) {
     ['proof_reviewed_at', 'TEXT'],
     ['proof_notification_id', 'TEXT'],
     ['update_alert_at', 'TEXT'],
+    ['reminder_count', 'INTEGER NOT NULL DEFAULT 0'],
+    ['assigner_message_seen_count', 'INTEGER NOT NULL DEFAULT 0'],
+    ['recipient_message_seen_count', 'INTEGER NOT NULL DEFAULT 0'],
+    ['recipient_reminder_seen_count', 'INTEGER'],
     ['version', 'INTEGER NOT NULL DEFAULT 1'],
     ['cancel_reason', 'TEXT'],
     ['cancelled_at', 'TEXT'],
@@ -471,10 +503,40 @@ async function handleDepartments(request, env) {
     return json({ error: 'Method not allowed' }, 405);
   }
   const userEmail = extractEmailAddress(claims.preferred_username || claims.upn || claims.email || '');
-  if (!ADMIN_EMAILS.has(userEmail)) return json({ error: 'Admin access only' }, 403);
   let body;
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  if (!ADMIN_EMAILS.has(userEmail)) return json({ error: 'Admin access only' }, 403);
+
+  // Admins may map one verified Microsoft email to an existing department.
+  if (request.method === 'POST' && body.assignment) {
+    const email = extractEmailAddress(body.assignment.email || '');
+    const name = String(body.assignment.name || '').trim().replace(/\s+/g, ' ');
+    const dept = String(body.assignment.dept || '').trim().replace(/\s+/g, ' ');
+    const departments = Array.isArray(existing.customDepartments) ? existing.customDepartments : [];
+    const validDepartment = STANDARD_DEPARTMENTS.has(dept.toLowerCase()) ||
+      departments.some(value => String(value || '').trim().toLowerCase() === dept.toLowerCase());
+    if (!email || (!email.endsWith('@dhananipeg.com') && !email.endsWith('@dpeg.com'))) {
+      return json({ error: 'A valid internal Microsoft email is required' }, 400);
+    }
+    if (!dept || dept === 'Needs Department' || !validDepartment) {
+      return json({ error: 'Select an existing department' }, 400);
+    }
+    const assignments = existing.departmentAssignments && typeof existing.departmentAssignments === 'object'
+      ? { ...existing.departmentAssignments } : {};
+    assignments[email] = { email, name, dept };
+    const now = new Date().toISOString();
+    const payload = { ...existing, departmentAssignments: assignments, departmentsUpdatedAt: now };
+    await env.DPEG_DATA.put(DATA_KEY, JSON.stringify(payload));
+    if (env.DPEG_ASSIGNMENTS) {
+      await env.DPEG_ASSIGNMENTS.prepare(
+        'UPDATE assignments SET dept = ?, updated_at = ?, version = version + 1 WHERE lower(recipient_email) = ?'
+      ).bind(dept, now, email).run();
+    }
+    return json({ success: true, assignment: assignments[email], updatedAt: now });
+  }
+
   if (existing.departmentsUpdatedAt && body.baseUpdatedAt !== existing.departmentsUpdatedAt) {
     return json({ error: 'conflict', message: 'Departments changed since they were loaded.' }, 409);
   }
@@ -1092,6 +1154,10 @@ async function handleAssignments(request, env) {
     proofNotificationId: row.proof_notification_id,
     proofInstructions: row.proof_instructions,
     updateAlertAt: row.update_alert_at || null,
+    reminderCount: Number(row.reminder_count || 0),
+    assignerMessageSeenCount: Number(row.assigner_message_seen_count || 0),
+    recipientMessageSeenCount: Number(row.recipient_message_seen_count || 0),
+    recipientReminderSeenCount: row.recipient_reminder_seen_count == null ? null : Number(row.recipient_reminder_seen_count),
     cancelReason: row.cancel_reason || '',
     cancelledAt: row.cancelled_at || null,
     createdAt: row.created_at,
@@ -1191,10 +1257,25 @@ async function handleAssignmentAlert(request, env) {
 
   const updateAlertAt = new Date().toISOString();
   await env.DPEG_ASSIGNMENTS.prepare(
-    'UPDATE assignments SET update_alert_at = ? WHERE id = ?'
-  ).bind(updateAlertAt, id).run();
+    `UPDATE assignments
+        SET update_alert_at = ?,
+            reminder_count = COALESCE(reminder_count, 0) + 1,
+            updated_at = ?,
+            version = version + 1
+      WHERE id = ?`
+  ).bind(updateAlertAt, updateAlertAt, id).run();
 
-  return json({ success: true, updateAlertAt });
+  const updated = await env.DPEG_ASSIGNMENTS.prepare(
+    'SELECT reminder_count, version, updated_at FROM assignments WHERE id = ?'
+  ).bind(id).first();
+
+  return json({
+    success: true,
+    updateAlertAt,
+    reminderCount: Number(updated?.reminder_count || 0),
+    version: Number(updated?.version || 1),
+    updatedAt: updated?.updated_at || updateAlertAt,
+  });
 }
 
 // ── /assignment-alert-clear endpoint: manually dismiss an alert (D1). Either
@@ -1232,6 +1313,43 @@ async function handleAssignmentAlertClear(request, env) {
   ).bind(id).run();
 
   return json({ success: true });
+}
+
+// Persists per-user acknowledgement so messages/reminders do not become new
+// again after a refresh, a new day, or a different browser.
+async function handleAssignmentSeen(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+  const id=String(body.id||'').trim();
+  if(!id)return json({error:'id is required'},400);
+  const row=await env.DPEG_ASSIGNMENTS.prepare(
+    'SELECT assigner_email, recipient_email FROM assignments WHERE id = ?'
+  ).bind(id).first();
+  if(!row)return json({error:'Assignment not found'},404);
+  const email=userEmailFromClaims(claims);
+  const isAssigner=extractEmailAddress(row.assigner_email)===email;
+  const isRecipient=extractEmailAddress(row.recipient_email)===email;
+  if(!isAssigner&&!isRecipient)return json({error:'Not authorized for this assignment'},403);
+  const threadLen=Math.max(0,Number(body.threadLen||0));
+  const reminderCount=Math.max(0,Number(body.reminderCount||0));
+  if(isAssigner){
+    await env.DPEG_ASSIGNMENTS.prepare(
+      'UPDATE assignments SET assigner_message_seen_count = MAX(COALESCE(assigner_message_seen_count,0), ?) WHERE id = ?'
+    ).bind(threadLen,id).run();
+  }else{
+    await env.DPEG_ASSIGNMENTS.prepare(
+      `UPDATE assignments
+          SET recipient_message_seen_count = MAX(COALESCE(recipient_message_seen_count,0), ?),
+              recipient_reminder_seen_count = MAX(COALESCE(recipient_reminder_seen_count,0), ?)
+        WHERE id = ?`
+    ).bind(threadLen,reminderCount,id).run();
+  }
+  return json({success:true,threadLen,reminderCount});
 }
 
 // ── /assignment-cancel endpoint: assigner calls off a delegated task (D1) ────
@@ -1277,8 +1395,7 @@ async function handleAssignmentCancel(request, env) {
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
-export default {
-  async fetch(request, env) {
+async function routeRequest(request, env) {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS });
     }
@@ -1287,6 +1404,7 @@ export default {
     if (proofMatch && request.method === 'GET') return handleProofRedirect(request, env, proofMatch[1]);
     if (path === '/data') return handleData(request, env);
     if (path === '/departments') return handleDepartments(request, env);
+    if (path === '/department-assignment') return handleDepartments(request, env);
     if (path === '/notify') return handleNotify(request, env);
     if (path === '/assignments') return handleAssignments(request, env);
 
@@ -1304,7 +1422,13 @@ export default {
     if (path === '/assignment-status') return handleAssignmentStatus(request, env);
     if (path === '/assignment-alert') return handleAssignmentAlert(request, env);
     if (path === '/assignment-alert-clear') return handleAssignmentAlertClear(request, env);
+    if (path === '/assignment-seen') return handleAssignmentSeen(request, env);
     if (path === '/assignment-cancel') return handleAssignmentCancel(request, env);
     return handleSummary(request, env);
+}
+
+export default {
+  async fetch(request, env) {
+    return withRequestCors(await routeRequest(request, env), request);
   },
 };

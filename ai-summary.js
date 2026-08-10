@@ -213,7 +213,7 @@ function renderDepartmentSettingsList(){
         ${av(p.name||p.email||'?',28)}
         <div style="min-width:0">
           <div style="font-size:12.5px;font-weight:700;color:var(--body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name||p.email)}</div>
-          <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.email||'No email saved')}</div>
+          <div style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.dept||'Needs Department')}</div>
         </div>
       </div>
       <select class="form-sel" style="padding:6px 8px;font-size:12px" onchange="quickReassignDepartment(${i},this.value)">${deptOptions(p.dept||'Needs Department')}</select>
@@ -230,7 +230,6 @@ async function quickReassignDepartment(index,dept){
   setDeptAssignDepartment(dept);
   await saveDepartmentAssignmentSetting();
 }
-
 
 
 

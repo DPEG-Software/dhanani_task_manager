@@ -176,7 +176,7 @@ async function checkAndLoadProofNotifications(){
     renderNotifications();
     await saveNotifications();
     refreshAll();
-    if(newAdded>0)toast(`${newAdded} proof submission${newAdded>1?'s':''} ready for review in Delegated Tasks`);
+    if(newAdded>0)toast(`${newAdded} proof submission${newAdded>1?'s':''} ready for review in Assigned by Me`);
   }
 }
 
@@ -313,7 +313,7 @@ async function showTaskFollowupModal(params){
   const subEl=document.getElementById('tf-modal-sub');
   const sendBtn=document.getElementById('tf-modal-send');
   const otherName=params.role==='assignee'?(params.assignerName||params.assignerEmail):(params.recipientName||params.recipientEmail);
-  if(titleEl)titleEl.textContent=params.requestChanges?'Ask for Changes':`Follow up — ${otherName||'the other party'}`;
+  if(titleEl)titleEl.textContent=params.requestChanges?'Ask for Changes':`Messages — ${otherName||'the other party'}`;
   if(subEl)subEl.textContent=params.requestChanges?`Tell ${otherName||'the assignee'} exactly what needs to be changed.`:(params.title||'');
   if(sendBtn)sendBtn.textContent=params.requestChanges?'Send Request':'Send';
   const input=document.getElementById('tf-modal-input');
@@ -352,7 +352,7 @@ async function sendTaskFollowupEmail(recipientEmail,ctx,message){
     const sender=currentUser?.name||currentUser?.email||'DPEG Task Manager';
     const appUrl=location.origin+location.pathname;
     const html=`<div style="font-family:Arial,sans-serif;max-width:620px;color:#111">
-      <div style="background:#0E3416;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Task Follow-up — ${escapeHtml(ctx.title||'Assigned task')}</div>
+      <div style="background:#0E3416;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Task Message — ${escapeHtml(ctx.title||'Assigned task')}</div>
       <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:14px 16px">
         <p style="margin:0 0 8px"><strong>From:</strong> ${escapeHtml(sender)}</p>
         <div style="background:#f0fdf4;border-left:3px solid #0E3416;padding:10px 12px;margin:10px 0;font-size:14px;line-height:1.5">${escapeHtml(message).replace(/\n/g,'<br>')}</div>
@@ -361,7 +361,7 @@ async function sendTaskFollowupEmail(recipientEmail,ctx,message){
     </div>`;
     await replyToTaskEmail({title:ctx.title||'Assigned task',email:addr},html,addr);
   }catch(err){
-    console.warn('Task follow-up email failed:',err.message);
+    console.warn('Task message email failed:',err.message);
   }
 }
 
@@ -959,10 +959,10 @@ async function askNotificationFollowup(id,providedMessage){
   markNotifSeen(id);
   const n=notifications.find(x=>x.id===id);
   if(!n)return false;
-  const question=providedMessage!==undefined?providedMessage:prompt('Ask the assignee a follow-up question:');
+  const question=providedMessage!==undefined?providedMessage:prompt('Send the assignee a message:');
   if(question===null)return;
   const message=String(question||'').trim();
-  if(!message){toast('Please type a follow-up question');return;}
+  if(!message){toast('Please type a message');return;}
   try{
     const task=n.taskId!=null?tasks.find(t=>t.id===n.taskId):null;
     if(n.kvNotifId){
@@ -973,14 +973,14 @@ async function askNotificationFollowup(id,providedMessage){
         headers:{'Content-Type':'application/json',Authorization:`Bearer ${userToken}`},
         body:JSON.stringify({type:'proof_followup_question',notifId:n.kvNotifId,appTaskId:String(n.taskId||''),taskTitle:task?.title||'',senderEmail:currentUser?.email||'',senderName:currentUser?.name||'',recipientEmail:n.recipientEmail||'',message}),
       });
-      if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not ask follow-up');}
+      if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not send message');}
       await checkAndLoadProofNotifications();
       renderNotifications();
     }
     await sendProofFollowupEmail(n.recipientEmail||task?.email,task||{id:n.taskId,title:n.taskTitle||n.message,email:n.recipientEmail},message);
     if(providedMessage===undefined)toast('Follow-up question sent and emailed');
     return true;
-  }catch(err){toast('Could not send follow-up: '+(err.message||err));return false;}
+  }catch(err){toast('Could not send message: '+(err.message||err));return false;}
 }
 
 async function sendDismissalEmail(n){
@@ -1124,7 +1124,7 @@ async function pollToDoCompletions(manual=false){
       updateNotifBadge();
       await saveNotifications();
       renderNotifications();
-      toast(`${added} task completion${added>1?'s':''} need your approval in Delegated Tasks`);
+      toast(`${added} task completion${added>1?'s':''} need your approval in Assigned by Me`);
     }else if(manual){
       toast(`Polled ${assignments.length} task${assignments.length>1?'s':''} — no completions yet`);
     }

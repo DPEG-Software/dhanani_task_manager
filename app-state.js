@@ -5,7 +5,10 @@ const MSAL_CONFIG = {
   auth: {
     clientId: "8d523e65-0163-49c7-881b-407c0222527e",
     authority: "https://login.microsoftonline.com/9152bf5c-22ff-4e4a-8624-784a2d243006",
-    redirectUri: "https://dpeg-software.github.io/dhanani_task_manager/",
+    // Both production and localhost are registered as SPA redirect URIs.
+    // Keeping this aligned with auth.js lets Graph token requests return to
+    // the same origin where the app is currently running.
+    redirectUri: window.location.origin + window.location.pathname,
     navigateToLoginRequestUrl: false,
   },
   cache: {
@@ -59,7 +62,7 @@ const PROOF_RETURN_KEY='dpeg_proof_return_search';
 // PEOPLE & DEPARTMENTS DATA
 // ============================================================
 const DEPARTMENTS = [
-  "Investor Relations","Accounting","Acquisitions","Development",
+  "Investor Relations","Accounting","Acquisitions","Development","Software Development",
   "Construction","Property Management","Maintenance","Marketing",
   "Legal and Title","Leasing","IT","Operations","Lending",
   "Insurance","Multifamily","EB-5","Outside DPEG",
@@ -67,7 +70,7 @@ const DEPARTMENTS = [
 
 const DEPT_COLORS = {
   "Investor Relations":"#0E3416","Accounting":"#1A5C2A","Acquisitions":"#2E7D3F",
-  "Development":"#1A237E","Construction":"#BF360C","Property Management":"#006064",
+  "Development":"#1A237E","Software Development":"#1B5E20","Construction":"#BF360C","Property Management":"#006064",
   "Maintenance":"#37474F","Marketing":"#4A148C","Legal and Title":"#6D4C41",
   "Leasing":"#0D47A1","IT":"#1B5E20","Operations":"#212121",
   "Lending":"#880E4F","Insurance":"#E65100","Multifamily":"#33691E","EB-5":"#1A237E",
@@ -81,4 +84,3 @@ function loadUserContacts(){
 function saveUserContacts(){
   try{localStorage.setItem(userContactsKey(),JSON.stringify(userContacts));}catch{}
 }
-

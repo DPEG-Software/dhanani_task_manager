@@ -1884,7 +1884,7 @@ async function sendEmail(){
 
   // Check for open threads with any recipient before sending
   const allRecipients=[...to.split(','),...(cc?cc.split(','):[]),...(bcc?bcc.split(','):[])]
-    .map(e=>e.trim().toLowerCase()).filter(Boolean);
+    .map(e=>normEmail(extractEmailAddress(e))).filter(Boolean);
   const createTask=document.getElementById('compose-create-task')?.checked!==false;
   await showUnreadCheckIfNeeded(allRecipients.join(','), ()=>doSendEmail(to,cc,bcc,subject,body,importance,deadline,createTask));
 }
@@ -2911,7 +2911,7 @@ async function sendTaskNotification(task){
         <p style="margin:0 0 6px"><strong>Priority:</strong> ${escapeHtml(task.priority||'Normal')}</p>
         ${attHtml}
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0">
-        <p style="color:#9ca3af;font-size:11px;margin:0">All follow-ups and updates for this task will appear as replies to this email.</p>
+        <p style="color:#9ca3af;font-size:11px;margin:0">Task messages and updates will appear as replies to this email.</p>
       </div>
     </div>`;
     const subject=`Task Assigned: ${task.title||'(no subject)'}`;

@@ -145,8 +145,7 @@ function renderMaster(){
       <td onclick="event.stopPropagation()" style="padding:10px 8px;font-size:11.5px;color:var(--body);white-space:normal;line-height:1.35">${nstt(t.status)==="Done"?completedTaskTimelineHTML(t):(t.date?fmtD(t.date):'No deadline')}</td>
       <td onclick="event.stopPropagation()" style="padding:6px 10px 6px 4px;text-align:right;white-space:nowrap">
         <div style="display:inline-flex;gap:5px;align-items:center">
-          ${nstt(t.status)!=="Done"?`<button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:13px;min-width:0;border-color:#d1d5db;color:#374151;line-height:1" onclick="openDetail(${t.id})" title="Edit department, deadline, or priority">✏️</button>`:''}
-          ${nstt(t.status)!=="Done"?`<button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:3px 8px;font-size:11px;min-width:0;line-height:1;font-weight:700" onclick="cancelActionTask(${t.id})" title="Cancel task">Cancel</button>`:''}
+          ${nstt(t.status)!=="Done"?`<button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:4px 10px;font-size:11px;min-width:58px;line-height:1;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center" onclick="cancelActionTask(${t.id})" title="Cancel task">Cancel</button>`:''}
         </div>
       </td>
     </tr>`}).join("");

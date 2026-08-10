@@ -191,9 +191,11 @@ function renderAdminDeptEditor(){
       <div style="padding-left:18px">${pp.map(p=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f3f4f6;font-size:12.5px">${av(p.name||'?',22)}<span>${p.name}</span><span style="color:var(--muted);font-size:11px">${p.email||''}</span></div>`).join('')}</div>
     </div>`).join('');
 }
-function updateAdminPersonDept(email,name,dept){
-  const key=staffKey(email,name);
-  staffConfig[key]={...(staffConfig[key]||{}),name,email,dept};
+async function updateAdminPersonDept(email,name,dept){
+  const selected=await ensureDepartmentForPerson({email,name,dept:configuredDept(email,name)},dept);
+  if(selected===null){renderAdminPeopleList();return;}
+  applyDepartmentAssignment(email,name,selected);
+  renderAdminPeopleList();
   renderAdminDeptEditor();
 }
 function createAdminDepartment(){
@@ -417,4 +419,3 @@ async function testAIConnection(){
     btn.disabled=false;btn.textContent='Test Connection';
   }
 }
-

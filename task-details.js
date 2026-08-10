@@ -165,14 +165,13 @@ async function saveDetail(){
   const newDate=document.getElementById("mo-edit-date").value||t.date;
   const newPriority=document.getElementById("mo-edit-priority").value||t.priority||"Normal";
   const newStatus=nstt(t.status);
-  const newDept=document.getElementById("mo-dept").value;
+  const newDept=t.dept;
   const changes=[];
   if(newTitle!==t.title)changes.push(`Title: "${t.title}" → "${newTitle}"`);
   if(newPerson!==t.person)changes.push(`Assigned to: ${t.person} → ${newPerson}`);
   if(newEmail&&newEmail!==t.email)changes.push(`Email updated`);
   if(newDate&&newDate!==t.date)changes.push(`Date: ${fmtD(t.date)} → ${fmtD(newDate)}`);
   if(newPriority!==(t.priority||"Normal"))changes.push(`Priority: ${t.priority||"Normal"} → ${newPriority}`);
-  if(newDept!==t.dept)changes.push(`Department: ${t.dept||'Unassigned'} → ${newDept}`);
   t.title=newTitle;t.person=newPerson;if(newEmail)t.email=newEmail;
   t.date=newDate;t.priority=newPriority;t.status=newStatus;
   saveStaffDeptForTask(t,newDept);
@@ -244,7 +243,9 @@ async function addTask(){
     const email=normEmail(a.email||"");
     const person=String(a.name||email.split('@')[0]||"Unassigned").trim();
     const configured=personDept(email,person);
-    const dept=(a.dept&&a.dept!=="Needs Department")?a.dept:(configured&&configured!=="Needs Department"?configured:fallbackDept);
+    const dept=isInternalEmail(email)
+      ?(hasAssignedDepartment(configured)?configured:'Needs Department')
+      :(email?'Outside DPEG':fallbackDept||'Needs Department');
     return {id:baseId+i,title,summary,proofInstructions,person,email,dept,date,status,priority,wednesday:false,followup:"",weekOffset:0,assignmentGroupId:groupId,assignmentGroupSize:assignees.length};
   });
   tasks.unshift(...newTasks);

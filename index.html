@@ -102,7 +102,7 @@
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M22 21v-2a4 4 0 00-3-3.87M12 7a4 4 0 11-8 0 4 4 0 018 0M17 11l2 2 4-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Sync My Outlook Contacts
       </button>
-      <button class="acct-option" onclick="openDepartmentSettings();closeAccountMenu()">
+      <button class="acct-option" id="department-settings-btn" style="display:none" onclick="openDepartmentSettings();closeAccountMenu()">
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7M17 14l3 3m0 0l-3 3m3-3h-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Department Settings
       </button>
@@ -235,7 +235,7 @@
   <div class="page" id="page-tasks">
     <div class="directory-toggle">
       <button id="tasks-received-btn" class="active" onclick="setTasksTabMode('received')">My Tasks <span class="nb red" id="tasks-received-badge" style="margin-left:6px;display:none">0</span></button>
-      <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Delegated <span class="nb red" id="tasks-given-badge" style="margin-left:6px;display:none">0</span></button>
+      <button id="tasks-given-btn" onclick="setTasksTabMode('given')">Assigned by Me <span class="nb red" id="tasks-given-badge" style="margin-left:6px;display:none">0</span></button>
       <button id="tasks-history-btn" onclick="setTasksTabMode('history')">History <span class="nb red" id="tasks-history-badge" style="margin-left:6px;display:none">0</span></button>
     </div>
     <div class="directory-toggle" id="tasks-history-filter" style="display:none;margin-top:-5px;margin-bottom:10px">
@@ -609,9 +609,8 @@
         <button class="btn btn-primary btn-sm" onclick="createDepartmentSetting()">+ Add</button>
       </div>
       <div id="department-settings-catalog" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px"></div>
-      <div style="display:grid;grid-template-columns:minmax(130px,1fr) minmax(170px,1.2fr) minmax(140px,.9fr) auto;gap:8px;align-items:end;margin-bottom:14px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:7px;position:relative">
-        <div><label class="form-lbl" style="margin-bottom:4px">Person</label><input class="form-in" id="dept-assign-name" placeholder="Name" autocomplete="off" oninput="showDeptAssignAC('name')" onfocus="showDeptAssignAC('name')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
-        <div><label class="form-lbl" style="margin-bottom:4px">Email</label><input class="form-in" id="dept-assign-email" placeholder="email@dhananipeg.com" autocomplete="off" oninput="showDeptAssignAC('email')" onfocus="showDeptAssignAC('email')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"></div>
+      <div style="display:grid;grid-template-columns:minmax(180px,1fr) minmax(160px,.8fr) auto;gap:8px;align-items:end;margin-bottom:14px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:7px;position:relative">
+        <div><label class="form-lbl" style="margin-bottom:4px">Person</label><input class="form-in" id="dept-assign-name" placeholder="Select a Microsoft user" autocomplete="off" oninput="showDeptAssignAC('name')" onfocus="showDeptAssignAC('name')" onblur="hideDeptAssignAC()" onkeydown="deptAssignACNav(event)" style="padding:7px 9px;font-size:12.5px"><input type="hidden" id="dept-assign-email"></div>
         <div><label class="form-lbl" style="margin-bottom:4px">Department</label><select class="form-sel" id="dept-assign-dept" style="padding:7px 9px;font-size:12.5px"></select></div>
         <button class="btn btn-primary btn-sm" onclick="saveDepartmentAssignmentSetting()">Save</button>
         <div id="dept-assign-ac" class="compose-ac" style="display:none;position:absolute;left:12px;right:12px;top:64px;z-index:9999;max-height:220px;overflow:auto"></div>
@@ -621,6 +620,24 @@
     </div>
     <div class="mo-foot">
       <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-department-settings')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- REQUIRED DEPARTMENT ASSIGNMENT -->
+<div class="mo" id="mo-department-required">
+  <div class="mo-box" style="max-width:460px">
+    <div class="mo-hdr">
+      <div><div class="mo-title" id="department-required-title">Select Department</div><div class="mo-sub" id="department-required-person"></div></div>
+    </div>
+    <div class="mo-body">
+      <div id="department-required-message" style="font-size:13px;line-height:1.55;color:var(--body);margin-bottom:14px"></div>
+      <div class="form-grp"><label class="form-lbl">Department</label><select class="form-sel" id="department-required-select"></select></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:10px">This department will be used across the entire app.</div>
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-ghost btn-sm" id="department-required-cancel">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="department-required-save">Save Department</button>
     </div>
   </div>
 </div>
@@ -735,7 +752,7 @@
   <div class="mo-box" style="width:520px;max-height:88vh">
     <div class="mo-hdr">
       <div>
-        <div class="mo-title" id="tf-modal-title">Follow up</div>
+        <div class="mo-title" id="tf-modal-title">Messages</div>
         <div class="mo-sub" id="tf-modal-sub"></div>
       </div>
       <button class="mo-x" onclick="closeTaskFollowup()">&#10005;</button>
@@ -898,7 +915,7 @@
 
       <div class="mo-section-lbl">Assignment</div>
       <div class="d-row"><div class="d-lbl">Assigned To</div><div style="flex:1;display:flex;gap:6px"><input type="text" class="form-in" id="mo-edit-person" placeholder="Name" style="flex:1;padding:4px 8px;font-size:12px" disabled><input type="email" class="form-in" id="mo-edit-email" placeholder="Email" style="flex:1;padding:4px 8px;font-size:12px" disabled></div></div>
-      <div class="d-row"><div class="d-lbl">Department</div><select class="form-sel" id="mo-dept" style="width:auto"></select></div>
+      <div class="d-row"><div class="d-lbl">Department</div><select class="form-sel" id="mo-dept" style="width:auto" disabled></select><span style="font-size:10.5px;color:var(--muted)">Managed by admins in Department Settings</span></div>
 
       <div class="mo-section-lbl">Assignment Settings</div>
       <div class="d-row"><div class="d-lbl">Deadline</div><input type="date" class="form-in" id="mo-edit-date" style="font-size:12px;padding:4px 8px;width:auto"></div>
@@ -937,7 +954,7 @@
         <input type="hidden" id="nt-email">
       </div>
       <div class="form-row">
-        <div class="form-grp"><label class="form-lbl">Department</label><select class="form-sel" id="nt-dept"></select></div>
+        <div class="form-grp"><label class="form-lbl">Department <span style="color:var(--muted);font-weight:400">(assigned by admins)</span></label><select class="form-sel" id="nt-dept" disabled></select></div>
         <div class="form-grp"><label class="form-lbl">Priority</label><select class="form-sel" id="nt-priority"><option>Normal</option><option>High</option></select></div>
       </div>
       <div class="form-row">

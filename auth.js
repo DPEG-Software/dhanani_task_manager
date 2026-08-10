@@ -73,7 +73,11 @@ async function signInWithMicrosoft() {
     if(isProofUploadRoute())sessionStorage.setItem(PROOF_RETURN_KEY,location.search);
     const loginRequest = {
       scopes: SCOPES,
-      redirectUri: "https://dpeg-software.github.io/dhanani_task_manager/",
+      // Use the address the app is currently running on. Both production
+      // GitHub Pages and http://localhost:8765/ are registered as SPA
+      // redirect URIs in Microsoft Entra, so local testing returns locally
+      // while production sign-in continues returning to production.
+      redirectUri: window.location.origin + window.location.pathname,
       prompt: "select_account"
     };
     await msalInstance.loginRedirect(loginRequest);
@@ -145,6 +149,8 @@ function updateUI() {
   document.getElementById("user-avatar").textContent = u.name.split(" ").map(x=>x[0]).join("").toUpperCase().slice(0,2);
   const adminBtn=document.getElementById("admin-settings-btn");
   if(adminBtn)adminBtn.style.display=isAdmin()?'flex':'none';
+  const departmentBtn=document.getElementById("department-settings-btn");
+  if(departmentBtn)departmentBtn.style.display=isAdmin()?'flex':'none';
 
   // Wednesday vs Discussion Notes
   const wedLabel = document.getElementById("nav-wednesday-label");
@@ -175,4 +181,3 @@ function updateUI() {
     if(modalNotesBtn)modalNotesBtn.textContent='Move to Discussion';
   }
 }
-

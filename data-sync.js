@@ -342,9 +342,15 @@ async function renderProofFollowupBox(params){
     if(formArea)formArea.style.display='';
     return;
   }
-  host.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:14px 16px;margin-bottom:4px">
-    <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:3px">✓ Proof submitted — under review</div>
-    <div style="font-size:12px;color:#166534">Proof is locked while awaiting a decision. Use the task's Follow Up conversation for any messages or additional context.</div>
+  showProofSentState();
+}
+
+function showProofSentState(){
+  const host=document.getElementById('proof-followup-area');
+  const formArea=document.getElementById('proof-form-area');
+  if(host)host.innerHTML=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:16px;margin-bottom:4px">
+    <div style="font-size:14px;font-weight:800;color:#166534;margin-bottom:5px">✓ Proof sent</div>
+    <div style="font-size:12px;color:#166534;line-height:1.5">Your proof is waiting for review. Use <strong>Messages</strong> on the task for any additional information.</div>
   </div>`;
   if(formArea)formArea.style.display='none';
 }
@@ -395,11 +401,11 @@ async function uploadProofFiles(){
     await saveProofNotificationToKV(params,uploaded,note);
     window.updateTasksTabProofState?.(params.appTaskId||'', 'submitted');
     if(progressWrap)progressWrap.style.display='none';
-    statusEl.innerHTML=`<span style="color:#166534;font-weight:600">✓ Proof submitted! The assignor will review it in DPEG Task Manager.</span>`;
     pendingProofFiles=[];
     renderPendingProofFileList();
     const noteEl=document.getElementById('proof-note');
     if(noteEl)noteEl.value='';
+    showProofSentState();
   }catch(err){
     if(progressWrap)progressWrap.style.display='none';
     statusEl.innerHTML=`<span style="color:#b91c1c">${escapeHtml(err.message||'Upload failed. Please try again.')}</span>`;
@@ -516,7 +522,15 @@ async function loadLegacyOneDriveData() {
     const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
-    if (!res.ok)return false;
+    // A genuine 404 means this user has no task file yet. Authentication,
+    // permission, throttling, and Graph service errors must not be treated as
+    // an empty account, because loadTasksFromOneDrive would otherwise attempt
+    // to initialize and save an empty task file.
+    if (res.status===404)return false;
+    if (!res.ok){
+      const detail=await res.text().catch(()=>'');
+      throw new Error(`OneDrive task load failed (${res.status})${detail?`: ${detail.slice(0,180)}`:''}`);
+    }
     applyLoadedData(JSON.parse(await res.text()));
     return true;
 }
@@ -703,3 +717,29 @@ async function saveSharedDepartmentSettings(){
   }catch(err){console.warn('Shared departments save skipped:',err.message);return false;}
 }
 
+async function saveSharedDepartmentAssignment(email,name,dept){
+  const normalized=normEmail(email);
+  if(!normalized||!isInternalEmail(normalized)||!dept||dept==='Needs Department')return false;
+  const base=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');
+  if(!base)return false;
+  window.lastDepartmentSaveError='';
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`${base}/department-assignment`,{
+      method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({assignment:{email:normalized,name:String(name||'').trim(),dept}})
+    });
+    if(!res.ok){
+      const data=await res.json().catch(()=>({}));
+      throw new Error(data.error||`Department save failed (${res.status})`);
+    }
+    const data=await res.json();
+    if(!data.success||!data.assignment)throw new Error('The department service is not updated yet');
+    sharedDepartmentsVersion=data.updatedAt||sharedDepartmentsVersion;
+    return true;
+  }catch(err){
+    window.lastDepartmentSaveError=err.message||'Department save failed';
+    console.warn('Shared department assignment save failed:',err.message);
+    return false;
+  }
+}
