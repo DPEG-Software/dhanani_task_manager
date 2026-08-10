@@ -435,6 +435,7 @@ async function showProofUploadMode(paramsOverride){
       ${closeBtnHtml}
     </div>
     <div style="padding:18px 20px">
+      <div id="proof-history-area"></div>
       <div id="proof-result-area"></div>
       <div id="proof-followup-area"></div>
       <div id="proof-form-area">
@@ -472,6 +473,12 @@ async function showProofUploadMode(paramsOverride){
   });
   // Check for existing proof result
   if(params.appTaskId){
+    await checkAndLoadProofNotifications().catch(()=>{});
+    const prior=window._proofSubmissionHistory?.[String(params.appTaskId)]||[];
+    const historyArea=document.getElementById('proof-history-area');
+    if(historyArea&&prior.length){
+      historyArea.innerHTML=`<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:800;color:var(--body);margin-bottom:6px">Previous proof submission${prior.length===1?'':'s'}</div>${renderNotificationProofs({...prior[0],taskId:String(params.appTaskId)})}</div>`;
+    }
     await renderProofFollowupBox(params);
     const result=await checkProofResult(params.appTaskId,currentUser?.email||'');
     const resultArea=document.getElementById('proof-result-area');
@@ -496,18 +503,24 @@ async function loadTasksFromOneDrive() {
   setSyncStatus("syncing", "Loading tasks...");
   try {
     sharedDataActive=false;
-    if(!await loadLegacyOneDriveData()){
+    const loaded=await loadLegacyOneDriveData();
+    let savedNewFile=true;
+    if(!loaded){
       tasks=[];archives=[];staffConfig={};customDepartments=[];customNotes=[];notifications=[];
-      await saveTasksToOneDrive();
+      savedNewFile=await saveTasksToOneDrive();
     }
     await loadSharedDepartmentSettings();
-    setSyncStatus("synced", "Synced with OneDrive");
+    if(loaded||savedNewFile)setSyncStatus("synced", "Synced with OneDrive");
     finishDataLoad();
   } catch (err) {
     sharedDataActive=false;
-    setSyncStatus("error", "Sync failed");
     console.error("OneDrive load error:", err);
-    toast("Could not load from OneDrive. Working offline.");
+    try{
+      const backup=localStorage.getItem(`dpeg_local_task_backup_${normEmail(currentUser?.email||'unknown')}`);
+      if(backup)applyLoadedData(JSON.parse(backup));
+    }catch{}
+    setSyncStatus("error","OneDrive unavailable • tasks still online");
+    toast("OneDrive is unavailable. Shared tasks and messages are still online.");
     refreshAll();
     renderCharts();
     renderActivity();
@@ -580,22 +593,29 @@ async function migrateLegacyOneDriveToShared(){
 
 async function saveTasksToOneDrive() {
   setSyncStatus("syncing", "Saving...");
+  const backupKey=`dpeg_local_task_backup_${normEmail(currentUser?.email||'unknown')}`;
+  const payload=JSON.stringify({tasks,archives,staffConfig,customDepartments,customNotes,notifications},null,2);
+  try{localStorage.setItem(backupKey,payload);}catch{}
   try {
     const token = await getAccessToken();
-    await ensureLegacyOneDriveFolder(token);
+    if(!await ensureLegacyOneDriveFolder(token))throw new Error('OneDrive folder could not be created');
     const path = `/me/drive/root:/${ONEDRIVE_FOLDER}/${currentUser.folder}/tasks.json:/content`;
-    const payload = JSON.stringify({tasks,archives,staffConfig,customDepartments,customNotes,notifications}, null, 2);
-    const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: payload
-    });
+    let res;
+    for(let attempt=0;attempt<2;attempt++){
+      res=await fetch(`https://graph.microsoft.com/v1.0${path}`,{
+        method:"PUT",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:payload
+      });
+      if(res.ok||![429,500,502,503,504].includes(res.status))break;
+      await new Promise(resolve=>setTimeout(resolve,700));
+    }
     if (!res.ok) throw new Error(`OneDrive save failed (${res.status})`);
     sharedDataActive=false;
     setSyncStatus("synced","Saved to OneDrive");
+    return true;
   } catch (err) {
-    setSyncStatus("error", "Save failed");
+    setSyncStatus("error", "OneDrive unavailable • tasks still online");
     console.error("OneDrive save error:", err);
+    return false;
   }
 }
 

@@ -470,6 +470,9 @@
     const newReminder=!history&&hasNewReminder(a,received);
     const proofReady=!history&&!received&&awaitingApproval(a);
     const followupHistory=(followupThreadState(a)?.thread||[]).length;
+    const submissionHistory=window._proofSubmissionHistory?.[String(a.appTaskId||'')]||[];
+    const historyProofInline=history&&expanded&&submissionHistory.length
+      ?`<div style="margin-top:9px">${renderNotificationProofs({...submissionHistory[0],taskId:String(a.appTaskId||'')})}</div>`:'';
     const historyLabels=history?`<div class="assign-history-labels">
       ${(a.proofSubmittedAt||proofState(a)==='approved')?'<span class="assign-history-label">Proof submitted</span>':''}
       ${followupHistory?`<span class="assign-history-label">${followupHistory} message${followupHistory===1?'':'s'}</span>`:'<span class="assign-history-label">No messages</span>'}
@@ -484,11 +487,11 @@
       </div>
       <div class="wed-card-body assign-compact-body">
         ${historyLabels}
-        ${history?'':`<div class="assign-compact-summary">
+        ${history?`${(a.proofSubmittedAt||proofState(a)==='approved'||proofState(a)==='declined')?`<div class="assign-compact-summary"><div></div><div class="assign-actions"><button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button></div></div>`:''}`:`<div class="assign-compact-summary">
           <div class="assign-card-meta">${dueDateBadge(a)}${isNew?'<span class="assign-task-new">New</span>':''}${proofNotice}</div>
           <div class="assign-actions">${assignmentActions(a, received)}</div>
         </div>`}
-        ${expanded?`<div class="assign-expanded-details">${assignmentDescription(a.summary, a.id)}${history?'':renderStepper(a)}</div>`:''}
+        ${expanded?`<div class="assign-expanded-details">${assignmentDescription(a.summary, a.id)}${history?'':renderStepper(a)}${historyProofInline}</div>`:''}
       </div>
     </div>`;
   }
@@ -931,7 +934,7 @@
   };
 
   window.openProofReviewFromTasksTab = async function openProofReviewFromTasksTab(id) {
-    const a = (tasksTabCache.assignedByMe || []).find(x => x.id === id);
+    const a = [...(tasksTabCache.assignedByMe || []),...(tasksTabCache.assignedToMe || [])].find(x => x.id === id);
     if (!a) return;
     if (typeof window.openTaskProofReview !== 'function') {
       toast('Proof review is still loading — try again');

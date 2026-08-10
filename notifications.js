@@ -26,6 +26,7 @@ function notifSeenKey(n){ return String(n.kvNotifId||n.id); }
 function isNotifUnseen(n){ return n.status==='pending' && !notifSeenIds.has(notifSeenKey(n)); }
 let processedEmailIds=new Set(JSON.parse(localStorage.getItem('dpeg_processed_done_emails')||'[]'));
 let _notifPollTimer=null;
+let _notifPollCycle=0;
 let pendingProofFiles=[];
 let pendingFollowupFiles=[];
 
@@ -50,6 +51,22 @@ async function checkAndLoadProofNotifications(){
   const kvNotifs=Array.isArray(data.notifications)?data.notifications:[];
   const myEmail=(currentUser?.email||'').toLowerCase();
   tasks.forEach(t=>delete t._proofNotif);
+
+  // Keep every submission for each task. The review queue still uses only
+  // the latest pending submission, but earlier attempts remain available in
+  // Changes Requested and completed History views.
+  const proofHistory={};
+  kvNotifs.filter(n=>n.type==='proof_submitted'&&(
+      String(n.senderEmail||'').toLowerCase()===myEmail||
+      String(n.recipientEmail||'').toLowerCase()===myEmail||
+      window.isDelegatedTaskProof?.(n.appTaskId,n.recipientEmail)
+    )).forEach(n=>{
+      const key=String(n.appTaskId||'');
+      if(!key)return;
+      (proofHistory[key]||(proofHistory[key]=[])).push(n);
+    });
+  Object.values(proofHistory).forEach(list=>list.sort((a,b)=>new Date(b.submittedAt||b.createdAt||0)-new Date(a.submittedAt||a.createdAt||0)));
+  window._proofSubmissionHistory=proofHistory;
 
   // Keep the latest approval/change-request result available to My Tasks.
   // The assignment row carries the status, but the KV result is where the
@@ -480,11 +497,22 @@ function markNotifSeen(id){
 let taskProofReviewContext=null;
 
 function taskProofReviewNotification(appTaskId,pendingOnly=true){
-  return notifications.find(n=>
+  const local=notifications.find(n=>
     n.type==='proof_submitted'&&
     String(n.taskId)===String(appTaskId||'')&&
     (!pendingOnly||n.status==='pending')
-  )||null;
+  );
+  if(local)return local;
+  const remote=(window._proofSubmissionHistory?.[String(appTaskId||'')]||[])
+    .find(n=>!pendingOnly||n.status==='pending');
+  if(!remote)return null;
+  return {
+    ...remote,
+    taskId:String(remote.appTaskId||appTaskId||''),
+    kvNotifId:remote.id,
+    timestamp:remote.updatedAt||remote.submittedAt||remote.createdAt||'',
+    status:remote.status==='declined'?'dismissed':remote.status,
+  };
 }
 
 window.hasPendingTaskProofReview=function hasPendingTaskProofReview(appTaskId){
@@ -916,9 +944,26 @@ function goToNotificationTask(id){
 }
 
 function renderNotificationProofs(n){
+  const history=(window._proofSubmissionHistory?.[String(n.taskId||n.appTaskId||'')]||[]);
+  if(history.length>1){
+    const relatedHtml=renderRelatedProofSubmissions(n);
+    return relatedHtml+`<div style="display:grid;gap:9px;margin-top:9px">${history.map((submission,index)=>{
+      const number=history.length-index;
+      const status=submission.status==='approved'?'Approved':submission.status==='declined'?'Changes requested':'Submitted';
+      const when=submission.submittedAt||submission.createdAt||'';
+      return `<div style="border:1px solid #dbe4dc;border-radius:7px;background:#fff;padding:9px 10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px">
+          <div style="font-size:11px;font-weight:800;color:var(--forest)">Submission ${number}${index===0?' · Latest':''}</div>
+          <div style="font-size:10.5px;color:var(--muted)">${escapeHtml(status)}${when?` · ${escapeHtml(new Date(when).toLocaleString())}`:''}</div>
+        </div>${renderSingleProofContents(submission)}</div>`;
+    }).join('')}</div>`;
+  }
+  return renderRelatedProofSubmissions(n)+renderSingleProofContents(n);
+}
+
+function renderSingleProofContents(n){
   const proofs=Array.isArray(n.proofs)?n.proofs:[];
   const note=String(n.note||'').trim();
-  const relatedHtml=renderRelatedProofSubmissions(n);
   const noteHtml=note?`<div style="margin:7px 0;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:5px">
     <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#166534;margin-bottom:4px">Submitted note</div>
     <div style="font-size:12px;color:#14532d;line-height:1.5;white-space:pre-wrap">${escapeHtml(note)}</div>
@@ -928,10 +973,10 @@ function renderNotificationProofs(n){
     ${proofs.map(p=>`<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;margin:3px 0;min-width:0">
       <span style="font-weight:700;color:#111;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name||'Proof file')}</span>
       <span style="color:#9ca3af;flex-shrink:0">${p.size?escapeHtml(formatFileSize(p.size)):''}</span>
-      ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700;flex-shrink:0">Open</a>`:''}
+      ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700;flex-shrink:0">Open / Download</a>`:''}
     </div>`).join('')}
   </div>`:(note?'':`<div style="margin:6px 0;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:6px 8px">No proof files were attached.</div>`);
-  return relatedHtml+noteHtml+filesHtml;
+  return noteHtml+filesHtml;
 }
 
 function renderRelatedProofSubmissions(n){
@@ -1146,11 +1191,19 @@ async function pollNow(){
 function startNotifPolling(){
   if(_notifPollTimer)return;
   _notifPollTimer=setInterval(()=>{
-    pollToDoCompletions();
+    if(document.hidden)return;
+    _notifPollCycle++;
+    if(_notifPollCycle%4===0)pollToDoCompletions();
     checkAndLoadProofNotifications().catch(()=>{});
     // Keep the Tasks tab's status/proof stages live without a manual reopen,
     // and keep the sidebar/tab alert badges current from any page — silent=true
     // so it only redraws the (possibly-hidden) tab DOM when something changed
     renderMyTasks(true);
-  },15000); // proof submissions should appear quickly
+  },8000);
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden){
+      checkAndLoadProofNotifications().catch(()=>{});
+      renderMyTasks(true);
+    }
+  });
 }
