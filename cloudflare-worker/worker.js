@@ -1624,6 +1624,481 @@ async function handleAssignmentCancel(request, env) {
   return json({ success: true, cancelledAt: now, reason });
 }
 
+// ── Staging-only normalized task API ─────────────────────────────────────────
+// This endpoint exercises the new D1 workflow schema with synthetic records.
+// It is intentionally unavailable unless APP_ENV is exactly "staging".
+const STAGING_TASK_STATUSES = new Set(['Pending', 'In Progress', 'Done', 'Cancelled']);
+const STAGING_TASK_PRIORITIES = new Set(['Low', 'Normal', 'High']);
+
+function stagingTaskShape(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    summary: row.summary,
+    departmentName: row.department_name,
+    priority: row.priority,
+    dueDate: row.due_date,
+    status: row.status,
+    sourceType: row.source_type,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at,
+    cancelledAt: row.cancelled_at,
+    version: Number(row.version || 1),
+  };
+}
+
+async function recordStagingTaskEvent(env, taskId, actorEmail, eventType, eventData, createdAt) {
+  await env.DPEG_ASSIGNMENTS.prepare(
+    `INSERT INTO task_events
+       (id, assignment_id, app_task_id, actor_email, event_type, event_data, created_at)
+     VALUES (?, NULL, ?, ?, ?, ?, ?)`
+  ).bind(
+    `evt-${crypto.randomUUID()}`,
+    taskId,
+    actorEmail,
+    eventType,
+    JSON.stringify(eventData || {}),
+    createdAt,
+  ).run();
+}
+
+async function handleStagingTasks(request, env) {
+  if (!isStaging(env)) return json({ error: 'Not found' }, 404);
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'Staging D1 binding is not configured' }, 501);
+
+  const ownerEmail = userEmailFromClaims(claims);
+  if (request.method === 'GET') {
+    const [taskResult, assignmentResult, proofResult, reminderResult] = await Promise.all([
+      env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT id, title, summary, department_name, priority, due_date, status,
+              source_type, created_at, updated_at, completed_at, cancelled_at, version
+         FROM tasks
+        WHERE owner_email = ? AND source_type = 'staging_test'
+        ORDER BY updated_at DESC, id DESC`
+      ).bind(ownerEmail).all(),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `SELECT a.*
+           FROM assignments a
+           JOIN tasks t ON t.id = a.app_task_id
+          WHERE t.source_type = 'staging_test'
+            AND (a.assigner_email = ? OR a.recipient_email = ?)
+          ORDER BY a.updated_at DESC, a.id DESC`
+      ).bind(ownerEmail, ownerEmail).all(),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `SELECT p.*
+           FROM proof_submissions p
+           JOIN assignments a ON a.id = p.assignment_id
+           JOIN tasks t ON t.id = a.app_task_id
+          WHERE t.source_type = 'staging_test'
+            AND (a.assigner_email = ? OR a.recipient_email = ?)
+          ORDER BY p.submitted_at DESC, p.id DESC`
+      ).bind(ownerEmail, ownerEmail).all(),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `SELECT r.*
+           FROM reminders r
+           JOIN assignments a ON a.id = r.assignment_id
+           JOIN tasks t ON t.id = a.app_task_id
+          WHERE t.source_type = 'staging_test'
+            AND (a.assigner_email = ? OR a.recipient_email = ?)
+          ORDER BY r.created_at DESC, r.id DESC`
+      ).bind(ownerEmail, ownerEmail).all(),
+    ]);
+    const messageThreads = (await loadTaskMessageThreads(env, claims))
+      .filter(thread => String(thread.appTaskId || '').startsWith('stg-task-'));
+    return json({
+      tasks: (taskResult.results || []).map(stagingTaskShape),
+      assignments: assignmentResult.results || [],
+      proofs: proofResult.results || [],
+      reminders: reminderResult.results || [],
+      messageThreads,
+    });
+  }
+
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+  const action = String(body.action || '').trim().toLowerCase();
+  if (action === 'message') {
+    const assignmentId = String(body.assignmentId || '').trim();
+    const assignment = await env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT a.* FROM assignments a
+        JOIN tasks t ON t.id = a.app_task_id
+       WHERE a.id = ? AND t.source_type = 'staging_test'`
+    ).bind(assignmentId).first();
+    if (!assignment) return json({ error: 'Staging assignment not found' }, 404);
+    if (ownerEmail !== extractEmailAddress(assignment.assigner_email)
+        && ownerEmail !== extractEmailAddress(assignment.recipient_email)) {
+      return json({ error: 'You are not a participant in this staging assignment' }, 403);
+    }
+    const inserted = await insertTaskMessage(env, {
+      appTaskId: assignment.app_task_id,
+      taskTitle: assignment.title,
+      assignerEmail: assignment.assigner_email,
+      recipientEmail: assignment.recipient_email,
+      recipientName: assignment.recipient_name,
+      senderName: String(claims.name || ownerEmail),
+      message: body.message,
+    }, claims);
+    if (inserted.error) return inserted.error;
+    return json({ success: true, message: inserted }, 201);
+  }
+
+  if (action === 'remind') {
+    const assignmentId = String(body.assignmentId || '').trim();
+    const expectedVersion = Number(body.expectedVersion);
+    if (!assignmentId || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+      return json({ error: 'assignmentId and expectedVersion are required' }, 400);
+    }
+    const assignment = await env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT a.* FROM assignments a
+        JOIN tasks t ON t.id = a.app_task_id
+       WHERE a.id = ? AND t.source_type = 'staging_test'`
+    ).bind(assignmentId).first();
+    if (!assignment) return json({ error: 'Staging assignment not found' }, 404);
+    if (ownerEmail !== extractEmailAddress(assignment.assigner_email)) {
+      return json({ error: 'Only the assigner can send a staging reminder' }, 403);
+    }
+    const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 200) || null;
+    if (idempotencyKey) {
+      const existing = await env.DPEG_ASSIGNMENTS.prepare(
+        'SELECT id, created_at FROM reminders WHERE idempotency_key = ?'
+      ).bind(idempotencyKey).first();
+      if (existing) return json({ success: true, duplicate: true, reminder: existing });
+    }
+    const now = new Date().toISOString();
+    const updated = await env.DPEG_ASSIGNMENTS.prepare(
+      `UPDATE assignments
+          SET reminder_count = COALESCE(reminder_count, 0) + 1,
+              update_alert_at = ?, updated_at = ?, version = version + 1
+        WHERE id = ? AND version = ?`
+    ).bind(now, now, assignmentId, expectedVersion).run();
+    if (!updated.meta?.changes) {
+      return json({ error: 'version_conflict', message: 'Reload this assignment before reminding again.' }, 409);
+    }
+    const reminderId = `rem-${crypto.randomUUID()}`;
+    await env.DPEG_ASSIGNMENTS.batch([
+      env.DPEG_ASSIGNMENTS.prepare(
+        `INSERT INTO reminders
+           (id, assignment_id, sender_email, recipient_email, created_at, idempotency_key)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).bind(reminderId, assignmentId, ownerEmail, assignment.recipient_email, now, idempotencyKey),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `INSERT INTO task_events
+           (id, assignment_id, app_task_id, actor_email, event_type, event_data, created_at)
+         VALUES (?, ?, ?, ?, 'staging_reminder_sent', ?, ?)`
+      ).bind(`evt-${crypto.randomUUID()}`, assignmentId, assignment.app_task_id, ownerEmail, '{}', now),
+    ]);
+    return json({ success: true, reminder: { id: reminderId, createdAt: now }, version: expectedVersion + 1 }, 201);
+  }
+
+  if (action === 'submit_proof') {
+    const assignmentId = String(body.assignmentId || '').trim();
+    const expectedVersion = Number(body.expectedVersion);
+    if (!assignmentId || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+      return json({ error: 'assignmentId and expectedVersion are required' }, 400);
+    }
+    const assignment = await env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT a.* FROM assignments a
+        JOIN tasks t ON t.id = a.app_task_id
+       WHERE a.id = ? AND t.source_type = 'staging_test'`
+    ).bind(assignmentId).first();
+    if (!assignment) return json({ error: 'Staging assignment not found' }, 404);
+    if (ownerEmail !== extractEmailAddress(assignment.recipient_email)) {
+      return json({ error: 'Only the assignee can submit staging proof' }, 403);
+    }
+    const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 200) || null;
+    if (idempotencyKey) {
+      const existing = await env.DPEG_ASSIGNMENTS.prepare(
+        'SELECT id, status, submitted_at FROM proof_submissions WHERE idempotency_key = ?'
+      ).bind(idempotencyKey).first();
+      if (existing) return json({ success: true, duplicate: true, proof: existing });
+    }
+    const now = new Date().toISOString();
+    const updated = await env.DPEG_ASSIGNMENTS.prepare(
+      `UPDATE assignments
+          SET status = 'Submitted', proof_status = 'submitted', proof_submitted_at = ?,
+              proof_reviewed_at = NULL, update_alert_at = NULL,
+              updated_at = ?, version = version + 1
+        WHERE id = ? AND version = ?`
+    ).bind(now, now, assignmentId, expectedVersion).run();
+    if (!updated.meta?.changes) {
+      return json({ error: 'version_conflict', message: 'Reload this assignment before submitting proof.' }, 409);
+    }
+    const proofId = `proof-${crypto.randomUUID()}`;
+    const statements = [
+      env.DPEG_ASSIGNMENTS.prepare(
+        `INSERT INTO proof_submissions
+           (id, assignment_id, app_task_id, submitter_email, submitter_name, note,
+            status, submitted_at, idempotency_key)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+      ).bind(
+        proofId,
+        assignmentId,
+        assignment.app_task_id,
+        ownerEmail,
+        String(claims.name || ownerEmail),
+        String(body.note || '').slice(0, 8000),
+        now,
+        idempotencyKey,
+      ),
+    ];
+    for (const file of (Array.isArray(body.files) ? body.files : []).slice(0, 10)) {
+      const fileName = String(file?.fileName || file?.name || '').trim().slice(0, 500);
+      if (!fileName) continue;
+      statements.push(env.DPEG_ASSIGNMENTS.prepare(
+        `INSERT INTO proof_files
+           (id, submission_id, drive_provider, drive_item_id, file_name, mime_type,
+            size_bytes, web_url, created_at)
+         VALUES (?, ?, 'staging', NULL, ?, ?, ?, ?, ?)`
+      ).bind(
+        `pf-${crypto.randomUUID()}`,
+        proofId,
+        fileName,
+        String(file?.mimeType || file?.type || '').slice(0, 200) || null,
+        Number.isFinite(Number(file?.sizeBytes || file?.size)) ? Number(file?.sizeBytes || file?.size) : null,
+        String(file?.webUrl || 'about:blank').slice(0, 2000),
+        now,
+      ));
+    }
+    statements.push(env.DPEG_ASSIGNMENTS.prepare(
+      `INSERT INTO task_events
+         (id, assignment_id, app_task_id, actor_email, event_type, event_data, created_at)
+       VALUES (?, ?, ?, ?, 'staging_proof_submitted', ?, ?)`
+    ).bind(`evt-${crypto.randomUUID()}`, assignmentId, assignment.app_task_id, ownerEmail, JSON.stringify({ proofId }), now));
+    await env.DPEG_ASSIGNMENTS.batch(statements);
+    return json({ success: true, proof: { id: proofId, status: 'pending', submittedAt: now }, version: expectedVersion + 1 }, 201);
+  }
+
+  if (action === 'review_proof') {
+    const proofId = String(body.proofId || '').trim();
+    const expectedVersion = Number(body.expectedVersion);
+    const decision = String(body.decision || '').trim().toLowerCase();
+    if (!proofId || !Number.isInteger(expectedVersion) || expectedVersion < 1
+        || !new Set(['approved', 'changes_requested']).has(decision)) {
+      return json({ error: 'proofId, expectedVersion and a valid decision are required' }, 400);
+    }
+    const proof = await env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT p.*, a.assigner_email, a.recipient_email, a.version AS assignment_version
+         FROM proof_submissions p
+         JOIN assignments a ON a.id = p.assignment_id
+         JOIN tasks t ON t.id = a.app_task_id
+        WHERE p.id = ? AND t.source_type = 'staging_test'`
+    ).bind(proofId).first();
+    if (!proof) return json({ error: 'Staging proof not found' }, 404);
+    if (ownerEmail !== extractEmailAddress(proof.assigner_email)) {
+      return json({ error: 'Only the assigner can review staging proof' }, 403);
+    }
+    if (proof.status !== 'pending') return json({ error: 'This proof was already reviewed' }, 409);
+    if (Number(proof.assignment_version || 1) !== expectedVersion) {
+      return json({ error: 'version_conflict', currentVersion: Number(proof.assignment_version || 1) }, 409);
+    }
+    const now = new Date().toISOString();
+    const assignmentStatus = decision === 'approved' ? 'Done' : 'Assigned';
+    const assignmentProofStatus = decision === 'approved' ? 'approved' : 'declined';
+    const updated = await env.DPEG_ASSIGNMENTS.prepare(
+      `UPDATE assignments
+          SET status = ?, proof_status = ?, proof_reviewed_at = ?, updated_at = ?, version = version + 1
+        WHERE id = ? AND version = ?`
+    ).bind(assignmentStatus, assignmentProofStatus, now, now, proof.assignment_id, expectedVersion).run();
+    if (!updated.meta?.changes) {
+      return json({ error: 'version_conflict', message: 'Reload this proof before reviewing it.' }, 409);
+    }
+    await env.DPEG_ASSIGNMENTS.batch([
+      env.DPEG_ASSIGNMENTS.prepare(
+        `UPDATE proof_submissions
+            SET status = ?, reviewed_at = ?, reviewer_email = ?, review_reason = ?
+          WHERE id = ? AND status = 'pending'`
+      ).bind(decision, now, ownerEmail, String(body.reason || '').slice(0, 8000), proofId),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `INSERT INTO task_events
+           (id, assignment_id, app_task_id, actor_email, event_type, event_data, created_at)
+         VALUES (?, ?, ?, ?, 'staging_proof_reviewed', ?, ?)`
+      ).bind(
+        `evt-${crypto.randomUUID()}`,
+        proof.assignment_id,
+        proof.app_task_id,
+        ownerEmail,
+        JSON.stringify({ proofId, decision }),
+        now,
+      ),
+    ]);
+    return json({ success: true, decision, version: expectedVersion + 1 });
+  }
+
+  if (action === 'delegate') {
+    const title = String(body.title || '').trim().slice(0, 500);
+    const recipientEmail = extractEmailAddress(body.recipientEmail || '');
+    if (!title || !recipientEmail) return json({ error: 'title and recipientEmail are required' }, 400);
+    if (!recipientEmail.endsWith('@dhananipeg.com')) {
+      return json({ error: 'Only @dhananipeg.com staging recipients are supported' }, 403);
+    }
+    const priority = STAGING_TASK_PRIORITIES.has(String(body.priority || ''))
+      ? String(body.priority)
+      : 'Normal';
+    const now = new Date().toISOString();
+    const taskId = `stg-task-${crypto.randomUUID()}`;
+    const assignmentId = `stg-asg-${crypto.randomUUID()}`;
+    const summary = String(body.summary || '').slice(0, 8000);
+    const department = String(body.departmentName || 'Needs Department').trim().slice(0, 200) || 'Needs Department';
+    const dueDate = String(body.dueDate || '').trim().slice(0, 40) || null;
+    await env.DPEG_ASSIGNMENTS.batch([
+      env.DPEG_ASSIGNMENTS.prepare(
+        `INSERT INTO tasks
+           (id, owner_email, title, summary, department_name, priority, due_date,
+            status, source_type, created_at, updated_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', 'staging_test', ?, ?, 1)`
+      ).bind(taskId, ownerEmail, title, summary, department, priority, dueDate, now, now),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `INSERT INTO assignments
+           (id, app_task_id, title, summary, dept, priority, due_date,
+            assigner_email, assigner_name, recipient_email, recipient_name,
+            status, proof_status, proof_instructions, created_at, updated_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Assigned', 'none', ?, ?, ?, 1)`
+      ).bind(
+        assignmentId,
+        taskId,
+        title,
+        summary,
+        department,
+        priority,
+        dueDate,
+        ownerEmail,
+        String(claims.name || ownerEmail),
+        recipientEmail,
+        String(body.recipientName || '').trim().slice(0, 300),
+        String(body.proofInstructions || '').slice(0, 4000),
+        now,
+        now,
+      ),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `INSERT INTO task_events
+           (id, assignment_id, app_task_id, actor_email, event_type, event_data, created_at)
+         VALUES (?, ?, ?, ?, 'staging_task_delegated', ?, ?)`
+      ).bind(
+        `evt-${crypto.randomUUID()}`,
+        assignmentId,
+        taskId,
+        ownerEmail,
+        JSON.stringify({ recipientEmail, title }),
+        now,
+      ),
+    ]);
+    return json({
+      success: true,
+      task: { id: taskId, title, status: 'Pending', version: 1, createdAt: now },
+      assignment: { id: assignmentId, recipientEmail, status: 'Assigned', version: 1 },
+    }, 201);
+  }
+
+  if (action === 'create') {
+    const title = String(body.title || '').trim().slice(0, 500);
+    if (!title) return json({ error: 'title is required' }, 400);
+    const priority = STAGING_TASK_PRIORITIES.has(String(body.priority || ''))
+      ? String(body.priority)
+      : 'Normal';
+    const now = new Date().toISOString();
+    const id = `stg-task-${crypto.randomUUID()}`;
+    await env.DPEG_ASSIGNMENTS.prepare(
+      `INSERT INTO tasks
+         (id, owner_email, title, summary, department_name, priority, due_date,
+          status, source_type, created_at, updated_at, version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', 'staging_test', ?, ?, 1)`
+    ).bind(
+      id,
+      ownerEmail,
+      title,
+      String(body.summary || '').slice(0, 8000),
+      String(body.departmentName || 'Needs Department').trim().slice(0, 200) || 'Needs Department',
+      priority,
+      String(body.dueDate || '').trim().slice(0, 40) || null,
+      now,
+      now,
+    ).run();
+    await recordStagingTaskEvent(env, id, ownerEmail, 'staging_task_created', { title }, now);
+    return json({ success: true, task: { id, title, status: 'Pending', version: 1, createdAt: now } }, 201);
+  }
+
+  if (action === 'update') {
+    const id = String(body.id || '').trim();
+    const expectedVersion = Number(body.expectedVersion);
+    if (!id || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+      return json({ error: 'id and expectedVersion are required' }, 400);
+    }
+    const current = await env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT * FROM tasks
+        WHERE id = ? AND owner_email = ? AND source_type = 'staging_test'`
+    ).bind(id, ownerEmail).first();
+    if (!current) return json({ error: 'Staging task not found' }, 404);
+    if (Number(current.version || 1) !== expectedVersion) {
+      return json({
+        error: 'version_conflict',
+        message: 'This task changed since it was opened. Reload and try again.',
+        currentVersion: Number(current.version || 1),
+      }, 409);
+    }
+
+    const title = body.title == null ? String(current.title) : String(body.title).trim().slice(0, 500);
+    if (!title) return json({ error: 'title cannot be empty' }, 400);
+    const nextStatus = body.status == null ? String(current.status) : String(body.status);
+    if (!STAGING_TASK_STATUSES.has(nextStatus)) return json({ error: 'Invalid status' }, 400);
+    const nextPriority = body.priority == null ? String(current.priority) : String(body.priority);
+    if (!STAGING_TASK_PRIORITIES.has(nextPriority)) return json({ error: 'Invalid priority' }, 400);
+    const now = new Date().toISOString();
+    const completedAt = nextStatus === 'Done' ? (current.completed_at || now) : null;
+    const cancelledAt = nextStatus === 'Cancelled' ? (current.cancelled_at || now) : null;
+    const result = await env.DPEG_ASSIGNMENTS.prepare(
+      `UPDATE tasks
+          SET title = ?, summary = ?, department_name = ?, priority = ?, due_date = ?,
+              status = ?, completed_at = ?, cancelled_at = ?, updated_at = ?, version = version + 1
+        WHERE id = ? AND owner_email = ? AND source_type = 'staging_test' AND version = ?`
+    ).bind(
+      title,
+      body.summary == null ? String(current.summary || '') : String(body.summary).slice(0, 8000),
+      body.departmentName == null
+        ? String(current.department_name || 'Needs Department')
+        : (String(body.departmentName).trim().slice(0, 200) || 'Needs Department'),
+      nextPriority,
+      body.dueDate == null ? current.due_date : (String(body.dueDate).trim().slice(0, 40) || null),
+      nextStatus,
+      completedAt,
+      cancelledAt,
+      now,
+      id,
+      ownerEmail,
+      expectedVersion,
+    ).run();
+    if (!result.meta?.changes) {
+      const latest = await env.DPEG_ASSIGNMENTS.prepare(
+        'SELECT version FROM tasks WHERE id = ? AND owner_email = ?'
+      ).bind(id, ownerEmail).first();
+      return json({
+        error: 'version_conflict',
+        message: 'This task was updated by another request. Reload and try again.',
+        currentVersion: Number(latest?.version || expectedVersion),
+      }, 409);
+    }
+    await recordStagingTaskEvent(env, id, ownerEmail, 'staging_task_updated', {
+      previousStatus: current.status,
+      status: nextStatus,
+      previousVersion: expectedVersion,
+      version: expectedVersion + 1,
+    }, now);
+    const updated = await env.DPEG_ASSIGNMENTS.prepare(
+      'SELECT * FROM tasks WHERE id = ? AND owner_email = ?'
+    ).bind(id, ownerEmail).first();
+    return json({ success: true, task: stagingTaskShape(updated) });
+  }
+
+  return json({
+    error: 'Supported actions are delegate, create, update, message, remind, submit_proof and review_proof',
+  }, 400);
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 async function routeRequest(request, env) {
     if (request.method === 'OPTIONS') {
@@ -1636,6 +2111,7 @@ async function routeRequest(request, env) {
         externalEffectsEnabled: externalEffectsAllowed(env),
       });
     }
+    if (path === '/staging/tasks') return handleStagingTasks(request, env);
     if (isStaging(env) && STAGING_EXTERNAL_PATHS.has(path)) {
       return stagingSafetyResponse(path);
     }

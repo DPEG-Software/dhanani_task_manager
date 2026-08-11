@@ -2,6 +2,7 @@
   "name": "dhanani-task-manager-cloudflare-tools",
   "private": true,
   "scripts": {
+    "test:staging-workflow": "sh cloudflare-worker/tests/staging-workflow-smoke.sh",
     "staging:dry-run": "wrangler deploy --dry-run --config cloudflare-worker/wrangler.staging.jsonc",
     "staging:deploy": "wrangler deploy --config cloudflare-worker/wrangler.staging.jsonc",
     "cloudflare:whoami": "wrangler whoami"
