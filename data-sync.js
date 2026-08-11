@@ -720,7 +720,7 @@ async function saveSharedDepartmentSettings(){
   const assignments={};
   Object.values(staffConfig||{}).forEach(p=>{
     const email=normEmail(p?.email||'');
-    const dept=String(p?.dept||'').trim();
+    const dept=String(configuredDept(email,p?.name)||'').trim();
     if(email&&isInternalEmail(email)&&dept&&dept!=='Needs Department')assignments[email]={email,name:p.name||'',dept};
   });
   try{

@@ -164,16 +164,16 @@ function renderAdminPeopleList(){
   if(!el)return;
   if(!people.length){el.innerHTML=`<div style="color:var(--muted);font-size:12px;padding:12px 0">${adminSearchTerm()?'No contacts match this search.':'No contacts yet. Click "Sync from Outlook" to import.'}</div>`;return;}
   el.innerHTML=`<div class="admin-person-row" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);border-bottom:2px solid var(--border)"><span>Name / Email</span><span>Department</span><span>Role</span><span></span></div>`+
-    people.map((p,i)=>`
+    people.map((p,i)=>{const currentDept=hasAssignedDepartment(p.dept)?p.dept:'Needs Department';return `
     <div class="admin-person-row" id="apr-${i}">
       <div>${av(p.name||'?',26)} <div style="display:inline-block;vertical-align:middle;margin-left:6px"><div style="display:flex;align-items:center;gap:4px"><span style="font-size:12.5px;font-weight:600;color:var(--body)">${p.name||'Unknown'}</span><button title="Edit name" onclick="renameAdminPerson('${(p.email||'').replace(/'/g,"\\'")}','${(p.name||'').replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer;padding:1px 3px;color:var(--muted);font-size:11px;line-height:1" onmouseover="this.style.color='var(--body)'" onmouseout="this.style.color='var(--muted)'">&#9998;</button></div><div style="font-size:11px;color:var(--muted)">${p.email||''}</div></div></div>
       <select class="form-sel" style="font-size:11.5px;padding:3px 6px" onchange="updateAdminPersonDept('${(p.email||'').replace(/'/g,"\\'")}','${(p.name||'').replace(/'/g,"\\'")}',this.value)">
-        ${allDepartments().map(d=>`<option${d===p.dept?' selected':''}>${d}</option>`).join('')}
-        <option${p.dept==='Needs Department'?' selected':''}>Needs Department</option>
+        <option${currentDept==='Needs Department'?' selected':''}>Needs Department</option>
+        ${allDepartments().map(d=>`<option${d===currentDept?' selected':''}>${d}</option>`).join('')}
       </select>
       <div style="font-size:11.5px;color:var(--muted)">${p.role||''}</div>
       <button class="btn btn-ghost btn-sm" style="padding:2px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5" onclick="removeAdminPerson('${(p.email||'').replace(/'/g,"\\'")}')">&#10005;</button>
-    </div>`).join('');
+    </div>`}).join('');
 }
 function renderAdminDeptEditor(){
   const people=filterAdminPeople(allKnownPeople());

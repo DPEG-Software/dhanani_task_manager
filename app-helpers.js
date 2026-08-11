@@ -64,7 +64,16 @@ function isInternalEmail(email) {
 }
 function configuredDept(email,name) {
   const key = staffKey(email,name);
-  return (key && staffConfig[key]?.dept) || "";
+  const exact=String((key&&staffConfig[key]?.dept)||'').trim();
+  if(hasAssignedDepartment(exact))return exact;
+  const normalized=normEmail(email);
+  const normalizedName=String(name||'').trim().toLowerCase();
+  const matches=Object.values(staffConfig||{}).filter(person=>
+    (normalized&&normEmail(person?.email)===normalized)||
+    (!normalized&&normalizedName&&String(person?.name||'').trim().toLowerCase()===normalizedName)
+  );
+  const assigned=matches.find(person=>hasAssignedDepartment(person?.dept));
+  return String(assigned?.dept||matches[0]?.dept||exact||'').trim();
 }
 function personDept(email,name) {
   const configured = configuredDept(email,name);
@@ -179,10 +188,14 @@ function departmentAssignmentContacts(){
     if(!name&&!email)return;
     const key=email||name.toLowerCase();
     const existing=map.get(key)||{};
+    const sharedDept=personDept(email,name);
+    const incomingDept=String(p.dept||p.department||'').trim();
     map.set(key,{
       name: name||existing.name||email,
       email: email||existing.email||"",
-      dept: String(p.dept||p.department||existing.dept||personDept(email,name)||"").trim(),
+      dept: hasAssignedDepartment(sharedDept)
+        ?sharedDept
+        :(hasAssignedDepartment(existing.dept)?existing.dept:(hasAssignedDepartment(incomingDept)?incomingDept:'Needs Department')),
       role: String(p.role||p.jobTitle||p.title||existing.role||"").trim()
     });
   };
@@ -273,10 +286,15 @@ function deptAssignACNav(e){
 }
 async function saveDepartmentAssignmentSetting(){
   if(!isAdmin()){toast('Admin access only');return;}
-  completeDeptAssignFromText();
+  // Read the admin's selection before resolving typed contact text. Contact
+  // resolution fills the person's existing department into the dropdown;
+  // doing it first silently replaced a newly selected value (for example,
+  // Maintenance) with the old one (commonly Investor Relations).
+  const selectedDept=String(document.getElementById('dept-assign-dept')?.value||'').trim();
+  if(!document.getElementById('dept-assign-email')?.value)completeDeptAssignFromText();
   const name=String(document.getElementById('dept-assign-name')?.value||'').trim().replace(/\s+/g,' ');
   const email=String(document.getElementById('dept-assign-email')?.value||'').trim().toLowerCase();
-  const dept=String(document.getElementById('dept-assign-dept')?.value||'').trim();
+  const dept=selectedDept;
   if(!name&&!email){toast('Enter a person name or email');return;}
   if(email&&!email.includes('@')){toast('Enter a valid email');return;}
   if(!dept){toast('Select a department');return;}
@@ -284,8 +302,6 @@ async function saveDepartmentAssignmentSetting(){
   const finalName=name||existing.name||email.split('@')[0];
   const finalEmail=normEmail(email||existing.email||'');
   if(!finalEmail){toast('Select a Microsoft contact with an email address');return;}
-  const finalNameKey=String(finalName||'').trim().toLowerCase();
-  const key=staffKey(email,finalName);
   const previousDept=configuredDept(finalEmail,finalName);
   if(hasAssignedDepartment(previousDept)&&previousDept!==dept){
     const confirmed=await requestDepartmentSelection({name:finalName,email:finalEmail},previousDept,dept);
@@ -296,15 +312,12 @@ async function saveDepartmentAssignmentSetting(){
       return;
     }
   }
-  staffConfig[key]={...(staffConfig[key]||{}),name:finalName,email:finalEmail,dept,role:staffConfig[key]?.role||existing.role||''};
-  tasks.forEach(t=>{
-    const taskEmail=normEmail(t.email);
-    const taskName=String(t.person||'').trim().toLowerCase();
-    if((finalEmail&&taskEmail===finalEmail)||(finalNameKey&&taskName===finalNameKey)){
-      t.dept=dept;
-      if(finalEmail&&!t.email)t.email=finalEmail;
-    }
-  });
+  // Save just this email mapping. The previous bulk save could include a
+  // duplicate stale Outlook contact later in the object and overwrite the
+  // department the admin had just selected.
+  const sharedSaved=await saveSharedDepartmentAssignment(finalEmail,finalName,dept);
+  if(!sharedSaved){toast(window.lastDepartmentSaveError||'Department could not be saved. Please try again.');return;}
+  applyDepartmentAssignment(finalEmail,finalName,dept);
   initSelects();
   if(directoryMode==='people')renderPplList(curPplFilter);
   if(directoryMode==='departments')renderDeptList();
@@ -312,9 +325,8 @@ async function saveDepartmentAssignmentSetting(){
   syncBadges();
   if(document.getElementById("page-master")?.classList.contains("active"))renderMaster();
   if(document.getElementById("page-dashboard")?.classList.contains("active")){syncPulse();renderCharts();renderActivity();}
-  const sharedSaved=await saveSharedDepartmentSettings();
   await saveTasksToOneDrive();
-  toast(sharedSaved?`Department saved for ${finalName} across the app`:`Department saved locally; shared save failed`);
+  toast(`Department saved for ${finalName} across the app`);
 }
 function emailSubject(t){return t.emailSubject||t.subject||t.title||"(no subject)";}
 function taskEmailId(t){return t.lastMessageId||t.emailId||"";}

@@ -17,7 +17,14 @@ function addNtAssignee(person){
     toast('Assignee already added');
     return;
   }
-  const dept=String(person?.dept||personDept(email,name)||document.getElementById('nt-dept')?.value||'Needs Department').trim();
+  // The shared admin mapping is authoritative. Microsoft/personal contact
+  // caches may contain stale values (including "Unknown"), so use them only
+  // when there is no shared mapping and they contain a real department.
+  const configured=personDept(email,name);
+  const contactDept=String(person?.dept||'').trim();
+  const dept=hasAssignedDepartment(configured)
+    ?configured
+    :(hasAssignedDepartment(contactDept)?contactDept:'Needs Department');
   ntAssignees.push({name:name||email.split('@')[0],email,dept});
   renderNtAssigneeChips();
   // The visible Department <select> was never synced to the picked person —
@@ -25,8 +32,7 @@ function addNtAssignee(person){
   // matter who got selected, since only ntAssignees[].dept (the small chip
   // subtitle) was ever set. Mirrors setDeptAssignDepartment's sel.value=val
   // pattern used by the sibling Department Assignment picker.
-  const deptSel=document.getElementById('nt-dept');
-  if(deptSel&&allDepartments().includes(dept))deptSel.value=dept;
+  syncAddTaskDepartmentControl();
   clearAddTaskPerson(false);
 }
 function findDepartmentAssignmentContact(text){
@@ -40,6 +46,17 @@ function findDepartmentAssignmentContact(text){
 function removeNtAssignee(index){
   ntAssignees.splice(index,1);
   renderNtAssigneeChips();
+  syncAddTaskDepartmentControl();
+}
+function syncAddTaskDepartmentControl(){
+  const sel=document.getElementById('nt-dept');
+  const hint=document.getElementById('nt-dept-hint');
+  if(!sel)return;
+  const person=ntAssignees.length===1?ntAssignees[0]:null;
+  sel.disabled=true;
+  const dept=person?.dept||'Needs Department';
+  sel.value=[...sel.options].some(o=>o.value===dept)?dept:'Needs Department';
+  if(hint)hint.textContent='(managed in Department Settings)';
 }
 function addTypedNtAssignee(){
   const input=document.getElementById('nt-person');
@@ -126,7 +143,7 @@ function initSelects() {
   allDepartments().forEach(d=>{
     ["sf-dept","sum-d"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML+=`<option>${d}</option>`;});
   });
-  document.getElementById("nt-dept").innerHTML=allDepartments().map(d=>`<option>${d}</option>`).join("");
+  document.getElementById("nt-dept").innerHTML=['Needs Department',...allDepartments().filter(d=>d!=='Outside DPEG')].map(d=>`<option>${d}</option>`).join("");
   const assignDept=document.getElementById("dept-assign-dept");
   if(assignDept)assignDept.innerHTML=allDepartments().map(d=>`<option>${d}</option>`).join("");
 }
@@ -291,6 +308,9 @@ function openAdd(){
   document.querySelectorAll('.deadline-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
   ntAssignees=[];
   renderNtAssigneeChips();
+  const deptSel=document.getElementById('nt-dept');
+  if(deptSel)deptSel.value='Needs Department';
+  syncAddTaskDepartmentControl();
   clearAddTaskPerson(false);
   document.getElementById("mo-add").classList.add("open");
 }
@@ -312,7 +332,7 @@ async function addTask(){
     const person=String(a.name||email.split('@')[0]||"Unassigned").trim();
     const configured=personDept(email,person);
     const dept=isInternalEmail(email)
-      ?(hasAssignedDepartment(configured)?configured:'Needs Department')
+      ?(hasAssignedDepartment(a.dept)?a.dept:(hasAssignedDepartment(configured)?configured:'Needs Department'))
       :(email?'Outside DPEG':fallbackDept||'Needs Department');
     return {id:baseId+i,title,summary,proofInstructions,person,email,dept,date,status,priority,wednesday:false,followup:"",weekOffset:0,assignmentGroupId:groupId,assignmentGroupSize:assignees.length};
   });

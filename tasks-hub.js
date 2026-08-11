@@ -446,7 +446,10 @@
     } else if (awaitingApproval(a)) {
       content = `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button>`;
     } else if (proof === 'declined') {
-      content = '';
+      // Keep rejected submissions available to the assigner while the
+      // assignee works on a correction. A later pending resubmission enters
+      // the awaitingApproval branch above and changes this to View Proof.
+      content = `<button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Proofs</button>`;
     } else if (proof === 'approved') {
       content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>
         <button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button>`;
