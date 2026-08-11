@@ -1,6 +1,3 @@
--- Additive enterprise-workflow schema for staging.
--- Proof binaries remain in OneDrive/SharePoint; D1 stores metadata and links.
-
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS tasks (

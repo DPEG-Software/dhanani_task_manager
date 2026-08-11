@@ -1,6 +1,8 @@
--- Staging-only baseline for the DPEG Task Manager.
--- This reproduces the D1 tables already used by production. It is safe for a
--- brand-new staging database and does not migrate or delete production data.
+/*
+ * Staging-only baseline for the DPEG Task Manager.
+ * This reproduces the D1 tables already used by production. It is safe for a
+ * brand-new staging database and does not migrate or delete production data.
+ */
 
 PRAGMA foreign_keys = ON;
 

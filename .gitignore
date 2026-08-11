@@ -1,0 +1,2 @@
+# Local Cloudflare environment configuration
+cloudflare-worker/wrangler.staging.jsonc
