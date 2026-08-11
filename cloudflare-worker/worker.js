@@ -1723,6 +1723,54 @@ async function handleStagingTasks(request, env) {
   catch { return json({ error: 'Invalid JSON body' }, 400); }
 
   const action = String(body.action || '').trim().toLowerCase();
+  if (action === 'assignment_status') {
+    const assignmentId = String(body.assignmentId || '').trim();
+    const expectedVersion = Number(body.expectedVersion);
+    const nextStatus = String(body.status || '').trim();
+    if (!assignmentId || !Number.isInteger(expectedVersion) || expectedVersion < 1
+        || !new Set(['Assigned', 'In Progress']).has(nextStatus)) {
+      return json({ error: 'assignmentId, expectedVersion and a valid status are required' }, 400);
+    }
+    const assignment = await env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT a.* FROM assignments a
+        JOIN tasks t ON t.id = a.app_task_id
+       WHERE a.id = ? AND t.source_type = 'staging_test'`
+    ).bind(assignmentId).first();
+    if (!assignment) return json({ error: 'Staging assignment not found' }, 404);
+    if (ownerEmail !== extractEmailAddress(assignment.recipient_email)) {
+      return json({ error: 'Only the assignee can update staging status' }, 403);
+    }
+    const now = new Date().toISOString();
+    const updated = await env.DPEG_ASSIGNMENTS.prepare(
+      `UPDATE assignments
+          SET status = ?, progress_note = ?, update_alert_at = NULL,
+              updated_at = ?, version = version + 1
+        WHERE id = ? AND version = ?`
+    ).bind(
+      nextStatus,
+      body.progressNote == null ? assignment.progress_note : String(body.progressNote).slice(0, 2000),
+      now,
+      assignmentId,
+      expectedVersion,
+    ).run();
+    if (!updated.meta?.changes) {
+      return json({ error: 'version_conflict', message: 'Reload before changing this status.' }, 409);
+    }
+    await env.DPEG_ASSIGNMENTS.prepare(
+      `INSERT INTO task_events
+         (id, assignment_id, app_task_id, actor_email, event_type, event_data, created_at)
+       VALUES (?, ?, ?, ?, 'staging_status_changed', ?, ?)`
+    ).bind(
+      `evt-${crypto.randomUUID()}`,
+      assignmentId,
+      assignment.app_task_id,
+      ownerEmail,
+      JSON.stringify({ previousStatus: assignment.status, status: nextStatus }),
+      now,
+    ).run();
+    return json({ success: true, status: nextStatus, version: expectedVersion + 1 });
+  }
+
   if (action === 'message') {
     const assignmentId = String(body.assignmentId || '').trim();
     const assignment = await env.DPEG_ASSIGNMENTS.prepare(
@@ -2095,7 +2143,7 @@ async function handleStagingTasks(request, env) {
   }
 
   return json({
-    error: 'Supported actions are delegate, create, update, message, remind, submit_proof and review_proof',
+    error: 'Supported actions are delegate, create, update, assignment_status, message, remind, submit_proof and review_proof',
   }, 400);
 }
 

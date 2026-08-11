@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DPEG Task Manager — D1 Staging Test</title>
+  <style>
+    :root{font-family:Inter,Arial,sans-serif;color:#172033;background:#f5f7f8}
+    *{box-sizing:border-box}body{margin:0}.wrap{max-width:1120px;margin:auto;padding:24px}
+    header,.panel,.card{background:#fff;border:1px solid #dfe5e2;border-radius:10px}
+    header{padding:18px 20px;display:flex;justify-content:space-between;gap:16px;align-items:center}
+    h1{font-size:20px;margin:0 0 4px;color:#0b4020}h2{font-size:16px;margin:0 0 14px}p{margin:0;color:#667085;font-size:13px}
+    .safety{margin:14px 0;padding:12px 14px;border:1px solid #86d29e;background:#eefbf2;border-radius:8px;color:#14532d;font-size:13px}
+    .safety.bad{border-color:#fca5a5;background:#fff1f2;color:#991b1b}
+    .grid{display:grid;grid-template-columns:340px 1fr;gap:14px}.panel{padding:16px;margin-bottom:14px}
+    label{display:block;font-size:12px;font-weight:700;margin:11px 0 5px}.input,select,textarea{width:100%;border:1px solid #ccd5d0;border-radius:6px;padding:9px 10px;background:#fff;font:inherit;font-size:13px}
+    textarea{min-height:76px;resize:vertical}.row{display:flex;gap:8px}.row>*{flex:1}
+    button{border:1px solid #cfd8d3;background:#fff;border-radius:6px;padding:8px 11px;font-weight:700;cursor:pointer;color:#273444}
+    button.primary{background:#0b4020;color:#fff;border-color:#0b4020}button.danger{color:#991b1b}button:disabled{opacity:.55;cursor:not-allowed}
+    .cards{display:grid;gap:9px}.card{padding:13px}.card-head{display:flex;justify-content:space-between;gap:10px;align-items:start}
+    .title{font-weight:800;font-size:14px}.meta{font-size:12px;color:#667085;margin-top:4px}.badge{display:inline-block;border:1px solid #cbd5e1;background:#f8fafc;border-radius:999px;padding:2px 7px;font-size:11px;margin-left:5px}
+    .actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}.actions button{font-size:12px;padding:6px 9px}
+    .activity{border-top:1px solid #edf0ee;margin-top:10px;padding-top:9px;font-size:12px;color:#475467}.activity div{margin:4px 0}
+    .status{min-height:20px;margin-top:10px;font-size:12px}.error{color:#b42318}.ok{color:#166534}
+    .empty{padding:24px;text-align:center;color:#98a2b3;border:1px dashed #ccd5d0;border-radius:8px}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}.wrap{padding:12px}header{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div><h1>D1 Staging Workflow Test</h1><p>Fake data only. This page is separate from the production application.</p></div>
+      <div><button id="sign-in" class="primary">Sign in with Microsoft</button> <button id="sign-out" hidden>Sign out</button></div>
+    </header>
+    <div id="safety" class="safety">Checking the staging safety boundary…</div>
+    <div class="grid">
+      <aside>
+        <section class="panel">
+          <h2>Signed-in tester</h2>
+          <p id="account">Not signed in</p>
+        </section>
+        <section class="panel">
+          <h2>Create a fake delegated task</h2>
+          <label for="recipient">Recipient email</label><input class="input" id="recipient" type="email" placeholder="employee@dhananipeg.com">
+          <label for="title">Task title</label><input class="input" id="title" placeholder="Staging test task">
+          <label for="summary">Instructions</label><textarea id="summary" placeholder="This is fake staging data."></textarea>
+          <div class="row"><div><label for="department">Department</label><input class="input" id="department" value="IT"></div><div><label for="priority">Priority</label><select id="priority"><option>Normal</option><option>High</option><option>Low</option></select></div></div>
+          <label for="due-date">Due date</label><input class="input" id="due-date" type="date">
+          <button id="delegate" class="primary" style="margin-top:13px;width:100%" disabled>Create Fake Task</button>
+          <div id="form-status" class="status"></div>
+        </section>
+      </aside>
+      <main>
+        <section class="panel">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><div><h2 style="margin-bottom:3px">Assigned by me</h2><p>Fake tasks you delegated in staging.</p></div><button id="refresh" disabled>Refresh</button></div>
+          <div id="by-me" class="cards" style="margin-top:13px"><div class="empty">Sign in to load staging tasks.</div></div>
+        </section>
+        <section class="panel"><h2 style="margin-bottom:3px">Assigned to me</h2><p>Sign in as the recipient to update and submit proof.</p><div id="to-me" class="cards" style="margin-top:13px"><div class="empty">No staging tasks loaded.</div></div></section>
+      </main>
+    </div>
+  </div>
+  <script src="msal.min.js"></script>
+  <script src="staging-test.js"></script>
+</body>
+</html>
