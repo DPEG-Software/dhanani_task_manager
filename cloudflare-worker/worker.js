@@ -34,6 +34,35 @@ const PROOF_LINK_PREFIX = 'proof-link:';
 let assignmentColumnsReady = false;
 let taskMessagesTableReady = false;
 
+// Staging must never mutate employee Microsoft To Do data or send application
+// content to external AI services. Production behavior remains unchanged when
+// APP_ENV is absent (as it is in the existing production Worker).
+const STAGING_EXTERNAL_PATHS = new Set([
+  '/',
+  '/attachment-summary',
+  '/todo',
+  '/todo-update',
+  '/poll-completions',
+  '/proof-task',
+  '/proof-submit',
+]);
+
+function isStaging(env) {
+  return String(env.APP_ENV || '').trim().toLowerCase() === 'staging';
+}
+
+function externalEffectsAllowed(env) {
+  return !isStaging(env);
+}
+
+function stagingSafetyResponse(path) {
+  return json({
+    error: 'staging_safety_block',
+    message: 'This staging endpoint is disabled to protect production Microsoft and AI data.',
+    path,
+  }, 409);
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -1060,7 +1089,7 @@ async function handleNotify(request, env) {
       notificationId: body.notifId,
     });
     // If declined, reset the recipient's To Do task back to notStarted
-    if (body.result === 'declined' && body.todoListId && body.todoTaskId && body.recipientEmail) {
+    if (externalEffectsAllowed(env) && body.result === 'declined' && body.todoListId && body.todoTaskId && body.recipientEmail) {
       try {
         const appToken = await getAppToken(env);
         const recipientEmail = extractEmailAddress(body.recipientEmail);
@@ -1601,6 +1630,15 @@ async function routeRequest(request, env) {
       return new Response(null, { status: 204, headers: CORS });
     }
     const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
+    if (path === '/environment' && request.method === 'GET') {
+      return json({
+        environment: isStaging(env) ? 'staging' : 'production',
+        externalEffectsEnabled: externalEffectsAllowed(env),
+      });
+    }
+    if (isStaging(env) && STAGING_EXTERNAL_PATHS.has(path)) {
+      return stagingSafetyResponse(path);
+    }
     const proofMatch = path.match(/^\/p\/([A-Za-z0-9_%-]+)/);
     if (proofMatch && request.method === 'GET') return handleProofRedirect(request, env, proofMatch[1]);
     if (path === '/data') return handleData(request, env);
