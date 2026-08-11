@@ -1,0 +1,12 @@
+{
+  "name": "dhanani-task-manager-cloudflare-tools",
+  "private": true,
+  "scripts": {
+    "staging:dry-run": "wrangler deploy --dry-run --config cloudflare-worker/wrangler.staging.jsonc",
+    "staging:deploy": "wrangler deploy --config cloudflare-worker/wrangler.staging.jsonc",
+    "cloudflare:whoami": "wrangler whoami"
+  },
+  "devDependencies": {
+    "wrangler": "^4.120.1"
+  }
+}
