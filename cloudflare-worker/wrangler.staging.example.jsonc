@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dpeg-task-manager-staging",
+  "main": "worker.js",
+  "compatibility_date": "2026-08-11",
+  "d1_databases": [
+    {
+      "binding": "DPEG_ASSIGNMENTS",
+      "database_name": "dpeg-task-manager-staging",
+      "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "DPEG_DATA",
+      "id": "REPLACE_WITH_STAGING_KV_NAMESPACE_ID"
+    }
+  ]
+}
