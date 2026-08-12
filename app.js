@@ -16,9 +16,9 @@ function toggleDarkMode(){
 }
 function initDarkMode(){
   const saved=localStorage.getItem('dpeg_theme');
-  if(saved==='dark'||(!saved&&window.matchMedia('(prefers-color-scheme:dark)').matches)){
-    applyDark(true);
-  }
+  // First-time users always start in the clearest, familiar light layout.
+  // After they use the theme button, preserve that explicit choice.
+  applyDark(saved==='dark');
 }
 // Start only after every feature module has loaded.
 initDarkMode();
