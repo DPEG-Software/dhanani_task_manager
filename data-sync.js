@@ -623,12 +623,44 @@ async function saveTasksToOneDrive() {
     if (!res.ok) throw new Error(`OneDrive save failed (${res.status})`);
     sharedDataActive=false;
     setSyncStatus("synced","Saved to OneDrive");
+    await shadowSyncTasksToD1(tasks);
     return true;
   } catch (err) {
     setSyncStatus("error", "OneDrive unavailable • tasks still online");
     console.error("OneDrive save error:", err);
     return false;
   }
+}
+
+async function shadowSyncTasksToD1(sourceTasks){
+  const base=workerBaseUrl();
+  if(!base||!currentUser?.email)return {enabled:false,written:0};
+  // Only the OneDrive owner/assigner may shadow a task. Recipient copies are
+  // deliberately excluded so they cannot overwrite the assigner's row.
+  const mine=(Array.isArray(sourceTasks)?sourceTasks:[]).filter(task=>{
+    const owner=normEmail(task?.assignedByEmail||task?.assignerEmail||'');
+    return !owner||owner===normEmail(currentUser.email);
+  });
+  let written=0,enabled=false;
+  try{
+    const token=await getAccessToken();
+    for(let offset=0;offset<mine.length;offset+=100){
+      const res=await fetch(`${base}/shared-workflow-sync`,{
+        method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({tasks:mine.slice(offset,offset+100)}),
+      });
+      if(!res.ok)throw new Error(`Shadow sync failed (${res.status})`);
+      const result=await res.json().catch(()=>({}));
+      enabled=!!result.enabled;
+      written+=Number(result.written||0);
+      if(!enabled)break;
+    }
+  }catch(error){
+    // OneDrive has already saved successfully. Shadow-sync failures are
+    // observable but must never roll back or disguise that primary save.
+    console.warn('D1 shadow sync skipped:',error.message);
+  }
+  return {enabled,written};
 }
 
 function applyLoadedData(data){

@@ -707,6 +707,114 @@ async function handleData(request, env) {
   return json({ error: 'Method not allowed' }, 405);
 }
 
+async function sharedStorageFlag(env, name, fallback = 'off') {
+  if (!env.DPEG_ASSIGNMENTS) return fallback;
+  try {
+    const row = await env.DPEG_ASSIGNMENTS.prepare(
+      'SELECT value FROM feature_flags WHERE name = ?'
+    ).bind(name).first();
+    return String(row?.value || fallback).trim().toLowerCase();
+  } catch {
+    // Older deployments may not have the additive schema yet. A missing flag
+    // must always fail closed rather than accidentally activating migration.
+    return fallback;
+  }
+}
+
+function normalizedShadowTask(task, ownerEmail, now) {
+  const id = String(task?.id || '').trim().slice(0, 200);
+  const title = String(task?.title || '').trim().slice(0, 500);
+  if (!id || !title) return null;
+  const rawStatus = String(task?.status || '').trim().toLowerCase();
+  const status = rawStatus === 'done' || rawStatus === 'completed' ? 'Done'
+    : rawStatus === 'cancelled' || rawStatus === 'canceled' ? 'Cancelled'
+      : rawStatus === 'in progress' || rawStatus === 'inprogress' ? 'In Progress'
+        : 'Pending';
+  const createdAt = String(task?.createdAt || task?.date || now).trim().slice(0, 80) || now;
+  const updatedAt = String(task?.updatedAt || task?.completedAt || task?.cancelledAt || now).trim().slice(0, 80) || now;
+  return {
+    id,
+    ownerEmail,
+    title,
+    summary: String(task?.summary || task?.description || '').slice(0, 12000),
+    departmentName: String(task?.dept || task?.department || 'Needs Department').trim().slice(0, 200) || 'Needs Department',
+    priority: String(task?.priority || 'Normal').trim().slice(0, 40) || 'Normal',
+    dueDate: String(task?.deadline || task?.dueDate || '').trim().slice(0, 80) || null,
+    status,
+    createdAt,
+    updatedAt,
+    completedAt: status === 'Done' ? String(task?.completedAt || task?.approvedAt || updatedAt).slice(0, 80) : null,
+    cancelledAt: status === 'Cancelled' ? String(task?.cancelledAt || updatedAt).slice(0, 80) : null,
+    version: Math.max(1, Number(task?.version || task?.assignmentVersion || 1) || 1),
+  };
+}
+
+// Shadow-copy the signed-in user's legacy OneDrive tasks into normalized D1.
+// The feature flag fails closed, OneDrive remains primary, and no rows are
+// deleted. This endpoint is safe to deploy before dual-write is enabled.
+async function handleSharedWorkflowSync(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'D1 storage is not configured' }, 501);
+
+  const flag = await sharedStorageFlag(env, 'shared_storage_dual_write');
+  if (flag !== 'on') return json({ success: true, enabled: false, written: 0, skipped: 0 });
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'Invalid JSON body' }, 400); }
+  const incoming = Array.isArray(body.tasks) ? body.tasks.slice(0, 100) : [];
+  const ownerEmail = userEmailFromClaims(claims);
+  const ownedAssignments = await env.DPEG_ASSIGNMENTS.prepare(
+    'SELECT DISTINCT app_task_id FROM assignments WHERE lower(assigner_email) = ?'
+  ).bind(ownerEmail).all();
+  const ownedIds = new Set((ownedAssignments.results || []).map(row => String(row.app_task_id || '')));
+  const now = new Date().toISOString();
+  const rows = [];
+  let skipped = 0;
+
+  for (const task of incoming) {
+    const taskId = String(task?.id || '').trim();
+    const declaredOwner = extractEmailAddress(task?.assignedByEmail || task?.assignerEmail || '');
+    // Explicit ownership by somebody else always wins. Legacy/manual tasks
+    // without an assigner are personal to the signed-in OneDrive owner.
+    if (declaredOwner && declaredOwner !== ownerEmail && !ownedIds.has(taskId)) {
+      skipped += 1;
+      continue;
+    }
+    const row = normalizedShadowTask(task, ownerEmail, now);
+    if (!row) { skipped += 1; continue; }
+    rows.push(row);
+  }
+
+  const statements = rows.map(row => env.DPEG_ASSIGNMENTS.prepare(
+    `INSERT INTO tasks
+       (id, owner_email, title, summary, department_name, priority, due_date,
+        status, source_type, created_at, updated_at, completed_at, cancelled_at, version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'legacy_onedrive_shadow', ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       title = excluded.title,
+       summary = excluded.summary,
+       department_name = excluded.department_name,
+       priority = excluded.priority,
+       due_date = excluded.due_date,
+       status = excluded.status,
+       updated_at = excluded.updated_at,
+       completed_at = excluded.completed_at,
+       cancelled_at = excluded.cancelled_at,
+       version = MAX(tasks.version, excluded.version)
+     WHERE lower(tasks.owner_email) = lower(excluded.owner_email)`
+  ).bind(
+    row.id, row.ownerEmail, row.title, row.summary, row.departmentName,
+    row.priority, row.dueDate, row.status, row.createdAt, row.updatedAt,
+    row.completedAt, row.cancelledAt, row.version,
+  ));
+  const results = statements.length ? await env.DPEG_ASSIGNMENTS.batch(statements) : [];
+  const written = results.reduce((sum, result) => sum + Number(result.meta?.changes || 0), 0);
+  return json({ success: true, enabled: true, received: incoming.length, written, skipped });
+}
+
 // A short presence lock prevents two people from editing the same task form
 // at once. It expires automatically if a browser closes without releasing it.
 async function handleTaskEditLock(request, env) {
@@ -2295,6 +2403,7 @@ async function routeRequest(request, env) {
     const proofMatch = path.match(/^\/p\/([A-Za-z0-9_%-]+)/);
     if (proofMatch && request.method === 'GET') return handleProofRedirect(request, env, proofMatch[1]);
     if (path === '/data') return handleData(request, env);
+    if (path === '/shared-workflow-sync') return withStagingRealtimeBroadcast(request, env, handleSharedWorkflowSync(request, env));
     if (path === '/departments') return handleDepartments(request, env);
     if (path === '/department-assignment') return handleDepartments(request, env);
     if (path === '/task-edit-lock') return handleTaskEditLock(request, env);

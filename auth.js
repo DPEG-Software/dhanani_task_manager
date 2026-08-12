@@ -196,7 +196,7 @@ function applyStagingUiBoundary(){
   if(!document.getElementById('staging-app-banner')){
     const banner=document.createElement('div');
     banner.id='staging-app-banner';
-    banner.textContent='D1 STAGING — Fake tasks only. Email, OneDrive, Microsoft To Do and AI are disabled.';
+    banner.innerHTML='D1 STAGING — Fake tasks only. Email, OneDrive, Microsoft To Do and AI are disabled. <button type="button" id="staging-dual-write-test" onclick="testStagingDualWrite()">Test dual-write</button>';
     document.querySelector('.main')?.prepend(banner);
   }
 }

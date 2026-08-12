@@ -65,6 +65,28 @@
   window.saveTasksToOneDrive=async()=>{setSyncStatus('synced','D1 staging · Live');return true;};
   window.openAdd=()=>toast('Create fake tasks from the D1 Workflow Test during this staging phase.');
 
+  window.testStagingDualWrite=async function(){
+    const button=document.getElementById('staging-dual-write-test');
+    if(button)button.disabled=true;
+    try{
+      const email=String(currentUser?.email||'').toLowerCase();
+      const token=await stagingToken();
+      const response=await fetch(`${base}/shared-workflow-sync`,{
+        method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({tasks:[
+          {id:`dual-write-check-${email}`,title:'Dual-write staging check',summary:'Synthetic staging-only record',assignedByEmail:email,status:'Pending',updatedAt:new Date().toISOString()},
+          {id:`dual-write-foreign-${email}`,title:'Must be rejected',assignedByEmail:'foreign-owner@dhananipeg.com',status:'Pending'},
+        ]}),
+      });
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.error||`Request failed (${response.status})`);
+      if(!result.enabled)throw new Error('Staging dual-write flag is off');
+      if(Number(result.skipped)!==1)throw new Error('Ownership guard did not reject exactly one task');
+      toast(`Dual-write passed: ${result.written} owned write, ${result.skipped} foreign task rejected`);
+    }catch(error){toast(`Dual-write test failed: ${error.message}`);}
+    finally{if(button)button.disabled=false;}
+  };
+
   window.openProofFromTasksTab=async function(id){
     try{
       const workflow=await stagingApi();
