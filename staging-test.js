@@ -4,6 +4,7 @@ const CLIENT_ID='8d523e65-0163-49c7-881b-407c0222527e';
 const REDIRECT_URI=window.location.origin+window.location.pathname;
 const loginRequest={scopes:['User.Read'],redirectUri:REDIRECT_URI,prompt:'select_account'};
 let authClient=null,account=null,workflow={tasks:[],assignments:[],proofs:[],reminders:[],messageThreads:[]};
+let refreshInFlight=false,autoRefreshTimer=null;
 
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -36,10 +37,25 @@ async function checkSafety(){
 async function signIn(){await authClient.loginRedirect(loginRequest);}
 async function signOut(){if(account)await authClient.logoutRedirect({account,postLogoutRedirectUri:REDIRECT_URI});}
 
-async function loadWorkflow(){
-  setStatus('Loading…');
-  try{workflow=await api();render();setStatus('Staging data refreshed.');}
-  catch(error){setStatus(error.message,true);}
+async function loadWorkflow(options={}){
+  if(refreshInFlight||!account)return;
+  refreshInFlight=true;
+  if(!options.silent)setStatus('Loading…');
+  try{
+    workflow=await api();render();
+    const time=new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});
+    if($('sync-status'))$('sync-status').textContent=`Auto-synced ${time}`;
+    if(!options.silent)setStatus('Staging data refreshed.');
+  }catch(error){
+    if($('sync-status'))$('sync-status').textContent='Sync paused';
+    if(!options.silent)setStatus(error.message,true);
+  }finally{refreshInFlight=false;}
+}
+function startAutoRefresh(){
+  clearInterval(autoRefreshTimer);
+  autoRefreshTimer=setInterval(()=>{
+    if(account&&!document.hidden)loadWorkflow({silent:true});
+  },3000);
 }
 function relatedActivity(a){
   const proofs=(workflow.proofs||[]).filter(p=>p.assignment_id===a.id);
@@ -87,6 +103,7 @@ async function init(){
   await authClient.initialize();const response=await authClient.handleRedirectPromise();account=response?.account||authClient.getAllAccounts()[0]||null;
   $('sign-in').hidden=!!account;$('sign-out').hidden=!account;$('account').textContent=account?`${account.name||''} (${account.username})`:'Not signed in';
   $('sign-in').onclick=signIn;$('sign-out').onclick=signOut;$('delegate').onclick=delegate;$('refresh').onclick=loadWorkflow;
-  await checkSafety();if(account)await loadWorkflow();
+  document.addEventListener('visibilitychange',()=>{if(account&&!document.hidden)loadWorkflow({silent:true});});
+  await checkSafety();if(account){await loadWorkflow();startAutoRefresh();}
 }
 init().catch(error=>setStatus(error.message,true));
