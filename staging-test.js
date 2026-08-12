@@ -4,7 +4,7 @@ const CLIENT_ID='8d523e65-0163-49c7-881b-407c0222527e';
 const REDIRECT_URI=window.location.origin+window.location.pathname;
 const loginRequest={scopes:['User.Read'],redirectUri:REDIRECT_URI,prompt:'select_account'};
 let authClient=null,account=null,workflow={tasks:[],assignments:[],proofs:[],reminders:[],messageThreads:[]};
-let refreshInFlight=false,autoRefreshTimer=null;
+let refreshInFlight=false,refreshQueued=false,autoRefreshTimer=null;
 let realtimeSocket=null,reconnectTimer=null,reconnectAttempt=0;
 
 const $=id=>document.getElementById(id);
@@ -39,7 +39,12 @@ async function signIn(){await authClient.loginRedirect(loginRequest);}
 async function signOut(){if(account)await authClient.logoutRedirect({account,postLogoutRedirectUri:REDIRECT_URI});}
 
 async function loadWorkflow(options={}){
-  if(refreshInFlight||!account)return;
+  if(!account)return;
+  // A realtime event can arrive while an earlier snapshot is still loading.
+  // Never discard that event: the earlier snapshot may have been read between
+  // two concurrent message commits. Coalesce any overlapping events into one
+  // guaranteed follow-up read after the current request finishes.
+  if(refreshInFlight){refreshQueued=true;return;}
   refreshInFlight=true;
   if(!options.silent)setStatus('Loading…');
   try{
@@ -50,7 +55,13 @@ async function loadWorkflow(options={}){
   }catch(error){
     if($('sync-status'))$('sync-status').textContent='Sync paused';
     if(!options.silent)setStatus(error.message,true);
-  }finally{refreshInFlight=false;}
+  }finally{
+    refreshInFlight=false;
+    if(refreshQueued){
+      refreshQueued=false;
+      queueMicrotask(()=>loadWorkflow({silent:true}));
+    }
+  }
 }
 function startAutoRefresh(){
   clearInterval(autoRefreshTimer);
