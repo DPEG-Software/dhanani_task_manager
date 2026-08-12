@@ -1,6 +1,7 @@
 # Local Cloudflare environment configuration
 cloudflare-worker/wrangler.staging.jsonc
 cloudflare-worker/wrangler.production-migration.jsonc
+cloudflare-worker/wrangler.production.jsonc
 
 # Local Node.js dependencies
 node_modules/
