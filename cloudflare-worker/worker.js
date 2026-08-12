@@ -254,6 +254,13 @@ async function updateAssignmentProofState(env, details) {
 // conversation history while the app is migrated.
 async function ensureTaskMessagesTable(env) {
   if (!env.DPEG_ASSIGNMENTS || taskMessagesTableReady) return;
+  // The staging database is always created from the checked-in migrations, so
+  // its table and indexes already exist. Avoid issuing four redundant DDL
+  // queries whenever Cloudflare starts a fresh Worker isolate.
+  if (isStaging(env)) {
+    taskMessagesTableReady = true;
+    return;
+  }
   await env.DPEG_ASSIGNMENTS.prepare(
     `CREATE TABLE IF NOT EXISTS task_messages (
        id TEXT PRIMARY KEY,
@@ -1672,7 +1679,7 @@ async function handleStagingTasksCore(request, env) {
 
   const ownerEmail = userEmailFromClaims(claims);
   if (request.method === 'GET') {
-    const [taskResult, assignmentResult, proofResult, reminderResult] = await Promise.all([
+    const [taskResult, assignmentResult, proofResult, reminderResult, allMessageThreads] = await Promise.all([
       env.DPEG_ASSIGNMENTS.prepare(
       `SELECT id, title, summary, department_name, priority, due_date, status,
               source_type, created_at, updated_at, completed_at, cancelled_at, version
@@ -1706,8 +1713,9 @@ async function handleStagingTasksCore(request, env) {
             AND (a.assigner_email = ? OR a.recipient_email = ?)
           ORDER BY r.created_at DESC, r.id DESC`
       ).bind(ownerEmail, ownerEmail).all(),
+      loadTaskMessageThreads(env, claims),
     ]);
-    const messageThreads = (await loadTaskMessageThreads(env, claims))
+    const messageThreads = allMessageThreads
       .filter(thread => String(thread.appTaskId || '').startsWith('stg-task-'));
     return json({
       tasks: (taskResult.results || []).map(stagingTaskShape),
