@@ -4,3 +4,7 @@ cloudflare-worker/wrangler.staging.jsonc
 # Local Node.js dependencies
 node_modules/
 .wrangler/
+
+# Read-only production exports used for local migration rehearsals. These may
+# contain employee data and must never be committed or deployed.
+.migration-backups/

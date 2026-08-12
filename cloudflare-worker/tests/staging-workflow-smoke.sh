@@ -50,13 +50,29 @@ VALUES
 UPDATE tasks
    SET status = 'In Progress', version = version + 1
  WHERE id = 'stg-test-task' AND version = 1;
+
+INSERT INTO assignments
+  (id, app_task_id, title, summary, dept, priority, assigner_email,
+   assigner_name, recipient_email, recipient_name, status, proof_status,
+   created_at, updated_at, version)
+VALUES
+  ('legacy-only-assignment', 'legacy-only-task', 'Legacy-only task',
+   'Imported from an assignment', 'Operations', 'High',
+   'assigner@dhananipeg.com', 'Assigner', 'recipient@dhananipeg.com',
+   'Recipient', 'In Progress', 'none', '2026-08-10T00:00:00Z',
+   '2026-08-11T00:00:00Z', 3);
 SQL
+
+sqlite3 "$test_db" < "$repo_dir/cloudflare-worker/migrations/0003_backfill_tasks_from_assignments.sql"
 
 [ "$(sqlite3 "$test_db" "SELECT version || '|' || status FROM tasks WHERE id='stg-test-task';")" = "2|In Progress" ]
 
 [ "$(sqlite3 "$test_db" "UPDATE tasks SET status='Done', version=version+1 WHERE id='stg-test-task' AND version=1; SELECT changes();")" = "0" ]
 [ "$(sqlite3 "$test_db" "SELECT COUNT(*) FROM reminders WHERE assignment_id='stg-test-assignment';")" = "1" ]
 [ "$(sqlite3 "$test_db" "SELECT COUNT(*) FROM proof_files WHERE submission_id='stg-test-proof';")" = "1" ]
+[ "$(sqlite3 "$test_db" "SELECT COUNT(*) FROM tasks WHERE id='stg-test-task';")" = "1" ]
+[ "$(sqlite3 "$test_db" "SELECT status || '|' || source_type || '|' || version FROM tasks WHERE id='legacy-only-task';")" = "In Progress|legacy_assignment|3" ]
+[ "$(sqlite3 "$test_db" "SELECT COUNT(*) FROM migration_records WHERE source_store='d1_assignments' AND source_id='stg-test-task';")" = "1" ]
 [ -z "$(sqlite3 "$test_db" "PRAGMA foreign_key_check;")" ]
 
 echo "staging workflow smoke test passed"
