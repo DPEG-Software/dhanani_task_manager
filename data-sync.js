@@ -500,6 +500,14 @@ function closeProofUploadScreen(){
 }
 
 async function loadTasksFromOneDrive() {
+  if(window.DPEG_STAGING_MODE){
+    tasks=[];archives=[];staffConfig={};customDepartments=[];customNotes=[];notifications=[];
+    sharedDataActive=false;
+    setSyncStatus('synced','D1 staging · Live');
+    finishDataLoad();
+    setTimeout(()=>nav('tasks'),0);
+    return;
+  }
   setSyncStatus("syncing", "Loading tasks...");
   try {
     sharedDataActive=false;
@@ -592,6 +600,10 @@ async function migrateLegacyOneDriveToShared(){
 }
 
 async function saveTasksToOneDrive() {
+  if(window.DPEG_STAGING_MODE){
+    setSyncStatus('synced','D1 staging · Live');
+    return true;
+  }
   setSyncStatus("syncing", "Saving...");
   const backupKey=`dpeg_local_task_backup_${normEmail(currentUser?.email||'unknown')}`;
   const payload=JSON.stringify({tasks,archives,staffConfig,customDepartments,customNotes,notifications},null,2);

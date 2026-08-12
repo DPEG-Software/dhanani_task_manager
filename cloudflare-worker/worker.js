@@ -2178,6 +2178,15 @@ async function handleStagingTasks(request, env) {
   return response;
 }
 
+async function withStagingRealtimeBroadcast(request, env, responsePromise) {
+  const response = await responsePromise;
+  if (isStaging(env) && request.method !== 'GET'
+      && response.status >= 200 && response.status < 300) {
+    await broadcastStagingChange(env);
+  }
+  return response;
+}
+
 async function handleStagingRealtimeTicket(request, env) {
   if (!isStaging(env)) return json({ error: 'Not found' }, 404);
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -2289,7 +2298,7 @@ async function routeRequest(request, env) {
     if (path === '/departments') return handleDepartments(request, env);
     if (path === '/department-assignment') return handleDepartments(request, env);
     if (path === '/task-edit-lock') return handleTaskEditLock(request, env);
-    if (path === '/notify') return handleNotify(request, env);
+    if (path === '/notify') return withStagingRealtimeBroadcast(request, env, handleNotify(request, env));
     if (path === '/assignments') return handleAssignments(request, env);
 
     if (request.method !== 'POST') {
@@ -2303,11 +2312,11 @@ async function routeRequest(request, env) {
     if (path === '/proof-submit') return handleProofSubmit(request, env);
     if (path === '/attachment-summary') return handleAttachmentSummary(request, env);
     if (path === '/assignment') return handleCreateAssignment(request, env);
-    if (path === '/assignment-status') return handleAssignmentStatus(request, env);
-    if (path === '/assignment-alert') return handleAssignmentAlert(request, env);
-    if (path === '/assignment-alert-clear') return handleAssignmentAlertClear(request, env);
+    if (path === '/assignment-status') return withStagingRealtimeBroadcast(request, env, handleAssignmentStatus(request, env));
+    if (path === '/assignment-alert') return withStagingRealtimeBroadcast(request, env, handleAssignmentAlert(request, env));
+    if (path === '/assignment-alert-clear') return withStagingRealtimeBroadcast(request, env, handleAssignmentAlertClear(request, env));
     if (path === '/assignment-seen') return handleAssignmentSeen(request, env);
-    if (path === '/assignment-cancel') return handleAssignmentCancel(request, env);
+    if (path === '/assignment-cancel') return withStagingRealtimeBroadcast(request, env, handleAssignmentCancel(request, env));
     return handleSummary(request, env);
 }
 

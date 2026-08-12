@@ -152,6 +152,8 @@ function updateUI() {
   const departmentBtn=document.getElementById("department-settings-btn");
   if(departmentBtn)departmentBtn.style.display=isAdmin()?'flex':'none';
 
+  if(window.DPEG_STAGING_MODE)applyStagingUiBoundary();
+
   // Wednesday vs Discussion Notes
   const wedLabel = document.getElementById("nav-wednesday-label");
   const wedPageTitle = document.getElementById("wed-page-title");
@@ -179,5 +181,22 @@ function updateUI() {
     if (dWedLbl) dWedLbl.textContent = "Discussion Notes";
     if(actionNotesHint)actionNotesHint.textContent='Use + Discussion to add tasks to your private notes';
     if(modalNotesBtn)modalNotesBtn.textContent='Move to Discussion';
+  }
+}
+
+function applyStagingUiBoundary(){
+  document.body.classList.add('dpeg-staging-app');
+  document.querySelectorAll('.sb-nav .ni').forEach(button=>{
+    const handler=button.getAttribute('onclick')||'';
+    button.style.display=handler.includes("nav('tasks')")?'':'none';
+  });
+  document.querySelectorAll('button[onclick="openAdd()"],#pwa-install-btn').forEach(button=>button.style.display='none');
+  document.getElementById('admin-settings-btn')?.style.setProperty('display','none');
+  document.getElementById('department-settings-btn')?.style.setProperty('display','none');
+  if(!document.getElementById('staging-app-banner')){
+    const banner=document.createElement('div');
+    banner.id='staging-app-banner';
+    banner.textContent='D1 STAGING — Fake tasks only. Email, OneDrive, Microsoft To Do and AI are disabled.';
+    document.querySelector('.main')?.prepend(banner);
   }
 }

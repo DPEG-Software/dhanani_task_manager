@@ -1,7 +1,9 @@
 // ============================================================
 // AI SETTINGS
 // ============================================================
-const WORKER_URL='https://dpeg-ai-summarize.systemmanager1.workers.dev/';
+const WORKER_URL=window.DPEG_STAGING_MODE
+  ?`${window.DPEG_STAGING_WORKER}/`
+  :'https://dpeg-ai-summarize.systemmanager1.workers.dev/';
 function loadAIConfig(){
   const url=localStorage.getItem('dpeg_ai_fn_url')||'';
   const el=document.getElementById('ai-fn-url');
