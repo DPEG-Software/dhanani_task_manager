@@ -139,6 +139,20 @@
       <input type="text" placeholder="Search tasks, people..." id="srch" oninput="doSearch(this.value)">
     </div>
 <button id="pwa-install-btn" class="btn btn-ghost" onclick="pwaInstall()" style="display:none;align-items:center;gap:5px;font-size:12px"><svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20h16" stroke-width="2" stroke-linecap="round"/></svg>Install App</button>
+<div class="notification-center" id="notification-center" hidden>
+  <button type="button" class="notification-bell" id="notification-bell" onclick="toggleNotificationCenter(event)" aria-label="Notifications" aria-expanded="false">
+    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M18 8a6 6 0 00-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="notification-bell-count" id="notification-bell-count" hidden>0</span>
+  </button>
+  <div class="notification-popover" id="notification-popover" hidden>
+    <div class="notification-popover-head">
+      <div><strong>Notifications</strong><span id="notification-popover-subtitle">You're all caught up</span></div>
+      <button type="button" onclick="markAllCenterNotificationsRead()">Mark all as read</button>
+    </div>
+    <div class="notification-popover-list" id="notification-popover-list"></div>
+    <button type="button" class="notification-history-link" onclick="openNotificationHistory()">View notification history</button>
+  </div>
+</div>
 <button class="btn btn-ghost" id="theme-toggle-btn" onclick="toggleDarkMode()" title="Toggle dark mode" style="padding:5px 7px">
   <svg id="theme-icon-moon" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
   <svg id="theme-icon-sun" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display:none"><circle cx="12" cy="12" r="5" stroke-width="2"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke-width="2" stroke-linecap="round"/></svg>
@@ -1033,6 +1047,7 @@
 <script src="summary-sheet.js"></script>
 <script src="contacts.js"></script>
 <script src="tasks-hub.js"></script>
+<script src="notification-center.js"></script>
 <script src="staging-real-adapter.js"></script>
 <script src="app.js"></script>
 </body>

@@ -481,7 +481,7 @@
       ${followupHistory?`<span class="assign-history-label">${followupHistory} message${followupHistory===1?'':'s'}</span>`:'<span class="assign-history-label">No messages</span>'}
       <span class="assign-history-label">${reminders} reminder${reminders===1?'':'s'}</span>
     </div>`:'';
-    return `<div class="wed-card assign-compact-card${hasFollowup ? ' has-followup' : ''}${newReminder?' has-new-reminder':''}${proofReady?' has-proof-ready':''}${changesRequested?' has-changes-requested':''}${overdueCard?' is-overdue':''}${expanded?' is-expanded':''}">
+    return `<div class="wed-card assign-compact-card${hasFollowup ? ' has-followup' : ''}${newReminder?' has-new-reminder':''}${proofReady?' has-proof-ready':''}${changesRequested?' has-changes-requested':''}${overdueCard?' is-overdue':''}${expanded?' is-expanded':''}" data-assignment-id="${escapeHtml(String(a.id))}">
       <div class="wed-card-head assign-compact-head">
         <button type="button" class="assign-title-button" onclick="toggleAssignmentDetails('${a.id}')" aria-expanded="${expanded}">
           <span class="assign-expand-symbol">${expanded?'−':'+'}</span><span class="wed-card-title">${escapeHtml(a.title || '')}</span>${reminderCount}${changesBadge}
@@ -620,7 +620,34 @@
     }
     if (silent && assignmentsSignature(nextCache) === assignmentsSignature(tasksTabCache)) return;
     tasksTabCache = nextCache;
+    window.updateNotificationCenter?.();
     renderTasksTabList();
+  };
+
+  window.getTasksNotificationSnapshot = function getTasksNotificationSnapshot() {
+    return {
+      assignedToMe: (tasksTabCache.assignedToMe || []).map(a => ({ ...a })),
+      assignedByMe: (tasksTabCache.assignedByMe || []).map(a => ({ ...a })),
+    };
+  };
+
+  window.openAssignmentFromNotification = function openAssignmentFromNotification(assignmentId, received) {
+    const mode = received ? 'received' : 'given';
+    const list = received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []);
+    const assignment = list.find(a => String(a.id) === String(assignmentId));
+    if (!assignment) { toast('Task is no longer available'); return; }
+    tasksTabMode = mode;
+    expandedAssignmentId = assignment.id;
+    const name = received ? assignment.assignerName : assignment.recipientName;
+    const email = received ? assignment.assignerEmail : assignment.recipientEmail;
+    tasksTabOpenGroups[mode].add(groupKey(name, email));
+    nav('tasks');
+    window.setTasksTabMode?.(mode);
+    renderTasksTabList();
+    setTimeout(() => {
+      const card = document.querySelector(`[data-assignment-id="${CSS.escape(String(assignment.id))}"]`);
+      card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
   };
 
   // Alerts the receiver of a new assignment (and the assignor of a new

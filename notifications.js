@@ -204,6 +204,7 @@ async function checkAndLoadProofNotifications(){
   if(newAdded>0||existingUpdated>0){
     updateNotifBadge();
     renderNotifications();
+    window.updateNotificationCenter?.();
     await saveNotifications();
     refreshAll();
     if(newAdded>0)toast(`${newAdded} proof submission${newAdded>1?'s':''} ready for review in Assigned by Me`);
@@ -497,6 +498,7 @@ function updateNotifBadge(){
     badge.style.display=pending>0?'':'none';
   }
   window.renderTasksTabList?.();
+  window.updateNotificationCenter?.();
 }
 
 function markNotifSeen(id){
