@@ -11,6 +11,7 @@ const ALLOWED_ORIGIN  = 'https://dpeg-software.github.io';
 const ALLOWED_ORIGINS = new Set([
   ALLOWED_ORIGIN,
   'http://localhost:8765',
+  'https://dpeg-task-manager-staging-test.pages.dev',
 ]);
 const DPEG_TENANT_ID  = '9152bf5c-22ff-4e4a-8624-784a2d243006';
 const AZURE_CLIENT_ID = '8d523e65-0163-49c7-881b-407c0222527e';
