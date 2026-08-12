@@ -2305,6 +2305,12 @@ async function routeRequest(request, env) {
 
 export default {
   async fetch(request, env) {
-    return withRequestCors(await routeRequest(request, env), request);
+    const response = await routeRequest(request, env);
+    // A WebSocket upgrade carries a Cloudflare-specific webSocket property.
+    // Reconstructing that 101 Response to add CORS headers strips the socket
+    // and leaves the browser reconnecting forever. WebSockets validate Origin
+    // before routing, so return successful upgrades exactly as provided.
+    if (response.status === 101) return response;
+    return withRequestCors(response, request);
   },
 };
