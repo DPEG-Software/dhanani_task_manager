@@ -5,6 +5,7 @@ const REDIRECT_URI=window.location.origin+window.location.pathname;
 const loginRequest={scopes:['User.Read'],redirectUri:REDIRECT_URI,prompt:'select_account'};
 let authClient=null,account=null,workflow={tasks:[],assignments:[],proofs:[],reminders:[],messageThreads:[]};
 let refreshInFlight=false,autoRefreshTimer=null;
+let realtimeSocket=null,reconnectTimer=null,reconnectAttempt=0;
 
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -55,7 +56,47 @@ function startAutoRefresh(){
   clearInterval(autoRefreshTimer);
   autoRefreshTimer=setInterval(()=>{
     if(account&&!document.hidden)loadWorkflow({silent:true});
-  },3000);
+  },30000);
+}
+async function connectRealtime(){
+  if(!account||realtimeSocket?.readyState===WebSocket.OPEN||realtimeSocket?.readyState===WebSocket.CONNECTING)return;
+  clearTimeout(reconnectTimer);
+  try{
+    const accessToken=await token();
+    const ticketResponse=await fetch(`${STAGING_WORKER}/staging/realtime-ticket`,{
+      method:'POST',headers:{Authorization:`Bearer ${accessToken}`}
+    });
+    const ticketData=await ticketResponse.json().catch(()=>({}));
+    if(!ticketResponse.ok)throw new Error(ticketData.error||'Could not create realtime ticket');
+    const socketUrl=STAGING_WORKER.replace(/^https:/,'wss:').replace(/^http:/,'ws:')+`/staging/realtime?ticket=${encodeURIComponent(ticketData.ticket)}`;
+    realtimeSocket=new WebSocket(socketUrl);
+    realtimeSocket.onopen=()=>{
+      reconnectAttempt=0;
+      if($('sync-status'))$('sync-status').textContent='Live connected';
+    };
+    realtimeSocket.onmessage=event=>{
+      if(event.data==='pong')return;
+      try{
+        const update=JSON.parse(event.data);
+        if(update.type==='workflow_changed')loadWorkflow({silent:true});
+      }catch{}
+    };
+    realtimeSocket.onclose=()=>{
+      realtimeSocket=null;
+      if($('sync-status'))$('sync-status').textContent='Live reconnecting…';
+      scheduleRealtimeReconnect();
+    };
+    realtimeSocket.onerror=()=>realtimeSocket?.close();
+  }catch{
+    if($('sync-status'))$('sync-status').textContent='Live reconnecting…';
+    scheduleRealtimeReconnect();
+  }
+}
+function scheduleRealtimeReconnect(){
+  if(!account)return;
+  clearTimeout(reconnectTimer);
+  const delay=Math.min(15000,1000*(2**Math.min(reconnectAttempt++,4)));
+  reconnectTimer=setTimeout(connectRealtime,delay);
 }
 function relatedActivity(a){
   const proofs=(workflow.proofs||[]).filter(p=>p.assignment_id===a.id);
@@ -104,6 +145,6 @@ async function init(){
   $('sign-in').hidden=!!account;$('sign-out').hidden=!account;$('account').textContent=account?`${account.name||''} (${account.username})`:'Not signed in';
   $('sign-in').onclick=signIn;$('sign-out').onclick=signOut;$('delegate').onclick=delegate;$('refresh').onclick=loadWorkflow;
   document.addEventListener('visibilitychange',()=>{if(account&&!document.hidden)loadWorkflow({silent:true});});
-  await checkSafety();if(account){await loadWorkflow();startAutoRefresh();}
+  await checkSafety();if(account){await loadWorkflow();startAutoRefresh();await connectRealtime();}
 }
 init().catch(error=>setStatus(error.message,true));

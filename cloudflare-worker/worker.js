@@ -32,6 +32,7 @@ const ADMIN_EMAILS = new Set(['systemmanager1@dhananipeg.com', 'propertymanageme
 const PROOF_START = 'DPEG_PROOF_START';
 const PROOF_END = 'DPEG_PROOF_END';
 const PROOF_LINK_PREFIX = 'proof-link:';
+const REALTIME_TICKET_PREFIX = 'staging-realtime-ticket:';
 let assignmentColumnsReady = false;
 let taskMessagesTableReady = false;
 
@@ -1664,7 +1665,7 @@ async function recordStagingTaskEvent(env, taskId, actorEmail, eventType, eventD
   ).run();
 }
 
-async function handleStagingTasks(request, env) {
+async function handleStagingTasksCore(request, env) {
   if (!isStaging(env)) return json({ error: 'Not found' }, 404);
   const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
@@ -2148,6 +2149,103 @@ async function handleStagingTasks(request, env) {
   }, 400);
 }
 
+async function broadcastStagingChange(env) {
+  if (!isStaging(env) || !env.STAGING_REALTIME_HUB) return;
+  try {
+    const hub = env.STAGING_REALTIME_HUB.getByName('dpeg-staging-workflow');
+    await hub.fetch('https://staging-realtime.internal/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'workflow_changed', at: new Date().toISOString() }),
+    });
+  } catch (error) {
+    console.warn('Staging realtime broadcast failed:', error?.message || error);
+  }
+}
+
+async function handleStagingTasks(request, env) {
+  const response = await handleStagingTasksCore(request, env);
+  if (request.method === 'POST' && response.status >= 200 && response.status < 300) {
+    await broadcastStagingChange(env);
+  }
+  return response;
+}
+
+async function handleStagingRealtimeTicket(request, env) {
+  if (!isStaging(env)) return json({ error: 'Not found' }, 404);
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_DATA) return json({ error: 'Staging KV binding is not configured' }, 501);
+  const ticket = crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '');
+  const expiresAt = Date.now() + 60_000;
+  await env.DPEG_DATA.put(`${REALTIME_TICKET_PREFIX}${ticket}`, JSON.stringify({
+    email: userEmailFromClaims(claims),
+    expiresAt,
+  }), { expirationTtl: 60 });
+  return json({ ticket, expiresAt });
+}
+
+async function handleStagingRealtimeSocket(request, env) {
+  if (!isStaging(env)) return json({ error: 'Not found' }, 404);
+  if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+    return json({ error: 'WebSocket upgrade required' }, 426);
+  }
+  const origin = request.headers.get('Origin') || '';
+  if (!ALLOWED_ORIGINS.has(origin)) return json({ error: 'Origin is not allowed' }, 403);
+  if (!env.DPEG_DATA || !env.STAGING_REALTIME_HUB) {
+    return json({ error: 'Staging realtime bindings are not configured' }, 501);
+  }
+  const ticket = String(new URL(request.url).searchParams.get('ticket') || '').trim();
+  if (!ticket) return json({ error: 'Realtime ticket is required' }, 401);
+  const key = `${REALTIME_TICKET_PREFIX}${ticket}`;
+  const record = await env.DPEG_DATA.get(key, 'json');
+  await env.DPEG_DATA.delete(key);
+  if (!record || Number(record.expiresAt || 0) < Date.now()) {
+    return json({ error: 'Realtime ticket is invalid or expired' }, 401);
+  }
+  const hub = env.STAGING_REALTIME_HUB.getByName('dpeg-staging-workflow');
+  const headers = new Headers(request.headers);
+  headers.set('X-DPEG-Realtime-User', extractEmailAddress(record.email || ''));
+  return hub.fetch(new Request(request, { headers }));
+}
+
+export class StagingRealtimeHub {
+  constructor(state) {
+    this.state = state;
+    this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+  }
+
+  async fetch(request) {
+    if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      this.state.acceptWebSocket(server);
+      server.serializeAttachment({
+        email: String(request.headers.get('X-DPEG-Realtime-User') || ''),
+        connectedAt: Date.now(),
+      });
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    if (request.method === 'POST' && new URL(request.url).pathname === '/broadcast') {
+      const payload = await request.text();
+      for (const socket of this.state.getWebSockets()) {
+        try { socket.send(payload); } catch {}
+      }
+      return new Response(null, { status: 204 });
+    }
+    return new Response('Not found', { status: 404 });
+  }
+
+  webSocketMessage(socket, message) {
+    if (message === 'ping') socket.send('pong');
+  }
+
+  webSocketClose(socket, code, reason) {
+    socket.close(code, reason);
+  }
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 async function routeRequest(request, env) {
     if (request.method === 'OPTIONS') {
@@ -2160,6 +2258,8 @@ async function routeRequest(request, env) {
         externalEffectsEnabled: externalEffectsAllowed(env),
       });
     }
+    if (path === '/staging/realtime-ticket') return handleStagingRealtimeTicket(request, env);
+    if (path === '/staging/realtime') return handleStagingRealtimeSocket(request, env);
     if (path === '/staging/tasks') return handleStagingTasks(request, env);
     if (isStaging(env) && STAGING_EXTERNAL_PATHS.has(path)) {
       return stagingSafetyResponse(path);

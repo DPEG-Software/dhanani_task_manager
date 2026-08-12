@@ -6,6 +6,20 @@
   "vars": {
     "APP_ENV": "staging"
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "STAGING_REALTIME_HUB",
+        "class_name": "StagingRealtimeHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "staging-realtime-v1",
+      "new_sqlite_classes": ["StagingRealtimeHub"]
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DPEG_ASSIGNMENTS",
