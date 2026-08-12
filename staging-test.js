@@ -6,6 +6,7 @@ const loginRequest={scopes:['User.Read'],redirectUri:REDIRECT_URI,prompt:'select
 let authClient=null,account=null,workflow={tasks:[],assignments:[],proofs:[],reminders:[],messageThreads:[]};
 let refreshInFlight=false,refreshQueued=false,autoRefreshTimer=null;
 let realtimeSocket=null,reconnectTimer=null,reconnectAttempt=0;
+const expandedThreads=new Set();
 
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -115,9 +116,26 @@ function relatedActivity(a){
   const thread=(workflow.messageThreads||[]).find(t=>t.appTaskId===a.app_task_id&&norm(t.recipientEmail)===norm(a.recipient_email));
   const lines=[];
   if(reminders.length)lines.push(`<div>${reminders.length} reminder${reminders.length===1?'':'s'}</div>`);
-  if(thread?.thread?.length)lines.push(`<div>${thread.thread.length} message${thread.thread.length===1?'':'s'}: ${esc(thread.thread.at(-1)?.message||'')}</div>`);
+  if(thread?.thread?.length){
+    const messages=thread.thread;
+    const expanded=expandedThreads.has(a.id);
+    const messageRows=expanded?messages.map(message=>{
+      const mine=norm(message.email)===norm(account?.username);
+      const sender=mine?'You':message.name||message.email||'Employee';
+      const time=message.createdAt?new Date(message.createdAt).toLocaleString([],{
+        month:'short',day:'numeric',hour:'numeric',minute:'2-digit'
+      }):'';
+      return `<div class="thread-message${mine?' mine':''}"><div class="thread-meta">${esc(sender)}${time?` · ${esc(time)}`:''}</div><div>${esc(message.message||'')}</div></div>`;
+    }).join(''):'';
+    lines.push(`<div class="thread-summary"><button type="button" class="thread-toggle" onclick="toggleThread('${a.id}')">${messages.length} message${messages.length===1?'':'s'} · ${expanded?'Hide conversation':'View conversation'}</button></div>${expanded?`<div class="thread-list">${messageRows}</div>`:''}`);
+  }
   proofs.forEach(p=>lines.push(`<div>Proof: <b>${esc(p.status)}</b>${p.note?` — ${esc(p.note)}`:''}</div>`));
   return {proofs,html:lines.length?`<div class="activity">${lines.join('')}</div>`:''};
+}
+function toggleThread(assignmentId){
+  if(expandedThreads.has(assignmentId))expandedThreads.delete(assignmentId);
+  else expandedThreads.add(assignmentId);
+  render();
 }
 function card(a,role){
   const activity=relatedActivity(a);const version=Number(a.version||1);const pending=activity.proofs.find(p=>p.status==='pending');
@@ -148,7 +166,7 @@ async function sendReminder(assignmentId,expectedVersion){await action({action:'
 async function changeStatus(assignmentId,expectedVersion,status){await action({action:'assignment_status',assignmentId,expectedVersion,status},'Status updated.');}
 async function submitProof(assignmentId,expectedVersion){const note=prompt('Describe the fake proof:','Staging proof completed.');if(note!==null)await action({action:'submit_proof',assignmentId,expectedVersion,note,idempotencyKey:`ui-proof-${assignmentId}-${crypto.randomUUID()}`,files:[{fileName:'staging-proof.txt',mimeType:'text/plain',sizeBytes:10,webUrl:'about:blank'}]},'Fake proof submitted.');}
 async function reviewProof(proofId,expectedVersion,decision){const reason=decision==='changes_requested'?prompt('Reason for requesting changes:','Please update the proof.'):'';if(reason!==null)await action({action:'review_proof',proofId,expectedVersion,decision,reason:reason||''},decision==='approved'?'Proof approved.':'Changes requested.');}
-Object.assign(window,{sendMessage,sendReminder,changeStatus,submitProof,reviewProof});
+Object.assign(window,{sendMessage,sendReminder,changeStatus,submitProof,reviewProof,toggleThread});
 
 async function init(){
   authClient=new msal.PublicClientApplication({auth:{clientId:CLIENT_ID,authority:`https://login.microsoftonline.com/${TENANT_ID}`,redirectUri:REDIRECT_URI,navigateToLoginRequestUrl:false},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:true}});
