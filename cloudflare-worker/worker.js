@@ -32,7 +32,6 @@ const ADMIN_EMAILS = new Set(['systemmanager1@dhananipeg.com', 'propertymanageme
 const PROOF_START = 'DPEG_PROOF_START';
 const PROOF_END = 'DPEG_PROOF_END';
 const PROOF_LINK_PREFIX = 'proof-link:';
-const REALTIME_TICKET_PREFIX = 'staging-realtime-ticket:';
 let assignmentColumnsReady = false;
 let taskMessagesTableReady = false;
 
@@ -2176,14 +2175,16 @@ async function handleStagingRealtimeTicket(request, env) {
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const { error, status, claims } = await validateUserToken(request);
   if (error) return json({ error }, status);
-  if (!env.DPEG_DATA) return json({ error: 'Staging KV binding is not configured' }, 501);
-  const ticket = crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '');
-  const expiresAt = Date.now() + 60_000;
-  await env.DPEG_DATA.put(`${REALTIME_TICKET_PREFIX}${ticket}`, JSON.stringify({
-    email: userEmailFromClaims(claims),
-    expiresAt,
-  }), { expirationTtl: 60 });
-  return json({ ticket, expiresAt });
+  if (!env.STAGING_REALTIME_HUB) return json({ error: 'Staging realtime binding is not configured' }, 501);
+  const hub = env.STAGING_REALTIME_HUB.getByName('dpeg-staging-workflow');
+  const response = await hub.fetch('https://staging-realtime.internal/ticket', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: userEmailFromClaims(claims) }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) return json({ error: result.error || 'Could not create realtime ticket' }, response.status);
+  return json(result);
 }
 
 async function handleStagingRealtimeSocket(request, env) {
@@ -2193,21 +2194,13 @@ async function handleStagingRealtimeSocket(request, env) {
   }
   const origin = request.headers.get('Origin') || '';
   if (!ALLOWED_ORIGINS.has(origin)) return json({ error: 'Origin is not allowed' }, 403);
-  if (!env.DPEG_DATA || !env.STAGING_REALTIME_HUB) {
+  if (!env.STAGING_REALTIME_HUB) {
     return json({ error: 'Staging realtime bindings are not configured' }, 501);
   }
   const ticket = String(new URL(request.url).searchParams.get('ticket') || '').trim();
   if (!ticket) return json({ error: 'Realtime ticket is required' }, 401);
-  const key = `${REALTIME_TICKET_PREFIX}${ticket}`;
-  const record = await env.DPEG_DATA.get(key, 'json');
-  await env.DPEG_DATA.delete(key);
-  if (!record || Number(record.expiresAt || 0) < Date.now()) {
-    return json({ error: 'Realtime ticket is invalid or expired' }, 401);
-  }
   const hub = env.STAGING_REALTIME_HUB.getByName('dpeg-staging-workflow');
-  const headers = new Headers(request.headers);
-  headers.set('X-DPEG-Realtime-User', extractEmailAddress(record.email || ''));
-  return hub.fetch(new Request(request, { headers }));
+  return hub.fetch(request);
 }
 
 export class StagingRealtimeHub {
@@ -2218,14 +2211,32 @@ export class StagingRealtimeHub {
 
   async fetch(request) {
     if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
+      const ticket = String(new URL(request.url).searchParams.get('ticket') || '').trim();
+      const ticketKey = `ticket:${ticket}`;
+      const record = ticket ? await this.state.storage.get(ticketKey) : null;
+      if (ticket) await this.state.storage.delete(ticketKey);
+      if (!record || Number(record.expiresAt || 0) < Date.now()) {
+        return new Response('Realtime ticket is invalid or expired', { status: 401 });
+      }
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.state.acceptWebSocket(server);
       server.serializeAttachment({
-        email: String(request.headers.get('X-DPEG-Realtime-User') || ''),
+        email: extractEmailAddress(record.email || ''),
         connectedAt: Date.now(),
       });
       return new Response(null, { status: 101, webSocket: client });
+    }
+    if (request.method === 'POST' && new URL(request.url).pathname === '/ticket') {
+      const body = await request.json().catch(() => ({}));
+      const email = extractEmailAddress(body.email || '');
+      if (!email) return json({ error: 'Ticket user is required' }, 400);
+      const ticket = crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '');
+      const expiresAt = Date.now() + 60_000;
+      await this.state.storage.put(`ticket:${ticket}`, { email, expiresAt });
+      return new Response(JSON.stringify({ ticket, expiresAt }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
     if (request.method === 'POST' && new URL(request.url).pathname === '/broadcast') {
       const payload = await request.text();
