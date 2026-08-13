@@ -399,6 +399,8 @@ async function uploadProofFiles(){
     }
     if(progressLabel)progressLabel.textContent='Saving...';
     await saveProofNotificationToKV(params,uploaded,note);
+    try{await sendProofSubmittedEmail(params,uploaded,note);}
+    catch(err){console.warn('Proof-submitted email failed:',err.message);}
     window.updateTasksTabProofState?.(params.appTaskId||'', 'submitted');
     if(progressWrap)progressWrap.style.display='none';
     pendingProofFiles=[];

@@ -1,20 +1,27 @@
-// Compact, Instagram-style notification center. It is deliberately enabled
-// only in local/staging environments until the D1 migration observation has
-// completed. It derives activity from the authoritative assignment cache and
-// existing notification feed; it does not create another task/message store.
+// Compact, Instagram-style notification center. It derives activity from the
+// authoritative assignment cache and existing notification feed; it does not
+// create another task/message store.
 (function () {
   const READ_KEY = 'dpeg_notification_center_read_ids';
+  const BASELINE_KEY = 'dpeg_notification_center_baseline_at';
   const MAX_VISIBLE = 8;
   let readIds = loadReadIds();
+  let baselineAt = loadBaselineAt();
   let historyMode = false;
 
   function enabled() {
-    return Boolean(window.DPEG_STAGING_MODE) || ['localhost', '127.0.0.1'].includes(location.hostname)
-      || localStorage.getItem('dpeg_notification_center_preview') === 'on';
+    return true;
   }
   function loadReadIds() {
     try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || '[]')); }
     catch { return new Set(); }
+  }
+  function loadBaselineAt() {
+    const stored=Number(localStorage.getItem(BASELINE_KEY)||0);
+    if(stored>0)return stored;
+    const now=Date.now();
+    try{localStorage.setItem(BASELINE_KEY,String(now));}catch{}
+    return now;
   }
   function saveReadIds() {
     try { localStorage.setItem(READ_KEY, JSON.stringify([...readIds].slice(-2000))); } catch {}
@@ -87,7 +94,7 @@
     host.hidden = !enabled();
     if (host.hidden) return;
     const events = feed();
-    const unread = events.filter(e => !readIds.has(e.id));
+    const unread = events.filter(e => timeOf(e.at)>baselineAt&&!readIds.has(e.id));
     const count = document.getElementById('notification-bell-count');
     if (count) { count.textContent = unread.length > 99 ? '99+' : unread.length; count.hidden = !unread.length; }
     const subtitle = document.getElementById('notification-popover-subtitle');

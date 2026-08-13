@@ -2888,6 +2888,63 @@ async function replyToTaskEmail(task, htmlContent, addr){
   });
 }
 
+// A proof is submitted from the assignee's account, which normally does not
+// have the assignor's saved Sent Items conversation id. Locate the original
+// assignment notification in the assignee's inbox and reply to that message
+// so Outlook keeps this important alert in the same task conversation.
+async function sendProofSubmittedEmail(params,proofs,note){
+  const assigner=String(params?.assignedByEmail||'').trim().toLowerCase();
+  const title=String(params?.title||'Task').trim();
+  if(!assigner.includes('@'))return;
+  const token=await getDraftAccessToken();
+  const expectedSubject=`Task Assigned: ${title}`;
+  let originalId='';
+  try{
+    const res=await fetch('https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=100&$select=id,subject,from,receivedDateTime&$orderby=receivedDateTime%20desc',{
+      headers:{Authorization:`Bearer ${token}`},
+    });
+    if(res.ok){
+      const data=await res.json();
+      const match=(data.value||[]).find(message=>
+        String(message.subject||'').trim()===expectedSubject&&
+        String(message.from?.emailAddress?.address||'').trim().toLowerCase()===assigner
+      );
+      originalId=match?.id||'';
+    }
+  }catch(err){console.warn('Original assignment email lookup failed:',err.message);}
+  const attachmentNames=(proofs||[]).map(file=>file?.name).filter(Boolean);
+  const html=`<div style="font-family:Arial,sans-serif;max-width:620px;color:#111">
+    <div style="background:#0E3416;color:#fff;padding:10px 16px;border-radius:6px 6px 0 0;font-size:13px;font-weight:700">Proof submitted — ${escapeHtml(title)}</div>
+    <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:14px 16px">
+      <p style="margin:0 0 8px"><strong>Submitted by:</strong> ${escapeHtml(currentUser?.name||currentUser?.email||'Assignee')}</p>
+      ${note?`<p style="margin:0 0 8px"><strong>Note:</strong> ${escapeHtml(note)}</p>`:''}
+      ${attachmentNames.length?`<p style="margin:0 0 8px"><strong>Files:</strong> ${attachmentNames.map(escapeHtml).join(', ')}</p>`:''}
+      <p style="margin:10px 0 0">Open DPEG Task Manager and select <strong>Delegated → View Proof</strong> to review it.</p>
+    </div>
+  </div>`;
+  if(originalId){
+    try{
+      const draftRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${originalId}/createReply`,{
+        method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({message:{toRecipients:[{emailAddress:{address:assigner}}]}}),
+      });
+      if(draftRes.ok){
+        const draft=await draftRes.json();
+        const patchRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}`,{
+          method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+          body:JSON.stringify({body:{contentType:'HTML',content:html}}),
+        });
+        const sendRes=patchRes.ok?await fetch(`https://graph.microsoft.com/v1.0/me/messages/${draft.id}/send`,{method:'POST',headers:{Authorization:`Bearer ${token}`}}):null;
+        if(sendRes?.ok)return;
+      }
+    }catch(err){console.warn('Proof thread reply failed:',err.message);}
+  }
+  await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+    method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({message:{subject:`Proof submitted: ${title}`,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:assigner}}]},saveToSentItems:true}),
+  });
+}
+
 async function sendTaskNotification(task){
   if(!task.email)return;
   const addr=(task.email||'').trim().toLowerCase();
