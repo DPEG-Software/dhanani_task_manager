@@ -519,6 +519,7 @@ async function loadTasksFromOneDrive() {
     }
     await loadSharedDepartmentSettings();
     if(loaded||savedNewFile)setSyncStatus("synced", "Synced with OneDrive");
+    if(loaded)await compareCanaryD1Tasks(tasks);
     finishDataLoad();
   } catch (err) {
     sharedDataActive=false;
@@ -533,6 +534,42 @@ async function loadTasksFromOneDrive() {
     renderCharts();
     renderActivity();
     autoSyncContacts();
+  }
+}
+
+async function compareCanaryD1Tasks(legacyTasks){
+  const base=workerBaseUrl();
+  if(!base||!currentUser?.email)return {enabled:false};
+  try{
+    const token=await getAccessToken();
+    const res=await fetch(`${base}/shared-workflow-read`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!res.ok)throw new Error(`D1 canary read failed (${res.status})`);
+    const result=await res.json();
+    if(!result.enabled)return result;
+    const legacyById=new Map((Array.isArray(legacyTasks)?legacyTasks:[]).map(task=>[String(task.id||''),task]));
+    const d1ById=new Map((Array.isArray(result.tasks)?result.tasks:[]).map(task=>[String(task.id||''),task]));
+    const missingInD1=[...legacyById.keys()].filter(id=>id&&!d1ById.has(id));
+    const extraInD1=[...d1ById.keys()].filter(id=>id&&!legacyById.has(id));
+    const changed=[];
+    for(const [id,legacy] of legacyById){
+      const d1=d1ById.get(id);if(!d1)continue;
+      const legacyStatus=String(legacy.status||'Pending').toLowerCase()==='completed'?'done':String(legacy.status||'Pending').toLowerCase();
+      const d1Status=String(d1.status||'Pending').toLowerCase();
+      if(String(legacy.title||'')!==String(d1.title||'')||legacyStatus!==d1Status)changed.push(id);
+    }
+    const report={
+      checkedAt:new Date().toISOString(),enabled:true,
+      legacyCount:legacyById.size,d1Count:d1ById.size,
+      missingInD1:missingInD1.slice(0,100),extraInD1:extraInD1.slice(0,100),changed:changed.slice(0,100),
+      safeToRender:missingInD1.length===0&&changed.length===0,
+    };
+    try{localStorage.setItem('dpeg_d1_canary_report',JSON.stringify(report));}catch{}
+    console.info('D1 canary comparison',report);
+    setSyncStatus('synced',report.safeToRender?'D1 canary verified · Legacy view':'D1 canary mismatch · Legacy view protected');
+    return report;
+  }catch(error){
+    console.warn('D1 canary comparison skipped:',error.message);
+    return {enabled:false,error:error.message};
   }
 }
 

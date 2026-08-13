@@ -721,6 +721,48 @@ async function sharedStorageFlag(env, name, fallback = 'off') {
   }
 }
 
+async function handleSharedWorkflowRead(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'D1 storage is not configured' }, 501);
+
+  const readMode = await sharedStorageFlag(env, 'shared_storage_read_mode', 'legacy');
+  const canaryValue = await sharedStorageFlag(env, 'shared_storage_read_canary_users', '');
+  const email = userEmailFromClaims(claims);
+  const canaryUsers = new Set(canaryValue.split(',').map(extractEmailAddress).filter(Boolean));
+  const enabled = readMode === 'canary' && canaryUsers.has(email);
+  if (!enabled) return json({ success: true, enabled: false, readMode: 'legacy', tasks: [] });
+
+  const result = await env.DPEG_ASSIGNMENTS.prepare(
+    `SELECT id, title, summary, department_name, priority, due_date, status,
+            source_type, created_at, updated_at, completed_at, cancelled_at, version
+       FROM tasks
+      WHERE lower(owner_email) = ?
+      ORDER BY updated_at DESC, id DESC`
+  ).bind(email).all();
+  return json({
+    success: true,
+    enabled: true,
+    readMode: 'canary',
+    tasks: (result.results || []).map(row => ({
+      id: String(row.id || ''),
+      title: String(row.title || ''),
+      summary: String(row.summary || ''),
+      dept: String(row.department_name || 'Needs Department'),
+      priority: String(row.priority || 'Normal'),
+      date: row.due_date || '',
+      status: String(row.status || 'Pending'),
+      sourceType: String(row.source_type || ''),
+      createdAt: row.created_at || '',
+      updatedAt: row.updated_at || '',
+      completedAt: row.completed_at || null,
+      cancelledAt: row.cancelled_at || null,
+      version: Number(row.version || 1),
+    })),
+  });
+}
+
 function normalizedShadowTask(task, ownerEmail, now) {
   const id = String(task?.id || '').trim().slice(0, 200);
   const title = String(task?.title || '').trim().slice(0, 500);
@@ -2404,6 +2446,7 @@ async function routeRequest(request, env) {
     if (proofMatch && request.method === 'GET') return handleProofRedirect(request, env, proofMatch[1]);
     if (path === '/data') return handleData(request, env);
     if (path === '/shared-workflow-sync') return withStagingRealtimeBroadcast(request, env, handleSharedWorkflowSync(request, env));
+    if (path === '/shared-workflow-read') return handleSharedWorkflowRead(request, env);
     if (path === '/departments') return handleDepartments(request, env);
     if (path === '/department-assignment') return handleDepartments(request, env);
     if (path === '/task-edit-lock') return handleTaskEditLock(request, env);
