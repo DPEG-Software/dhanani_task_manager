@@ -432,7 +432,6 @@ async function sendTaskFollowupMessage(){
     if(!res.ok){const d=await res.text().catch(()=>'');throw new Error(d||'Could not send message');}
     if(input)input.value='';
     if(statusEl)statusEl.textContent='';
-    const otherEmail=ctx.role==='assignor'?ctx.recipientEmail:ctx.assignerEmail;
     if(ctx.requestChanges){
       await dismissNotification(ctx.notificationId,message);
       const proofNotice=notifications.find(n=>n.id===ctx.notificationId);
@@ -440,7 +439,7 @@ async function sendTaskFollowupMessage(){
       toast('Changes requested — the assignee was notified');
       closeTaskFollowup();
     }else{
-      await sendTaskFollowupEmail(otherEmail,ctx,message);
+      toast('Message sent — the recipient was notified in the app');
     }
     await refreshTaskFollowupThread();
     window.renderMyTasks?.(true);
@@ -700,7 +699,9 @@ async function dismissNotification(id,providedReason){
       n.status='dismissed';n.dismissReason=String(reason||'').trim();
       updateNotifBadge();renderNotifications();
       await Promise.all([saveNotifications(),saveTasksToOneDrive()]);
-      await sendProofDeclineEmail(recipientEmail,task?.title||n.taskTitle||assignment.title||'',reason,currentUser?.name||'');
+      await sendProofDeclineEmail(recipientEmail,task?.title||n.taskTitle||assignment.title||'',reason,currentUser?.name||'',task||{
+        id:n.taskId||assignment.appTaskId||'',title:n.taskTitle||assignment.title||'',email:recipientEmail,
+      });
       refreshAll();
       toast('Changes requested — assignee notified');
     }catch(err){toast('Could not decline: '+err.message);}
@@ -1041,19 +1042,16 @@ async function askNotificationFollowup(id,providedMessage){
       await checkAndLoadProofNotifications();
       renderNotifications();
     }
-    await sendProofFollowupEmail(n.recipientEmail||task?.email,task||{id:n.taskId,title:n.taskTitle||n.message,email:n.recipientEmail},message);
-    if(providedMessage===undefined)toast('Follow-up question sent and emailed');
+    if(providedMessage===undefined)toast('Message sent — the recipient was notified in the app');
     return true;
   }catch(err){toast('Could not send message: '+(err.message||err));return false;}
 }
 
 async function sendDismissalEmail(n){
-  const task=tasks.find(t=>t.id===n.taskId)||{};
+  const task=tasks.find(t=>String(t.id)===String(n.taskId))||{};
   const recipient=n.recipientEmail||task.email;
   if(!recipient)return;
-  const token=await getAccessToken();
   const reason=n.dismissReason||'No reason provided.';
-  const subject=`Task completion dismissed: ${task.title||'Task'}`;
   const html=`<div style="font-family:Arial,sans-serif;max-width:620px">
     <h2 style="color:#991b1b">Task completion dismissed</h2>
     <p><strong>Task:</strong> ${escapeHtml(task.title||'Task')}</p>
@@ -1063,8 +1061,7 @@ async function sendDismissalEmail(n){
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
     <p style="color:#9ca3af;font-size:12px">DPEG Task Manager - automated notification</p>
   </div>`;
-  const message={subject,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:recipient}}]};
-  await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
+  await replyToTaskEmail(task,html,recipient);
 }
 
 // Notifies the recipient that a Delegated task (tasks-hub.js: cancelAssignmentPrompt)
@@ -1075,7 +1072,6 @@ async function sendTaskCancelledEmail(a){
   const recipient=a?.recipientEmail;
   if(!recipient)return;
   try{
-    const token=await getAccessToken();
     const reason=String(a.cancelReason||'').trim();
     const html=`<div style="font-family:Arial,sans-serif;max-width:620px">
       <h2 style="color:#991b1b">Task cancelled</h2>
@@ -1086,8 +1082,8 @@ async function sendTaskCancelledEmail(a){
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
       <p style="color:#9ca3af;font-size:12px">DPEG Task Manager - automated notification</p>
     </div>`;
-    const message={subject:`Task cancelled: ${a.title||'Task'}`,body:{contentType:'HTML',content:html},toRecipients:[{emailAddress:{address:recipient}}]};
-    await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message,saveToSentItems:true})});
+    const localTask=tasks.find(t=>String(t.id)===String(a.appTaskId||''));
+    await replyToTaskEmail(localTask||{title:a.title||'Task',email:recipient},html,recipient);
   }catch(err){console.warn('Task-cancelled email failed:',err.message);}
 }
 window.sendTaskCancelledEmail=sendTaskCancelledEmail;

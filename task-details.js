@@ -261,8 +261,7 @@ async function saveDetail(){
     closeMo("mo-detail");refreshAll();
     updateTodoTask(t,changes).catch(()=>{});
     if(t.email){
-      sendTaskUpdateNotification(t,changes).catch(()=>{});
-      toast(`Saved — alert sent to ${t.person}`);
+      toast('Changes saved');
     }else{
       toast("Changes saved — To Do updated");
     }

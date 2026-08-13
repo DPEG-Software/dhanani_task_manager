@@ -3022,6 +3022,9 @@ async function cancelActionTask(id){
     }else task.cancelledAt=new Date().toISOString();
     task.status='Cancelled';task.cancelReason='';
     closeMo('mo-detail');syncBadges();refreshAll();await saveTasksToOneDrive();
+    await window.sendTaskCancelledEmail?.({
+      appTaskId:String(task.id||''),title:task.title||'Task',recipientEmail:task.email||'',cancelReason:'',
+    });
     await window.renderMyTasks?.(false);
     toast('Task cancelled and moved to Cancelled History');
   }catch(err){toast('Could not cancel task: '+(err.message||err));}
