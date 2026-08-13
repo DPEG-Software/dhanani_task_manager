@@ -555,7 +555,9 @@ async function compareCanaryD1Tasks(legacyTasks){
       const d1=d1ById.get(id);if(!d1)continue;
       const canonicalStatus=value=>{
         const status=String(value||'Pending').trim().toLowerCase();
-        if(status==='assigned'||status==='pending')return 'pending';
+        // Overdue is a date-derived display condition, not a separate
+        // workflow state. D1 correctly stores the underlying state Pending.
+        if(status==='assigned'||status==='pending'||status==='overdue')return 'pending';
         if(status==='completed')return 'done';
         if(status==='inprogress')return 'in progress';
         if(status==='canceled')return 'cancelled';
@@ -563,7 +565,11 @@ async function compareCanaryD1Tasks(legacyTasks){
       };
       const legacyStatus=canonicalStatus(legacy.status);
       const d1Status=canonicalStatus(d1.status);
-      const titleDiff=String(legacy.title||'')!==String(d1.title||'');
+      // OneDrive/Outlook titles can contain non-breaking spaces or repeated
+      // whitespace that render identically. Compare their visible text while
+      // preserving the original title in both stores.
+      const canonicalTitle=value=>String(value||'').normalize('NFKC').replace(/\s+/g,' ').trim();
+      const titleDiff=canonicalTitle(legacy.title)!==canonicalTitle(d1.title);
       const statusDiff=legacyStatus!==d1Status;
       if(titleDiff)titleChanged.push(id);
       if(statusDiff)statusChanged.push(id);
