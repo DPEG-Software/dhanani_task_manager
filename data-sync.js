@@ -550,7 +550,7 @@ async function compareCanaryD1Tasks(legacyTasks){
     const d1ById=new Map((Array.isArray(result.tasks)?result.tasks:[]).map(task=>[String(task.id||''),task]));
     const missingInD1=[...legacyById.keys()].filter(id=>id&&!d1ById.has(id));
     const extraInD1=[...d1ById.keys()].filter(id=>id&&!legacyById.has(id));
-    const changed=[],titleChanged=[],statusChanged=[];
+    const changed=[],titleChanged=[],statusChanged=[],differenceDetails=[];
     for(const [id,legacy] of legacyById){
       const d1=d1ById.get(id);if(!d1)continue;
       const canonicalStatus=value=>{
@@ -567,6 +567,12 @@ async function compareCanaryD1Tasks(legacyTasks){
       const statusDiff=legacyStatus!==d1Status;
       if(titleDiff)titleChanged.push(id);
       if(statusDiff)statusChanged.push(id);
+      if(titleDiff||statusDiff)differenceDetails.push({
+        id,
+        task:String(legacy.title||d1.title||'Task'),
+        title:titleDiff?{legacy:String(legacy.title||''),d1:String(d1.title||'')}:null,
+        status:statusDiff?{legacy:String(legacy.status||'Pending'),d1:String(d1.status||'Pending')}:null,
+      });
       if(titleDiff||statusDiff)changed.push(id);
     }
     const report={
@@ -574,12 +580,27 @@ async function compareCanaryD1Tasks(legacyTasks){
       legacyCount:legacyById.size,d1Count:d1ById.size,
       missingInD1:missingInD1.slice(0,100),extraInD1:extraInD1.slice(0,100),changed:changed.slice(0,100),
       titleChanged:titleChanged.slice(0,100),statusChanged:statusChanged.slice(0,100),
+      differenceDetails:differenceDetails.slice(0,20),
       safeToRender:missingInD1.length===0&&changed.length===0,
     };
     try{localStorage.setItem('dpeg_d1_canary_report',JSON.stringify(report));}catch{}
     console.info('D1 canary comparison',report);
     const mismatchSummary=`${missingInD1.length} missing · ${titleChanged.length} title · ${statusChanged.length} status · ${extraInD1.length} extra`;
     setSyncStatus('synced',report.safeToRender?'D1 canary verified · Legacy view':`D1 mismatch (${mismatchSummary}) · Legacy protected`);
+    const syncLabel=document.getElementById('sync-label');
+    if(syncLabel&&!report.safeToRender){
+      syncLabel.title='Click to view the protected D1 comparison details';
+      syncLabel.style.cursor='pointer';
+      syncLabel.onclick=()=>{
+        const lines=differenceDetails.map(detail=>{
+          const changes=[];
+          if(detail.title)changes.push(`Title\nLegacy: ${detail.title.legacy}\nD1: ${detail.title.d1}`);
+          if(detail.status)changes.push(`Status\nLegacy: ${detail.status.legacy}\nD1: ${detail.status.d1}`);
+          return `${detail.task}\n${changes.join('\n')}`;
+        });
+        alert(`D1 canary differences\n\n${lines.join('\n\n')}`);
+      };
+    }
     return report;
   }catch(error){
     console.warn('D1 canary comparison skipped:',error.message);
