@@ -319,7 +319,14 @@ async function insertTaskMessage(env, body, claims) {
   if (senderEmail !== canonicalAssigner && senderEmail !== canonicalRecipient) {
     return { error: json({ error: 'You are not a participant in this task conversation' }, 403) };
   }
-  const senderRole = senderEmail === canonicalRecipient ? 'assignee' : 'assignor';
+  // Usually identity alone determines the role. A self-assigned task is the
+  // one legitimate ambiguous case: the same account owns both sides, so use
+  // the UI context to preserve whether the message was sent from My Tasks or
+  // Delegated. Never trust this hint for a normal two-person assignment.
+  const requestedRole = body.by === 'assignor' ? 'assignor' : 'assignee';
+  const senderRole = canonicalAssigner === canonicalRecipient
+    ? requestedRole
+    : (senderEmail === canonicalRecipient ? 'assignee' : 'assignor');
   const id = `fm-${crypto.randomUUID()}`;
   const createdAt = new Date().toISOString();
   await env.DPEG_ASSIGNMENTS.prepare(
