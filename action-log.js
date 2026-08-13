@@ -5,7 +5,19 @@ function weekRange(o){
   const s=new Date(m);s.setDate(m.getDate()+6);
   return `${m.toLocaleDateString("en-US",{month:"short",day:"numeric"})} to ${s.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`;
 }
-function chWeek(d){curWeek=Math.max(0,curWeek-d);document.getElementById("wn-l").textContent=WL[curWeek]||`${curWeek} weeks ago`;document.getElementById("wn-r").textContent=weekRange(curWeek);syncBadges();renderMaster();}
+function chWeek(d){
+  curWeek=Math.max(0,curWeek-d);
+  document.getElementById("wn-l").textContent=WL[curWeek]||`${curWeek} weeks ago`;
+  document.getElementById("wn-r").textContent=weekRange(curWeek);
+  const currentBtn=document.getElementById('current-week-btn');
+  if(currentBtn)currentBtn.disabled=curWeek===0;
+  syncBadges();
+  renderMaster();
+}
+function goToCurrentWeek(){
+  curWeek=0;
+  chWeek(0);
+}
 
 // ============================================================
 // ACTION LOG
