@@ -2205,6 +2205,8 @@ async function doSendEmail(to,cc,bcc,subject,body,importance='normal',deadline='
           ].filter(Boolean).join('\n\n');
           const newTask={
             id:Date.now()+Math.random(),
+            assignedAt:new Date().toISOString(),
+            createdAt:new Date().toISOString(),
             title:forwardedEmail?.subject||subject,
             emailSubject:forwardedEmail?.subject||subject,
             emailId:forwardedEmail?.id||'',

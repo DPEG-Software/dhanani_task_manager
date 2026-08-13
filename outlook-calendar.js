@@ -181,6 +181,8 @@ async function addCalendarEventToTasks(eventId){
   const summary=`Meeting: ${ev.subject||''} on ${fmt(start)} at ${fmtT(start)}.${ev.bodyPreview?' '+ev.bodyPreview.slice(0,300):''}`;
   const task={
     id:Date.now()+Math.random(),
+    assignedAt:new Date().toISOString(),
+    createdAt:new Date().toISOString(),
     title:ev.subject||'(no title)',
     date:start&&!isNaN(start)?start.toISOString().split('T')[0]:new Date().toISOString().split('T')[0],
     person:org,email:orgEmail,dept:'Unknown',

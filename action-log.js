@@ -10,26 +10,23 @@ function chWeek(d){curWeek=Math.max(0,curWeek-d);document.getElementById("wn-l")
 // ============================================================
 // ACTION LOG
 // ============================================================
-// Buckets by when the task was CREATED, not its due date. Every task id in
-// this app is Date.now()-based (see addTask/createTaskFromEmail/etc.), so
-// it doubles as a reliable creation timestamp without needing a dedicated
-// createdAt field (which most tasks don't actually have set).
+// Every task stays in the week in which it was assigned. Deadlines, proof
+// submissions and approvals are timeline details and must never move the
+// task into another Action Log week.
+function taskAssignedAt(t){
+  if(t.assignedAt||t.createdAt)return t.assignedAt||t.createdAt;
+  // Older local tasks predate assignedAt but use a Date.now()-based id.
+  const numericId=Number(t.id);
+  return Number.isFinite(numericId)?new Date(Math.floor(numericId)).toISOString():'';
+}
 function taskWeekOffset(t){
-  const d=new Date(t.id);
+  const d=new Date(taskAssignedAt(t));
+  if(Number.isNaN(d.getTime()))return Number.isFinite(Number(t.weekOffset))?Math.max(0,Number(t.weekOffset)):0;
   const toMon=x=>{const r=new Date(x);r.setDate(r.getDate()-(r.getDay()||7)+1);r.setHours(0,0,0,0);return r;};
   return Math.max(0,Math.round((toMon(new Date())-toMon(d))/(7*24*60*60*1000)));
 }
 function taskCompletedWeekOffset(t){
-  const raw=t.completedAt||t.approvedAt||t.proofReviewedAt||t.date||t.id;
-  const d=new Date(raw);
-  if(Number.isNaN(d.getTime()))return taskWeekOffset(t);
-  const toMon=x=>{const r=new Date(x);r.setDate(r.getDate()-(r.getDay()||7)+1);r.setHours(0,0,0,0);return r;};
-  return Math.max(0,Math.round((toMon(new Date())-toMon(d))/(7*24*60*60*1000)));
-}
-function taskAssignedAt(t){
-  if(t.assignedAt||t.createdAt)return t.assignedAt||t.createdAt;
-  const numericId=Number(t.id);
-  return Number.isFinite(numericId)?new Date(Math.floor(numericId)).toISOString():'';
+  return taskWeekOffset(t);
 }
 function taskDeadlineAt(t){return Object.prototype.hasOwnProperty.call(t,'deadline')?(t.deadline||''):(t.date||'');}
 function taskSubmittedAt(t){
@@ -120,7 +117,7 @@ function renderMaster(){
   const list=getVis(),tb=document.getElementById("master-tbody");
   if(!list.length){
     tb.innerHTML=showMasterCompleted
-      ?`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No completed tasks this week</div><div class="es-sub">Approved tasks will appear here based on their approval date</div></div></td></tr>`
+      ?`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No completed tasks assigned this week</div><div class="es-sub">Completed tasks remain in the week they were originally assigned</div></div></td></tr>`
       :`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No active tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
     return;
   }
@@ -142,7 +139,7 @@ function renderMaster(){
       <td onclick="event.stopPropagation()" style="padding:10px 8px">
         <div class="wed-btn${t.wednesday?" on":""}" style="width:auto;padding:0 8px;font-size:10.5px;white-space:nowrap" onclick="togWed(${t.id})">${t.wednesday?(isWednesdayUser?"On Wed":"In Discussion"):(isWednesdayUser?"+ Wed":"+ Discussion")}</div>
       </td>
-      <td onclick="event.stopPropagation()" style="padding:10px 8px;font-size:11.5px;color:var(--body);white-space:normal;line-height:1.35">${nstt(t.status)==="Done"?completedTaskTimelineHTML(t):(t.date?fmtD(t.date):'No deadline')}</td>
+      <td onclick="event.stopPropagation()" style="padding:10px 8px;font-size:11.5px;color:var(--body);white-space:normal;line-height:1.35">${nstt(t.status)==="Done"?completedTaskTimelineHTML(t):(taskDeadlineAt(t)?fmtD(taskDeadlineAt(t)):'No deadline')}</td>
       <td onclick="event.stopPropagation()" style="padding:6px 10px 6px 4px;text-align:right;white-space:nowrap">
         <div style="display:inline-flex;gap:5px;align-items:center">
           ${nstt(t.status)!=="Done"?`<button class="btn btn-ghost btn-sm" style="color:#dc2626;border-color:#fca5a5;padding:4px 10px;font-size:11px;min-width:58px;line-height:1;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center" onclick="cancelActionTask(${t.id})" title="Cancel task">Cancel</button>`:''}

@@ -327,6 +327,7 @@ async function addTask(){
   const priority=document.getElementById("nt-priority").value;
   const groupId=assignees.length>1?`grp-${Date.now()}-${Math.random().toString(36).slice(2,7)}`:'';
   const baseId=Date.now();
+  const assignedAt=new Date(baseId).toISOString();
   const newTasks=assignees.map((a,i)=>{
     const email=normEmail(a.email||"");
     const person=String(a.name||email.split('@')[0]||"Unassigned").trim();
@@ -334,7 +335,7 @@ async function addTask(){
     const dept=isInternalEmail(email)
       ?(hasAssignedDepartment(a.dept)?a.dept:(hasAssignedDepartment(configured)?configured:'Needs Department'))
       :(email?'Outside DPEG':fallbackDept||'Needs Department');
-    return {id:baseId+i,title,summary,proofInstructions,person,email,dept,date,status,priority,wednesday:false,followup:"",weekOffset:0,assignmentGroupId:groupId,assignmentGroupSize:assignees.length};
+    return {id:baseId+i,title,summary,proofInstructions,person,email,dept,date,status,priority,assignedAt,createdAt:assignedAt,wednesday:false,followup:"",weekOffset:0,assignmentGroupId:groupId,assignmentGroupSize:assignees.length};
   });
   tasks.unshift(...newTasks);
   newTasks.forEach(t=>saveStaffDeptForTask(t,t.dept));

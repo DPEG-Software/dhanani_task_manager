@@ -110,7 +110,8 @@ function upsertTaskFromEmail(email,person,address,dept,date){
     return {task:existing,created:false};
   }
   const rawEmailDate=email.receivedDateTime||email.sentDateTime||'';
-  const task={id:Date.now()+Math.random(),emailId:email.id,emailSubject:email.subject||'(no subject)',conversationId,lastMessageId:email.id||'',title:email.subject||'(no subject)',summary:email.threadSummary||email.bodyPreview||'',threadSummary:email.threadSummary||'',person,email:address,dept,date:(date?new Date(date):new Date()).toISOString().split('T')[0],emailDate:rawEmailDate?new Date(rawEmailDate).toISOString().split('T')[0]:'',status:'Pending',priority:emailPriority,wednesday:false,followup:'',weekOffset:0,replyCount:1,lastReplyAt:date||new Date().toISOString()};
+  const assignedAt=new Date().toISOString();
+  const task={id:Date.now()+Math.random(),assignedAt,createdAt:assignedAt,emailId:email.id,emailSubject:email.subject||'(no subject)',conversationId,lastMessageId:email.id||'',title:email.subject||'(no subject)',summary:email.threadSummary||email.bodyPreview||'',threadSummary:email.threadSummary||'',person,email:address,dept,date:(date?new Date(date):new Date()).toISOString().split('T')[0],emailDate:rawEmailDate?new Date(rawEmailDate).toISOString().split('T')[0]:'',status:'Pending',priority:emailPriority,wednesday:false,followup:'',weekOffset:0,replyCount:1,lastReplyAt:date||assignedAt};
   tasks.unshift(task);
   return {task,created:true};
 }
@@ -230,7 +231,6 @@ async function quickReassignDepartment(index,dept){
   setDeptAssignDepartment(dept);
   await saveDepartmentAssignmentSetting();
 }
-
 
 
 
