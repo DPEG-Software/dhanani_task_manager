@@ -544,13 +544,21 @@ async function compareCanaryD1Tasks(legacyTasks){
     const token=await getAccessToken();
     const res=await fetch(`${base}/shared-workflow-read`,{headers:{Authorization:`Bearer ${token}`}});
     if(!res.ok)throw new Error(`D1 canary read failed (${res.status})`);
-    const result=await res.json();
+    let result=await res.json();
     if(!result.enabled)return result;
+    // During the protected canary, refresh this user's shadow rows from the
+    // already-loaded OneDrive source before comparing. This backfills newly
+    // added metadata without changing the visible legacy data or OneDrive.
+    await shadowSyncTasksToD1(legacyTasks);
+    const refreshed=await fetch(`${base}/shared-workflow-read`,{headers:{Authorization:`Bearer ${token}`}});
+    if(!refreshed.ok)throw new Error(`D1 canary refresh failed (${refreshed.status})`);
+    result=await refreshed.json();
     const legacyById=new Map((Array.isArray(legacyTasks)?legacyTasks:[]).map(task=>[String(task.id||''),task]));
     const d1ById=new Map((Array.isArray(result.tasks)?result.tasks:[]).map(task=>[String(task.id||''),task]));
     const missingInD1=[...legacyById.keys()].filter(id=>id&&!d1ById.has(id));
     const extraInD1=[...d1ById.keys()].filter(id=>id&&!legacyById.has(id));
-    const changed=[],titleChanged=[],statusChanged=[],differenceDetails=[];
+    const changed=[],differenceDetails=[];
+    const fieldChanges={title:[],status:[],summary:[],taskInstruction:[],proofInstructions:[],department:[],priority:[],dueDate:[],completedAt:[],cancelledAt:[],sourceMessageId:[],sourceConversationId:[]};
     for(const [id,legacy] of legacyById){
       const d1=d1ById.get(id);if(!d1)continue;
       const canonicalStatus=value=>{
@@ -571,27 +579,53 @@ async function compareCanaryD1Tasks(legacyTasks){
       const canonicalTitle=value=>String(value||'').normalize('NFKC').replace(/\s+/g,' ').trim();
       const titleDiff=canonicalTitle(legacy.title)!==canonicalTitle(d1.title);
       const statusDiff=legacyStatus!==d1Status;
-      if(titleDiff)titleChanged.push(id);
-      if(statusDiff)statusChanged.push(id);
-      if(titleDiff||statusDiff)differenceDetails.push({
+      const canonicalText=value=>String(value||'').normalize('NFKC').replace(/\s+/g,' ').trim();
+      const canonicalLower=value=>canonicalText(value).toLowerCase();
+      const canonicalDate=value=>{
+        if(!value)return '';
+        const parsed=new Date(value);
+        return Number.isNaN(parsed.getTime())?canonicalText(value):parsed.toISOString().slice(0,10);
+      };
+      const comparisons={
+        title:{legacy:String(legacy.title||''),d1:String(d1.title||''),different:titleDiff},
+        status:{legacy:String(legacy.status||'Pending'),d1:String(d1.status||'Pending'),different:statusDiff},
+        summary:{legacy:String(legacy.summary||legacy.description||''),d1:String(d1.summary||''),different:canonicalText(legacy.summary||legacy.description)!==canonicalText(d1.summary)},
+        taskInstruction:{legacy:String(legacy.taskInstruction||''),d1:String(d1.taskInstruction||''),different:canonicalText(legacy.taskInstruction)!==canonicalText(d1.taskInstruction)},
+        proofInstructions:{legacy:String(legacy.proofInstructions||''),d1:String(d1.proofInstructions||''),different:canonicalText(legacy.proofInstructions)!==canonicalText(d1.proofInstructions)},
+        department:{legacy:String(legacy.dept||legacy.department||'Needs Department'),d1:String(d1.dept||'Needs Department'),different:canonicalLower(legacy.dept||legacy.department||'Needs Department')!==canonicalLower(d1.dept||'Needs Department')},
+        priority:{legacy:String(legacy.priority||'Normal'),d1:String(d1.priority||'Normal'),different:canonicalLower(legacy.priority||'Normal')!==canonicalLower(d1.priority||'Normal')},
+        dueDate:{legacy:String(legacy.date||legacy.deadline||legacy.dueDate||''),d1:String(d1.date||''),different:canonicalDate(legacy.date||legacy.deadline||legacy.dueDate)!==canonicalDate(d1.date)},
+        completedAt:{legacy:String(legacy.completedAt||legacy.approvedAt||''),d1:String(d1.completedAt||''),different:canonicalDate(legacy.completedAt||legacy.approvedAt)!==canonicalDate(d1.completedAt)},
+        cancelledAt:{legacy:String(legacy.cancelledAt||''),d1:String(d1.cancelledAt||''),different:canonicalDate(legacy.cancelledAt)!==canonicalDate(d1.cancelledAt)},
+        sourceMessageId:{legacy:String(legacy.lastMessageId||legacy.emailId||''),d1:String(d1.sourceMessageId||''),different:canonicalText(legacy.lastMessageId||legacy.emailId)!==canonicalText(d1.sourceMessageId)},
+        sourceConversationId:{legacy:String(legacy.conversationId||''),d1:String(d1.sourceConversationId||''),different:canonicalText(legacy.conversationId)!==canonicalText(d1.sourceConversationId)},
+      };
+      const fieldDetails={};
+      Object.entries(comparisons).forEach(([field,comparison])=>{
+        if(!comparison.different)return;
+        fieldChanges[field].push(id);
+        fieldDetails[field]={legacy:comparison.legacy,d1:comparison.d1};
+      });
+      const hasDifference=Object.keys(fieldDetails).length>0;
+      if(hasDifference)differenceDetails.push({
         id,
         task:String(legacy.title||d1.title||'Task'),
-        title:titleDiff?{legacy:String(legacy.title||''),d1:String(d1.title||'')}:null,
-        status:statusDiff?{legacy:String(legacy.status||'Pending'),d1:String(d1.status||'Pending')}:null,
+        fields:fieldDetails,
       });
-      if(titleDiff||statusDiff)changed.push(id);
+      if(hasDifference)changed.push(id);
     }
     const report={
       checkedAt:new Date().toISOString(),enabled:true,
       legacyCount:legacyById.size,d1Count:d1ById.size,
       missingInD1:missingInD1.slice(0,100),extraInD1:extraInD1.slice(0,100),changed:changed.slice(0,100),
-      titleChanged:titleChanged.slice(0,100),statusChanged:statusChanged.slice(0,100),
+      fieldChanges:Object.fromEntries(Object.entries(fieldChanges).map(([field,ids])=>[field,ids.slice(0,100)])),
       differenceDetails:differenceDetails.slice(0,20),
       safeToRender:missingInD1.length===0&&changed.length===0,
     };
     try{localStorage.setItem('dpeg_d1_canary_report',JSON.stringify(report));}catch{}
     console.info('D1 canary comparison',report);
-    const mismatchSummary=`${missingInD1.length} missing · ${titleChanged.length} title · ${statusChanged.length} status · ${extraInD1.length} extra`;
+    const changedFieldSummary=Object.entries(fieldChanges).filter(([,ids])=>ids.length).map(([field,ids])=>`${ids.length} ${field}`).join(' · ');
+    const mismatchSummary=`${missingInD1.length} missing${changedFieldSummary?` · ${changedFieldSummary}`:''} · ${extraInD1.length} extra`;
     setSyncStatus('synced',report.safeToRender?'D1 canary verified · Legacy view':`D1 mismatch (${mismatchSummary}) · Legacy protected`);
     const syncLabel=document.getElementById('sync-label');
     if(syncLabel&&!report.safeToRender){
@@ -599,9 +633,7 @@ async function compareCanaryD1Tasks(legacyTasks){
       syncLabel.style.cursor='pointer';
       syncLabel.onclick=()=>{
         const lines=differenceDetails.map(detail=>{
-          const changes=[];
-          if(detail.title)changes.push(`Title\nLegacy: ${detail.title.legacy}\nD1: ${detail.title.d1}`);
-          if(detail.status)changes.push(`Status\nLegacy: ${detail.status.legacy}\nD1: ${detail.status.d1}`);
+          const changes=Object.entries(detail.fields).map(([field,value])=>`${field}\nLegacy: ${value.legacy||'(empty)'}\nD1: ${value.d1||'(empty)'}`);
           return `${detail.task}\n${changes.join('\n')}`;
         });
         alert(`D1 canary differences\n\n${lines.join('\n\n')}`);

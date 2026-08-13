@@ -735,8 +735,10 @@ async function handleSharedWorkflowRead(request, env) {
   if (!enabled) return json({ success: true, enabled: false, readMode: 'legacy', tasks: [] });
 
   const result = await env.DPEG_ASSIGNMENTS.prepare(
-    `SELECT id, title, summary, department_name, priority, due_date, status,
-            source_type, created_at, updated_at, completed_at, cancelled_at, version
+    `SELECT id, title, summary, task_instruction, proof_instructions,
+            department_name, priority, due_date, status, source_type,
+            source_message_id, source_conversation_id,
+            created_at, updated_at, completed_at, cancelled_at, version
        FROM tasks
       WHERE lower(owner_email) = ?
       ORDER BY updated_at DESC, id DESC`
@@ -749,11 +751,15 @@ async function handleSharedWorkflowRead(request, env) {
       id: String(row.id || ''),
       title: String(row.title || ''),
       summary: String(row.summary || ''),
+      taskInstruction: String(row.task_instruction || ''),
+      proofInstructions: String(row.proof_instructions || ''),
       dept: String(row.department_name || 'Needs Department'),
       priority: String(row.priority || 'Normal'),
       date: row.due_date || '',
       status: String(row.status || 'Pending'),
       sourceType: String(row.source_type || ''),
+      sourceMessageId: String(row.source_message_id || ''),
+      sourceConversationId: String(row.source_conversation_id || ''),
       createdAt: row.created_at || '',
       updatedAt: row.updated_at || '',
       completedAt: row.completed_at || null,
@@ -779,15 +785,19 @@ function normalizedShadowTask(task, ownerEmail, now) {
     ownerEmail,
     title,
     summary: String(task?.summary || task?.description || '').slice(0, 12000),
+    taskInstruction: String(task?.taskInstruction || '').slice(0, 12000),
+    proofInstructions: String(task?.proofInstructions || '').slice(0, 12000),
     departmentName: String(task?.dept || task?.department || 'Needs Department').trim().slice(0, 200) || 'Needs Department',
     priority: String(task?.priority || 'Normal').trim().slice(0, 40) || 'Normal',
-    dueDate: String(task?.deadline || task?.dueDate || '').trim().slice(0, 80) || null,
+    dueDate: String(task?.date || task?.deadline || task?.dueDate || '').trim().slice(0, 80) || null,
     status,
     createdAt,
     updatedAt,
-    completedAt: status === 'Done' ? String(task?.completedAt || task?.approvedAt || updatedAt).slice(0, 80) : null,
-    cancelledAt: status === 'Cancelled' ? String(task?.cancelledAt || updatedAt).slice(0, 80) : null,
+    completedAt: status === 'Done' ? String(task?.completedAt || task?.approvedAt || '').slice(0, 80) || null : null,
+    cancelledAt: status === 'Cancelled' ? String(task?.cancelledAt || '').slice(0, 80) || null : null,
     version: Math.max(1, Number(task?.version || task?.assignmentVersion || 1) || 1),
+    sourceMessageId: String(task?.lastMessageId || task?.emailId || '').slice(0, 1000) || null,
+    sourceConversationId: String(task?.conversationId || '').slice(0, 1000) || null,
   };
 }
 
@@ -832,25 +842,32 @@ async function handleSharedWorkflowSync(request, env) {
 
   const statements = rows.map(row => env.DPEG_ASSIGNMENTS.prepare(
     `INSERT INTO tasks
-       (id, owner_email, title, summary, department_name, priority, due_date,
-        status, source_type, created_at, updated_at, completed_at, cancelled_at, version)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'legacy_onedrive_shadow', ?, ?, ?, ?, ?)
+       (id, owner_email, title, summary, task_instruction, proof_instructions,
+        department_name, priority, due_date, status, source_type,
+        source_message_id, source_conversation_id,
+        created_at, updated_at, completed_at, cancelled_at, version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'legacy_onedrive_shadow', ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        title = excluded.title,
        summary = excluded.summary,
+       task_instruction = excluded.task_instruction,
+       proof_instructions = excluded.proof_instructions,
        department_name = excluded.department_name,
        priority = excluded.priority,
        due_date = excluded.due_date,
        status = excluded.status,
+       source_message_id = excluded.source_message_id,
+       source_conversation_id = excluded.source_conversation_id,
        updated_at = excluded.updated_at,
        completed_at = excluded.completed_at,
        cancelled_at = excluded.cancelled_at,
        version = MAX(tasks.version, excluded.version)
      WHERE lower(tasks.owner_email) = lower(excluded.owner_email)`
   ).bind(
-    row.id, row.ownerEmail, row.title, row.summary, row.departmentName,
-    row.priority, row.dueDate, row.status, row.createdAt, row.updatedAt,
-    row.completedAt, row.cancelledAt, row.version,
+    row.id, row.ownerEmail, row.title, row.summary, row.taskInstruction,
+    row.proofInstructions, row.departmentName, row.priority, row.dueDate,
+    row.status, row.sourceMessageId, row.sourceConversationId,
+    row.createdAt, row.updatedAt, row.completedAt, row.cancelledAt, row.version,
   ));
   const results = statements.length ? await env.DPEG_ASSIGNMENTS.batch(statements) : [];
   const written = results.reduce((sum, result) => sum + Number(result.meta?.changes || 0), 0);
