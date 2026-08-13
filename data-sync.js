@@ -573,7 +573,8 @@ async function compareCanaryD1Tasks(legacyTasks){
     };
     try{localStorage.setItem('dpeg_d1_canary_report',JSON.stringify(report));}catch{}
     console.info('D1 canary comparison',report);
-    setSyncStatus('synced',report.safeToRender?'D1 canary verified · Legacy view':'D1 canary mismatch · Legacy view protected');
+    const mismatchSummary=`${missingInD1.length} missing · ${changed.length} changed · ${extraInD1.length} extra`;
+    setSyncStatus('synced',report.safeToRender?'D1 canary verified · Legacy view':`D1 mismatch (${mismatchSummary}) · Legacy protected`);
     return report;
   }catch(error){
     console.warn('D1 canary comparison skipped:',error.message);
