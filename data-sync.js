@@ -553,8 +553,16 @@ async function compareCanaryD1Tasks(legacyTasks){
     const changed=[];
     for(const [id,legacy] of legacyById){
       const d1=d1ById.get(id);if(!d1)continue;
-      const legacyStatus=String(legacy.status||'Pending').toLowerCase()==='completed'?'done':String(legacy.status||'Pending').toLowerCase();
-      const d1Status=String(d1.status||'Pending').toLowerCase();
+      const canonicalStatus=value=>{
+        const status=String(value||'Pending').trim().toLowerCase();
+        if(status==='assigned'||status==='pending')return 'pending';
+        if(status==='completed')return 'done';
+        if(status==='inprogress')return 'in progress';
+        if(status==='canceled')return 'cancelled';
+        return status;
+      };
+      const legacyStatus=canonicalStatus(legacy.status);
+      const d1Status=canonicalStatus(d1.status);
       if(String(legacy.title||'')!==String(d1.title||'')||legacyStatus!==d1Status)changed.push(id);
     }
     const report={
