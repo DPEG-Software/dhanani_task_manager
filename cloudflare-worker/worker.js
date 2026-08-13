@@ -737,16 +737,10 @@ async function handleSharedWorkflowRead(request, env) {
   if (!enabled) return json({ success: true, enabled: false, readMode: 'legacy', tasks: [] });
 
   const result = await env.DPEG_ASSIGNMENTS.prepare(
-    `SELECT id, title, summary, task_instruction, proof_instructions,
-            department_name, priority, due_date, status, source_type,
-            source_message_id, source_conversation_id,
-            created_at, updated_at, completed_at, cancelled_at, version,
-            legacy_payload
-       FROM tasks
-      WHERE lower(owner_email) = ?
-        AND source_type = 'legacy_onedrive_shadow'
-        AND legacy_present = 1
-      ORDER BY updated_at DESC, id DESC`
+    `SELECT app_task_id, legacy_payload, updated_at
+       FROM user_task_views
+      WHERE lower(user_email) = ? AND present = 1
+      ORDER BY updated_at DESC, app_task_id DESC`
   ).bind(email).all();
   return json({
     success: true,
@@ -759,24 +753,10 @@ async function handleSharedWorkflowRead(request, env) {
       catch { legacy = {}; }
       return {
         ...(legacy && typeof legacy === 'object' && !Array.isArray(legacy) ? legacy : {}),
-        id: Object.prototype.hasOwnProperty.call(legacy, 'id') ? legacy.id : String(row.id || ''),
-        title: String(row.title || ''),
-        summary: String(row.summary || ''),
-        taskInstruction: String(row.task_instruction || ''),
-        proofInstructions: String(row.proof_instructions || ''),
-        dept: String(row.department_name || 'Needs Department'),
-        priority: String(row.priority || 'Normal'),
-        date: row.due_date || '',
-        deadline: Object.prototype.hasOwnProperty.call(legacy, 'deadline') ? (legacy.deadline || '') : (row.due_date || ''),
-        status: String(row.status || 'Pending'),
-        sourceType: String(row.source_type || ''),
-        sourceMessageId: String(row.source_message_id || ''),
-        sourceConversationId: String(row.source_conversation_id || ''),
-        createdAt: row.created_at || '',
-        updatedAt: row.updated_at || '',
-        completedAt: row.completed_at || null,
-        cancelledAt: row.cancelled_at || null,
-        version: Number(row.version || 1),
+        id: Object.prototype.hasOwnProperty.call(legacy, 'id') ? legacy.id : String(row.app_task_id || ''),
+        sourceMessageId: String(legacy.lastMessageId || legacy.emailId || ''),
+        sourceConversationId: String(legacy.conversationId || ''),
+        updatedAt: legacy.updatedAt || row.updated_at || '',
       };
     }),
   });
@@ -843,10 +823,17 @@ async function handleSharedWorkflowSync(request, env) {
   const ownedIds = new Set((ownedAssignments.results || []).map(row => String(row.app_task_id || '')));
   const now = new Date().toISOString();
   const rows = [];
+  const viewRows = [];
   let skipped = 0;
 
   for (const task of incoming) {
     const taskId = String(task?.id || '').trim();
+    if (taskId) {
+      let payload = '{}';
+      try { payload = JSON.stringify(task).slice(0, 250000); }
+      catch { payload = '{}'; }
+      viewRows.push({ taskId: taskId.slice(0, 200), payload });
+    }
     const declaredOwner = extractEmailAddress(task?.assignedByEmail || task?.assignerEmail || '');
     // Explicit ownership by somebody else always wins. Legacy/manual tasks
     // without an assigner are personal to the signed-in OneDrive owner.
@@ -893,7 +880,17 @@ async function handleSharedWorkflowSync(request, env) {
     row.legacyPayload,
   ));
   const results = statements.length ? await env.DPEG_ASSIGNMENTS.batch(statements) : [];
-  const written = results.reduce((sum, result) => sum + Number(result.meta?.changes || 0), 0);
+  const viewStatements = viewRows.map(row => env.DPEG_ASSIGNMENTS.prepare(
+    `INSERT INTO user_task_views
+       (user_email, app_task_id, legacy_payload, present, updated_at)
+     VALUES (?, ?, ?, 1, ?)
+     ON CONFLICT(user_email, app_task_id) DO UPDATE SET
+       legacy_payload = excluded.legacy_payload,
+       present = 1,
+       updated_at = excluded.updated_at`
+  ).bind(ownerEmail, row.taskId, row.payload, now));
+  const viewResults = viewStatements.length ? await env.DPEG_ASSIGNMENTS.batch(viewStatements) : [];
+  const written = [...results, ...viewResults].reduce((sum, result) => sum + Number(result.meta?.changes || 0), 0);
   let hidden = 0;
   if (finalizeIds) {
     const placeholders = finalizeIds.map(() => '?').join(',');
@@ -904,7 +901,13 @@ async function handleSharedWorkflowSync(request, env) {
       : `UPDATE tasks SET legacy_present = 0
            WHERE lower(owner_email) = ? AND source_type = 'legacy_onedrive_shadow'`;
     const finalized = await env.DPEG_ASSIGNMENTS.prepare(sql).bind(ownerEmail, ...finalizeIds).run();
-    hidden = Number(finalized.meta?.changes || 0);
+    const viewSql = finalizeIds.length
+      ? `UPDATE user_task_views SET present = 0, updated_at = ?
+           WHERE lower(user_email) = ? AND app_task_id NOT IN (${placeholders})`
+      : `UPDATE user_task_views SET present = 0, updated_at = ?
+           WHERE lower(user_email) = ?`;
+    const finalizedViews = await env.DPEG_ASSIGNMENTS.prepare(viewSql).bind(now, ownerEmail, ...finalizeIds).run();
+    hidden = Number(finalized.meta?.changes || 0) + Number(finalizedViews.meta?.changes || 0);
   }
   return json({ success: true, enabled: true, received: incoming.length, written, skipped, hidden });
 }

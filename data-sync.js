@@ -752,17 +752,14 @@ async function shadowSyncTasksToD1(sourceTasks){
   if(!base||!currentUser?.email)return {enabled:false,written:0};
   // Only the OneDrive owner/assigner may shadow a task. Recipient copies are
   // deliberately excluded so they cannot overwrite the assigner's row.
-  const mine=(Array.isArray(sourceTasks)?sourceTasks:[]).filter(task=>{
-    const owner=normEmail(task?.assignedByEmail||task?.assignerEmail||'');
-    return !owner||owner===normEmail(currentUser.email);
-  });
+  const allTasks=Array.isArray(sourceTasks)?sourceTasks:[];
   let written=0,enabled=false;
   try{
     const token=await getAccessToken();
-    for(let offset=0;offset<mine.length;offset+=100){
+    for(let offset=0;offset<allTasks.length;offset+=100){
       const res=await fetch(`${base}/shared-workflow-sync`,{
         method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-        body:JSON.stringify({tasks:mine.slice(offset,offset+100)}),
+        body:JSON.stringify({tasks:allTasks.slice(offset,offset+100)}),
       });
       if(!res.ok)throw new Error(`Shadow sync failed (${res.status})`);
       const result=await res.json().catch(()=>({}));
@@ -772,7 +769,7 @@ async function shadowSyncTasksToD1(sourceTasks){
     }
     const finalRes=await fetch(`${base}/shared-workflow-sync`,{
       method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({tasks:[],finalizeIds:mine.map(task=>String(task.id||'')).filter(Boolean)}),
+      body:JSON.stringify({tasks:[],finalizeIds:allTasks.map(task=>String(task.id||'')).filter(Boolean)}),
     });
     if(!finalRes.ok)throw new Error(`Shadow finalize failed (${finalRes.status})`);
     const finalResult=await finalRes.json().catch(()=>({}));
