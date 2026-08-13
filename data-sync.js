@@ -550,7 +550,7 @@ async function compareCanaryD1Tasks(legacyTasks){
     const d1ById=new Map((Array.isArray(result.tasks)?result.tasks:[]).map(task=>[String(task.id||''),task]));
     const missingInD1=[...legacyById.keys()].filter(id=>id&&!d1ById.has(id));
     const extraInD1=[...d1ById.keys()].filter(id=>id&&!legacyById.has(id));
-    const changed=[];
+    const changed=[],titleChanged=[],statusChanged=[];
     for(const [id,legacy] of legacyById){
       const d1=d1ById.get(id);if(!d1)continue;
       const canonicalStatus=value=>{
@@ -563,17 +563,22 @@ async function compareCanaryD1Tasks(legacyTasks){
       };
       const legacyStatus=canonicalStatus(legacy.status);
       const d1Status=canonicalStatus(d1.status);
-      if(String(legacy.title||'')!==String(d1.title||'')||legacyStatus!==d1Status)changed.push(id);
+      const titleDiff=String(legacy.title||'')!==String(d1.title||'');
+      const statusDiff=legacyStatus!==d1Status;
+      if(titleDiff)titleChanged.push(id);
+      if(statusDiff)statusChanged.push(id);
+      if(titleDiff||statusDiff)changed.push(id);
     }
     const report={
       checkedAt:new Date().toISOString(),enabled:true,
       legacyCount:legacyById.size,d1Count:d1ById.size,
       missingInD1:missingInD1.slice(0,100),extraInD1:extraInD1.slice(0,100),changed:changed.slice(0,100),
+      titleChanged:titleChanged.slice(0,100),statusChanged:statusChanged.slice(0,100),
       safeToRender:missingInD1.length===0&&changed.length===0,
     };
     try{localStorage.setItem('dpeg_d1_canary_report',JSON.stringify(report));}catch{}
     console.info('D1 canary comparison',report);
-    const mismatchSummary=`${missingInD1.length} missing · ${changed.length} changed · ${extraInD1.length} extra`;
+    const mismatchSummary=`${missingInD1.length} missing · ${titleChanged.length} title · ${statusChanged.length} status · ${extraInD1.length} extra`;
     setSyncStatus('synced',report.safeToRender?'D1 canary verified · Legacy view':`D1 mismatch (${mismatchSummary}) · Legacy protected`);
     return report;
   }catch(error){
