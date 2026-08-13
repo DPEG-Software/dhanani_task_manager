@@ -729,8 +729,10 @@ async function handleSharedWorkflowRead(request, env) {
 
   const readMode = await sharedStorageFlag(env, 'shared_storage_read_mode', 'legacy');
   const canaryValue = await sharedStorageFlag(env, 'shared_storage_read_canary_users', '');
+  const visibleValue = await sharedStorageFlag(env, 'shared_storage_visible_read_users', '');
   const email = userEmailFromClaims(claims);
   const canaryUsers = new Set(canaryValue.split(',').map(extractEmailAddress).filter(Boolean));
+  const visibleUsers = new Set(visibleValue.split(',').map(extractEmailAddress).filter(Boolean));
   const enabled = readMode === 'canary' && canaryUsers.has(email);
   if (!enabled) return json({ success: true, enabled: false, readMode: 'legacy', tasks: [] });
 
@@ -738,34 +740,45 @@ async function handleSharedWorkflowRead(request, env) {
     `SELECT id, title, summary, task_instruction, proof_instructions,
             department_name, priority, due_date, status, source_type,
             source_message_id, source_conversation_id,
-            created_at, updated_at, completed_at, cancelled_at, version
+            created_at, updated_at, completed_at, cancelled_at, version,
+            legacy_payload
        FROM tasks
       WHERE lower(owner_email) = ?
+        AND source_type = 'legacy_onedrive_shadow'
+        AND legacy_present = 1
       ORDER BY updated_at DESC, id DESC`
   ).bind(email).all();
   return json({
     success: true,
     enabled: true,
     readMode: 'canary',
-    tasks: (result.results || []).map(row => ({
-      id: String(row.id || ''),
-      title: String(row.title || ''),
-      summary: String(row.summary || ''),
-      taskInstruction: String(row.task_instruction || ''),
-      proofInstructions: String(row.proof_instructions || ''),
-      dept: String(row.department_name || 'Needs Department'),
-      priority: String(row.priority || 'Normal'),
-      date: row.due_date || '',
-      status: String(row.status || 'Pending'),
-      sourceType: String(row.source_type || ''),
-      sourceMessageId: String(row.source_message_id || ''),
-      sourceConversationId: String(row.source_conversation_id || ''),
-      createdAt: row.created_at || '',
-      updatedAt: row.updated_at || '',
-      completedAt: row.completed_at || null,
-      cancelledAt: row.cancelled_at || null,
-      version: Number(row.version || 1),
-    })),
+    visibleRead: visibleUsers.has(email),
+    tasks: (result.results || []).map(row => {
+      let legacy = {};
+      try { legacy = JSON.parse(String(row.legacy_payload || '{}')); }
+      catch { legacy = {}; }
+      return {
+        ...(legacy && typeof legacy === 'object' && !Array.isArray(legacy) ? legacy : {}),
+        id: Object.prototype.hasOwnProperty.call(legacy, 'id') ? legacy.id : String(row.id || ''),
+        title: String(row.title || ''),
+        summary: String(row.summary || ''),
+        taskInstruction: String(row.task_instruction || ''),
+        proofInstructions: String(row.proof_instructions || ''),
+        dept: String(row.department_name || 'Needs Department'),
+        priority: String(row.priority || 'Normal'),
+        date: row.due_date || '',
+        deadline: Object.prototype.hasOwnProperty.call(legacy, 'deadline') ? (legacy.deadline || '') : (row.due_date || ''),
+        status: String(row.status || 'Pending'),
+        sourceType: String(row.source_type || ''),
+        sourceMessageId: String(row.source_message_id || ''),
+        sourceConversationId: String(row.source_conversation_id || ''),
+        createdAt: row.created_at || '',
+        updatedAt: row.updated_at || '',
+        completedAt: row.completed_at || null,
+        cancelledAt: row.cancelled_at || null,
+        version: Number(row.version || 1),
+      };
+    }),
   });
 }
 
@@ -789,7 +802,9 @@ function normalizedShadowTask(task, ownerEmail, now) {
     proofInstructions: String(task?.proofInstructions || '').slice(0, 12000),
     departmentName: String(task?.dept || task?.department || 'Needs Department').trim().slice(0, 200) || 'Needs Department',
     priority: String(task?.priority || 'Normal').trim().slice(0, 40) || 'Normal',
-    dueDate: String(task?.date || task?.deadline || task?.dueDate || '').trim().slice(0, 80) || null,
+    dueDate: String(Object.prototype.hasOwnProperty.call(task || {}, 'deadline')
+      ? (task?.deadline || '')
+      : (task?.date || task?.dueDate || '')).trim().slice(0, 80) || null,
     status,
     createdAt,
     updatedAt,
@@ -798,6 +813,7 @@ function normalizedShadowTask(task, ownerEmail, now) {
     version: Math.max(1, Number(task?.version || task?.assignmentVersion || 1) || 1),
     sourceMessageId: String(task?.lastMessageId || task?.emailId || '').slice(0, 1000) || null,
     sourceConversationId: String(task?.conversationId || '').slice(0, 1000) || null,
+    legacyPayload: JSON.stringify(task).slice(0, 250000),
   };
 }
 
@@ -817,6 +833,9 @@ async function handleSharedWorkflowSync(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
   const incoming = Array.isArray(body.tasks) ? body.tasks.slice(0, 100) : [];
+  const finalizeIds = Array.isArray(body.finalizeIds)
+    ? body.finalizeIds.map(id => String(id || '').trim().slice(0, 200)).filter(Boolean).slice(0, 1000)
+    : null;
   const ownerEmail = userEmailFromClaims(claims);
   const ownedAssignments = await env.DPEG_ASSIGNMENTS.prepare(
     'SELECT DISTINCT app_task_id FROM assignments WHERE lower(assigner_email) = ?'
@@ -845,8 +864,9 @@ async function handleSharedWorkflowSync(request, env) {
        (id, owner_email, title, summary, task_instruction, proof_instructions,
         department_name, priority, due_date, status, source_type,
         source_message_id, source_conversation_id,
-        created_at, updated_at, completed_at, cancelled_at, version)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'legacy_onedrive_shadow', ?, ?, ?, ?, ?, ?, ?)
+        created_at, updated_at, completed_at, cancelled_at, version,
+        legacy_payload, legacy_present)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'legacy_onedrive_shadow', ?, ?, ?, ?, ?, ?, ?, ?, 1)
      ON CONFLICT(id) DO UPDATE SET
        title = excluded.title,
        summary = excluded.summary,
@@ -858,6 +878,8 @@ async function handleSharedWorkflowSync(request, env) {
        status = excluded.status,
        source_message_id = excluded.source_message_id,
        source_conversation_id = excluded.source_conversation_id,
+       legacy_payload = excluded.legacy_payload,
+       legacy_present = 1,
        updated_at = excluded.updated_at,
        completed_at = excluded.completed_at,
        cancelled_at = excluded.cancelled_at,
@@ -868,10 +890,23 @@ async function handleSharedWorkflowSync(request, env) {
     row.proofInstructions, row.departmentName, row.priority, row.dueDate,
     row.status, row.sourceMessageId, row.sourceConversationId,
     row.createdAt, row.updatedAt, row.completedAt, row.cancelledAt, row.version,
+    row.legacyPayload,
   ));
   const results = statements.length ? await env.DPEG_ASSIGNMENTS.batch(statements) : [];
   const written = results.reduce((sum, result) => sum + Number(result.meta?.changes || 0), 0);
-  return json({ success: true, enabled: true, received: incoming.length, written, skipped });
+  let hidden = 0;
+  if (finalizeIds) {
+    const placeholders = finalizeIds.map(() => '?').join(',');
+    const sql = finalizeIds.length
+      ? `UPDATE tasks SET legacy_present = 0
+           WHERE lower(owner_email) = ? AND source_type = 'legacy_onedrive_shadow'
+             AND id NOT IN (${placeholders})`
+      : `UPDATE tasks SET legacy_present = 0
+           WHERE lower(owner_email) = ? AND source_type = 'legacy_onedrive_shadow'`;
+    const finalized = await env.DPEG_ASSIGNMENTS.prepare(sql).bind(ownerEmail, ...finalizeIds).run();
+    hidden = Number(finalized.meta?.changes || 0);
+  }
+  return json({ success: true, enabled: true, received: incoming.length, written, skipped, hidden });
 }
 
 // A short presence lock prevents two people from editing the same task form

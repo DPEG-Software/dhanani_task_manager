@@ -594,7 +594,7 @@ async function compareCanaryD1Tasks(legacyTasks){
         proofInstructions:{legacy:String(legacy.proofInstructions||''),d1:String(d1.proofInstructions||''),different:canonicalText(legacy.proofInstructions)!==canonicalText(d1.proofInstructions)},
         department:{legacy:String(legacy.dept||legacy.department||'Needs Department'),d1:String(d1.dept||'Needs Department'),different:canonicalLower(legacy.dept||legacy.department||'Needs Department')!==canonicalLower(d1.dept||'Needs Department')},
         priority:{legacy:String(legacy.priority||'Normal'),d1:String(d1.priority||'Normal'),different:canonicalLower(legacy.priority||'Normal')!==canonicalLower(d1.priority||'Normal')},
-        dueDate:{legacy:String(legacy.date||legacy.deadline||legacy.dueDate||''),d1:String(d1.date||''),different:canonicalDate(legacy.date||legacy.deadline||legacy.dueDate)!==canonicalDate(d1.date)},
+        dueDate:{legacy:String(Object.prototype.hasOwnProperty.call(legacy,'deadline')?(legacy.deadline||''):(legacy.date||legacy.dueDate||'')),d1:String(d1.date||''),different:canonicalDate(Object.prototype.hasOwnProperty.call(legacy,'deadline')?(legacy.deadline||''):(legacy.date||legacy.dueDate||''))!==canonicalDate(d1.date)},
         completedAt:{legacy:String(legacy.completedAt||legacy.approvedAt||''),d1:String(d1.completedAt||''),different:canonicalDate(legacy.completedAt||legacy.approvedAt)!==canonicalDate(d1.completedAt)},
         cancelledAt:{legacy:String(legacy.cancelledAt||''),d1:String(d1.cancelledAt||''),different:canonicalDate(legacy.cancelledAt)!==canonicalDate(d1.cancelledAt)},
         sourceMessageId:{legacy:String(legacy.lastMessageId||legacy.emailId||''),d1:String(d1.sourceMessageId||''),different:canonicalText(legacy.lastMessageId||legacy.emailId)!==canonicalText(d1.sourceMessageId)},
@@ -627,6 +627,11 @@ async function compareCanaryD1Tasks(legacyTasks){
     const changedFieldSummary=Object.entries(fieldChanges).filter(([,ids])=>ids.length).map(([field,ids])=>`${ids.length} ${field}`).join(' · ');
     const mismatchSummary=`${missingInD1.length} missing${changedFieldSummary?` · ${changedFieldSummary}`:''} · ${extraInD1.length} extra`;
     setSyncStatus('synced',report.safeToRender?'D1 canary verified · Legacy view':`D1 mismatch (${mismatchSummary}) · Legacy protected`);
+    if(result.visibleRead&&report.safeToRender){
+      tasks=Array.isArray(result.tasks)?result.tasks:tasks;
+      sharedDataActive=true;
+      setSyncStatus('synced','D1 controlled view');
+    }
     const syncLabel=document.getElementById('sync-label');
     if(syncLabel&&!report.safeToRender){
       syncLabel.title='Click to view the protected D1 comparison details';
@@ -765,6 +770,13 @@ async function shadowSyncTasksToD1(sourceTasks){
       written+=Number(result.written||0);
       if(!enabled)break;
     }
+    const finalRes=await fetch(`${base}/shared-workflow-sync`,{
+      method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({tasks:[],finalizeIds:mine.map(task=>String(task.id||'')).filter(Boolean)}),
+    });
+    if(!finalRes.ok)throw new Error(`Shadow finalize failed (${finalRes.status})`);
+    const finalResult=await finalRes.json().catch(()=>({}));
+    enabled=!!finalResult.enabled;
   }catch(error){
     // OneDrive has already saved successfully. Shadow-sync failures are
     // observable but must never roll back or disguise that primary save.
