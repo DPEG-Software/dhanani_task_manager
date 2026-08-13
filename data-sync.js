@@ -500,6 +500,7 @@ function closeProofUploadScreen(){
 }
 
 async function loadTasksFromOneDrive() {
+  d1ControlledViewActive=false;
   if(window.DPEG_STAGING_MODE){
     tasks=[];archives=[];staffConfig={};customDepartments=[];customNotes=[];notifications=[];
     sharedDataActive=false;
@@ -630,6 +631,7 @@ async function compareCanaryD1Tasks(legacyTasks){
     if(result.visibleRead&&report.safeToRender){
       tasks=Array.isArray(result.tasks)?result.tasks:tasks;
       sharedDataActive=true;
+      d1ControlledViewActive=true;
       setSyncStatus('synced','D1 controlled view');
     }
     const syncLabel=document.getElementById('sync-label');
@@ -737,8 +739,9 @@ async function saveTasksToOneDrive() {
     }
     if (!res.ok) throw new Error(`OneDrive save failed (${res.status})`);
     sharedDataActive=false;
-    setSyncStatus("synced","Saved to OneDrive");
+    setSyncStatus("synced",d1ControlledViewActive?'D1 controlled view':'Saved to OneDrive');
     await shadowSyncTasksToD1(tasks);
+    if(d1ControlledViewActive)setSyncStatus('synced','D1 controlled view');
     return true;
   } catch (err) {
     setSyncStatus("error", "OneDrive unavailable • tasks still online");

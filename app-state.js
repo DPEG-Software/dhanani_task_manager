@@ -50,6 +50,11 @@ let customDepartments = [];
 let sharedDepartmentsVersion = null;
 let customNotes = [];
 let sharedDataActive = false;
+// Read-source state is separate from the legacy safety-copy destination.
+// During the controlled rollout the UI reads D1 while still backing up to
+// OneDrive, so a successful backup must not make the status claim we switched
+// back to the legacy view.
+let d1ControlledViewActive = false;
 let sharedDataVersion = null;
 let selectedTaskIds = new Set();
 let ntAssignees = [];
