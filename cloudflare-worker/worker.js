@@ -754,6 +754,9 @@ async function handleSharedWorkflowRead(request, env) {
       return {
         ...(legacy && typeof legacy === 'object' && !Array.isArray(legacy) ? legacy : {}),
         id: Object.prototype.hasOwnProperty.call(legacy, 'id') ? legacy.id : String(row.app_task_id || ''),
+        canonicalDueDate: Object.prototype.hasOwnProperty.call(legacy, 'deadline')
+          ? (legacy.deadline || '')
+          : (legacy.date || legacy.dueDate || ''),
         sourceMessageId: String(legacy.lastMessageId || legacy.emailId || ''),
         sourceConversationId: String(legacy.conversationId || ''),
         updatedAt: legacy.updatedAt || row.updated_at || '',
