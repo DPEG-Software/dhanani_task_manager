@@ -395,6 +395,15 @@
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="2" stroke-linecap="round"/></svg>
             <span>Drafts</span>
           </div>
+          <div id="ol-folder-archive" class="ol-folder" onclick="loadFolder('archive')" title="Archive">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M4 7h16v13H4V7zm-1-4h18v4H3V3zm6 8h6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Archive</span>
+          </div>
+          <div class="ol-mailbox-folders-head">
+            <span>My folders</span>
+            <button type="button" onclick="event.stopPropagation();createOutlookFolder()" title="Create an Outlook folder">+ Folder</button>
+          </div>
+          <div id="ol-custom-folders"><div class="ol-folder-loading">Loading folders…</div></div>
           <div style="height:1px;background:#e5e7eb;margin:5px 2px"></div>
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#9ca3af;padding:5px 6px 3px">Smart Views</div>
           <div id="ol-folder-flagged" class="ol-folder" onclick="loadFolder('flagged')" title="Flagged Items">
@@ -842,6 +851,10 @@
     <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     New Meeting
   </div>
+  <div class="ctx-item" onclick="ctxMoveEmail()">
+    <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" stroke-width="2" stroke-linejoin="round"/><path d="M12 14h6m-2-2l2 2-2 2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Move to Folder
+  </div>
   <div class="ctx-sep"></div>
   <div class="ctx-item ctx-item--danger" onclick="ctxDelete()">
     <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1037,6 +1050,7 @@
 <script src="navigation.js"></script>
 <script src="outlook-shell.js"></script>
 <script src="outlook-mail.js"></script>
+<script src="outlook-folders.js"></script>
 <script src="outlook-calendar.js"></script>
 <script src="notifications.js"></script>
 <script src="dashboard.js"></script>

@@ -23,7 +23,7 @@ function nav(name,mode){
   if(name==="archive")renderArc();
   if(name==="dashboard"){syncPulse();renderCharts();renderActivity();}
   if(name==="summary")renderSum();
-  if(name==="outlook"){initOlPanels();fetchOutlookContacts();loadFolder("inbox");}
+  if(name==="outlook"){initOlPanels();fetchOutlookContacts();loadOutlookFolders();loadFolder("inbox");}
   if(name==="notifications"){renderNotifications();}
   // Prevent outer body scrollbar while Outlook fills the full viewport
   const mainEl=document.querySelector('.main');

@@ -32,8 +32,9 @@ if(!['all','unread','flagged'].includes(olListFilter))olListFilter='all';
 let deletedFolderID = null;
 let pinnedEmailIds = new Set(JSON.parse(localStorage.getItem('dpeg_pinned_email_ids')||'[]'));
 
-const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts',deleted:'deleteditems',deleteditems:'deleteditems'};
-const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',flagged:'Flagged Items',untracked:'Untracked Emails',deleted:'Deleted Items',deleteditems:'Deleted Items',calendar:'Calendar'};
+const FOLDER_MAP = {inbox:'inbox',sent:'sentitems',drafts:'drafts',archive:'archive',deleted:'deleteditems',deleteditems:'deleteditems'};
+const FOLDER_LABELS = {inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',archive:'Archive',flagged:'Flagged Items',untracked:'Untracked Emails',deleted:'Deleted Items',deleteditems:'Deleted Items',calendar:'Calendar'};
+function outlookFolderCanBeUnread(folder){return !['sent','drafts','deleted','deleteditems'].includes(String(folder||''));}
 
 function buildTrackedSet(){
   trackedEmailIds = new Set(tasks.flatMap(t=>[t.emailId,t.lastMessageId,t.conversationId]).filter(Boolean));
@@ -357,6 +358,9 @@ async function readConversationOrEmail(emailId,folder,el){
   if(_activeEmailEl){_activeEmailEl.classList.remove('active');}
   if(el){el.classList.add('active');_activeEmailEl=el;}
   currentEmailId=emailId;
+  window._activeOutlookConversationMessageIds=typeof parseOutlookMessageIds==='function'
+    ?parseOutlookMessageIds(el?.dataset?.messageIds,emailId)
+    :[emailId];
   if(!emailCache[emailId]){
     const folderEmail=(outlookFolderEmails[folder]||[]).find(e=>e.id===emailId);
     if(folderEmail)emailCache[emailId]=folderEmail;
@@ -385,13 +389,15 @@ function renderEmailRows(folder,emails){
     const e=g.latest;
     const threadCount=g.messages.length;
     const isTracked=g.messages.some(m=>trackedEmailIds.has(m.id)||trackedEmailIds.has(m.conversationId));
-    const isUnread=folder==='inbox'&&g.messages.some(m=>!m.isRead);
+    const isUnread=outlookFolderCanBeUnread(folder)&&g.messages.some(m=>!m.isRead);
     const isHigh=String(e.importance||'normal').toLowerCase()==='high';
     const isFlagged=g.messages.some(m=>outlookFlagStatus(m)==='flagged');
     const isPinned=g.messages.some(isEmailPinned);
     const hasAtt=g.messages.some(m=>!!m.hasAttachments);
     const safeId=escapeHtml(e.id||'');
     const safeFolder=escapeHtml(folder||'inbox');
+    const safeMessageIds=escapeHtml(encodeURIComponent(JSON.stringify(g.messages.map(message=>message.id).filter(Boolean))));
+    const canDrag=!['flagged','untracked','search'].includes(String(folder||''));
     // Sender
     const sender=folder==='sent'
       ?(e.toRecipients?.[0]?.emailAddress?.name||e.toRecipients?.[0]?.emailAddress?.address||'Unknown')
@@ -411,7 +417,7 @@ function renderEmailRows(folder,emails){
     const sumBtn=listAISummaryButtonHTML(safeFolder);
     const hoverActions=outlookHoverActionsHTML(e);
     const threadBadge=threadCount>1?`<span class="ol-thread-count">${threadCount}</span>`:'';
-    return `${groupHeader}<div class="ol-email-item${isUnread?' unread':''}${isFlagged?' flagged':''}${isPinned?' pinned':''}" id="email-item-${safeId}" data-email-id="${safeId}" onclick="readConversationOrEmail(this.dataset.emailId,'${safeFolder}',this)" oncontextmenu="showEmailCtxMenu(event,'${safeId}','${safeFolder}')">
+    return `${groupHeader}<div class="ol-email-item${isUnread?' unread':''}${isFlagged?' flagged':''}${isPinned?' pinned':''}" id="email-item-${safeId}" data-email-id="${safeId}" data-email-folder="${safeFolder}" data-message-ids="${safeMessageIds}" draggable="${canDrag?'true':'false'}"${canDrag?` ondragstart="startOutlookEmailDrag(event,this.dataset.emailId,this.dataset.emailFolder,this.dataset.messageIds)" ondragend="endOutlookEmailDrag(event)"`:''} onclick="readConversationOrEmail(this.dataset.emailId,'${safeFolder}',this)" oncontextmenu="showEmailCtxMenu(event,'${safeId}','${safeFolder}')">
       <div class="ol-email-top">
         <span class="ol-email-sender">${escapeHtml(sender)}</span>
         <span style="display:flex;align-items:center;gap:3px;flex-shrink:0">${threadBadge}${trackedBadge}${highBadge}${attIcon}${sumBtn}${hoverActions}<span class="ol-email-date">${dateStr}</span></span>
@@ -439,10 +445,10 @@ async function loadFolder(folder){
   _activeEmailEl=null;
   buildTrackedSet();
   const titleEl=document.getElementById('ol-folder-title');
-  if(titleEl)titleEl.textContent=FOLDER_LABELS[folder]||folder;
+  if(titleEl)titleEl.textContent=typeof outlookFolderLabel==='function'?outlookFolderLabel(folder):(FOLDER_LABELS[folder]||folder);
   if(!olMidExpanded){olMidExpanded=true;const mp=document.getElementById('ol-mid-panel');if(mp)mp.style.width='300px';updateOlDividerIcons();}
   document.querySelectorAll('.ol-folder').forEach(f=>f.classList.remove('active'));
-  const af=document.getElementById('ol-folder-'+folder);
+  const af=document.getElementById('ol-folder-'+folder)||document.querySelector(`.ol-folder[data-folder-key="${typeof CSS!=='undefined'&&CSS.escape?CSS.escape(folder):folder}"]`);
   if(af)af.classList.add('active');
   const readerEl=document.getElementById('ol-email-reader');
   if(readerEl)readerEl.innerHTML=`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:40px"><svg width="48" height="48" fill="none" stroke="#d1d5db" viewBox="0 0 24 24" style="margin-bottom:14px"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.5" stroke-linecap="round"/></svg><div style="font-size:14px;font-weight:600;color:var(--body);margin-bottom:4px">Select an email</div><div style="font-size:12px;color:var(--muted)">Click any email to read it here</div></div>`;
@@ -454,9 +460,11 @@ async function loadFolder(folder){
   try{
     const token=await getAccessToken();
     const orderField=folder==='sent'?'sentDateTime':'receivedDateTime';
+    const graphFolderId=typeof resolveOutlookFolderId==='function'?resolveOutlookFolderId(folder):FOLDER_MAP[folder];
+    if(!graphFolderId)throw new Error('Folder is unavailable');
     const [res,totalRes]=await Promise.all([
-      fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag&$orderby=${orderField} desc`,{headers:{Authorization:`Bearer ${token}`}}),
-      fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${FOLDER_MAP[folder]}?$select=totalItemCount,unreadItemCount`,{headers:{Authorization:`Bearer ${token}`}}).catch(()=>null)
+      fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${encodeURIComponent(graphFolderId)}/messages?$top=100&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,isRead,conversationId,importance,hasAttachments,flag&$orderby=${orderField} desc`,{headers:{Authorization:`Bearer ${token}`}}),
+      fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/${encodeURIComponent(graphFolderId)}?$select=totalItemCount,unreadItemCount`,{headers:{Authorization:`Bearer ${token}`}}).catch(()=>null)
     ]);
     if(!res.ok)throw new Error('Failed');
     const data=await res.json();
@@ -488,7 +496,7 @@ async function loadFolder(folder){
       const now=new Date();
       const isToday=dt.toDateString()===now.toDateString();
       const dateStr=isToday?dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
-      const isUnread=!e.isRead&&folder==='inbox';
+      const isUnread=!e.isRead&&outlookFolderCanBeUnread(folder);
       return `<div class="ol-email-item${isUnread?' unread':''}" id="email-item-${e.id}" data-email-id="${e.id}" onclick="readEmail('${e.id}','${folder}',this)">
         <div class="ol-email-top">
           <div class="ol-email-sender">${sender}</div>
@@ -1021,7 +1029,7 @@ async function viewFullThread(emailId){
     messages.forEach(m=>{if(m?.id)emailCache[m.id]=m;});
     refreshTaskFromThreadMessages(messages,email.subject||'(no subject)').catch(()=>{});
     // Mark unread messages as read
-    if(currentFolder==='inbox'){
+    if(outlookFolderCanBeUnread(currentFolder)){
       const unread=messages.filter(m=>!m.isRead);
       let markedCount=0;
       for(const m of unread){
@@ -1050,6 +1058,7 @@ async function viewFullThread(emailId){
       pBtn('Forward All','<path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','forwardFullThread(\''+emailId+'\')'),
       pBtn('New Meeting','<path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','openNewMeetingFromEmail(\''+emailId+'\')'),
       pBtn('Mark Unread','<path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','markEmailUnread(\''+latestId+'\')'),
+      pBtn('Move','<path d="M3 7h7l2 2h9v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 14h6m-2-2l2 2-2 2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','openMoveEmailMenu(\''+latestId+'\')'),
       email.webLink?pBtn('Outlook','<path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>','openEmailInOutlook(\''+latestId+'\')',''):'',
       '<button onclick="toggleEmailAISummary(\''+latestId+'\')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e9d5ff;background:#fff;color:#7c3aed;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background=\'#f5f3ff\'" onmouseout="this.style.background=\'#fff\'"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarize</button>',
       isTracked
@@ -1425,6 +1434,7 @@ async function readEmail(emailId,folder,el){
       ${pBtn('Forward','<path d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`forwardEmail('${emailId}')`)}
       ${pBtn('New Meeting','<path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`openNewMeetingFromEmail('${emailId}')`)}
       ${pBtn('Mark Unread','<path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`markEmailUnread('${emailId}')`)}
+      ${pBtn('Move','<path d="M3 7h7l2 2h9v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 14h6m-2-2l2 2-2 2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',`openMoveEmailMenu('${emailId}')`)}
       <button onclick="toggleEmailAISummary('${emailId}')" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #e9d5ff;background:#fff;color:#7c3aed;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='#fff'"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l2.7 8.3H23l-7 5.1 2.7 8.3L12 18l-7.7 4.7 2.7-8.3-7-5.1h8.3z"/></svg>Summarize</button>
       ${isTracked
         ?`<span style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:4px;border:1px solid #bbf7d0;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500">✓ In Tasks</span><button onclick="removeTaskByEmail('${emailId}')" style="display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:4px;border:1px solid #fca5a5;background:#fff;color:#dc2626;font-family:Inter,sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .12s" onmouseover="this.style.background='#fff1f2'" onmouseout="this.style.background='#fff'">Remove</button>`
@@ -1465,7 +1475,7 @@ async function readEmail(emailId,folder,el){
         }
       }catch{}
     }
-    if(!email.isRead&&folder==='inbox'){
+    if(!email.isRead&&outlookFolderCanBeUnread(folder)){
       const readRes=await fetch(`https://graph.microsoft.com/v1.0/me/messages/${emailId}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({isRead:true})});
       if(readRes.ok){
         email.isRead=true;
@@ -1526,6 +1536,7 @@ async function ctxMarkRead(){
 }
 function ctxFlag(){hideEmailCtxMenu();if(_ctxEmailId)toggleOutlookFlag(_ctxEmailId,null);}
 function ctxNewMeeting(){hideEmailCtxMenu();if(_ctxEmailId)openNewMeetingFromEmail(_ctxEmailId);}
+function ctxMoveEmail(){hideEmailCtxMenu();if(_ctxEmailId)openMoveEmailMenu(_ctxEmailId);}
 async function ctxDelete(){hideEmailCtxMenu();if(_ctxEmailId)await deleteEmailItem(_ctxEmailId);}
 // ─────────────────────────────────────────────────────────────────────────────
 

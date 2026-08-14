@@ -587,6 +587,31 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
 .ol-folder{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:3px;cursor:pointer;font-size:11px;font-weight:500;color:#4b5563;transition:background .12s;margin-bottom:1px;border:none;background:none;width:100%;text-align:left;white-space:nowrap;overflow:hidden}
 .ol-folder:hover{background:#f5f5f5;color:#111}
 .ol-folder.active{background:#EBF2EC;color:#0E3416;font-weight:700}
+.ol-mailbox-folders-head{display:flex;align-items:center;justify-content:space-between;padding:7px 6px 3px;color:#9ca3af;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.1px}
+.ol-mailbox-folders-head button{border:none;background:transparent;color:#0E3416;font:700 9.5px 'Inter',sans-serif;letter-spacing:0;text-transform:none;cursor:pointer;padding:2px 3px;border-radius:3px}
+.ol-mailbox-folders-head button:hover{background:#EBF2EC}
+.ol-folder-loading,.ol-folder-empty{padding:5px 8px;color:#9ca3af;font-size:10px}
+.ol-custom-folder{position:relative;padding-right:25px}
+.ol-custom-folder .ol-folder-rename{display:none;position:absolute;right:3px;top:50%;transform:translateY(-50%);width:19px;height:19px;align-items:center;justify-content:center;border:none;border-radius:3px;background:transparent;color:#6b7280;cursor:pointer;font-size:11px}
+.ol-custom-folder:hover .ol-folder-rename{display:flex}
+.ol-custom-folder .ol-folder-rename:hover{background:#fff;color:#0E3416}
+.ol-folder-count{margin-left:auto;background:#f3f4f6;color:#6b7280;font-size:9px;font-weight:700;padding:0 5px;border-radius:10px}
+.ol-email-item[draggable="true"]{cursor:grab}
+.ol-email-item.is-dragging{opacity:.45;cursor:grabbing}
+#page-outlook.is-dragging-email .ol-folder{transition:background .1s,border-color .1s,transform .1s}
+#page-outlook.is-dragging-email .ol-folder:not(#ol-folder-sent):not(#ol-folder-drafts):not(#ol-folder-flagged):not(#ol-folder-untracked):not(#ol-folder-schedule){outline:1px dashed #9fd3a5;outline-offset:-2px}
+.ol-folder.drag-over{background:#dff2e2!important;color:#0E3416!important;outline:2px solid #2f7d42!important;transform:translateX(2px)}
+.ol-move-undo{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:1300;display:flex;align-items:center;gap:12px;min-width:260px;max-width:calc(100vw - 30px);padding:10px 12px;background:#111827;color:#fff;border-radius:7px;box-shadow:0 10px 30px rgba(0,0,0,.28);font-size:12px;font-weight:600}
+.ol-move-undo span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ol-move-undo button{border:1px solid #6ee7b7;background:transparent;color:#a7f3d0;border-radius:4px;padding:3px 8px;font:700 11px 'Inter',sans-serif;cursor:pointer}
+.ol-move-undo .ol-move-undo-close{border:none;color:#d1d5db;font-size:17px;padding:0 2px}
+.ol-folder-picker-backdrop{position:fixed;inset:0;z-index:1100;background:rgba(17,24,39,.38);display:flex;align-items:center;justify-content:center;padding:18px}
+.ol-folder-picker{width:min(390px,100%);max-height:75vh;display:flex;flex-direction:column;background:var(--white);border:1px solid var(--border);border-radius:10px;box-shadow:var(--sh3);overflow:hidden}
+.ol-folder-picker-head{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;border-bottom:1px solid var(--border);font-size:14px;font-weight:700;color:var(--body)}
+.ol-folder-picker-head button{border:none;background:transparent;color:var(--muted);font-size:19px;cursor:pointer}
+.ol-folder-picker-list{padding:7px;overflow-y:auto}
+.ol-folder-picker-item{display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;border-radius:6px;padding:9px 10px;color:var(--body);font:500 12px 'Inter',sans-serif;text-align:left;cursor:pointer}
+.ol-folder-picker-item:hover{background:var(--sage3);color:var(--ink)}
 .ol-filter-menu{position:relative;display:inline-flex;flex-shrink:0}
 .ol-filter-icon{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:5px;background:#fff;color:#6b7280;cursor:pointer;padding:0;transition:all .12s}
 .ol-filter-icon:hover,.ol-filter-icon.active{background:#EBF2EC;color:#0E3416;border-color:#D2DFD4}
