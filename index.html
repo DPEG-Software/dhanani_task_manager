@@ -424,9 +424,9 @@
           </div>
           <div style="height:1px;background:#e5e7eb;margin:5px 2px"></div>
           <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#9ca3af;padding:5px 6px 3px">Calendar</div>
-          <div id="ol-folder-schedule" class="ol-folder" onclick="loadScheduleFolder()" title="Schedule Meeting">
+          <div id="ol-folder-schedule" class="ol-folder" onclick="loadScheduleFolder()" title="Calendar">
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 11a4 4 0 100-8 4 4 0 000 8z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span>Schedule Meeting</span>
+            <span>Calendar</span>
           </div>
         </div>
         <div id="ol-contacts-sync-bar" style="display:none;padding:6px 10px;border-top:1px solid #e5e7eb;font-size:10px;color:#15803d;align-items:center;gap:5px;background:#f0fdf4;flex-shrink:0">
@@ -872,62 +872,60 @@
 
 <!-- NEW MEETING MODAL -->
 <div class="mo" id="mo-new-meeting">
-  <div class="mo-box" style="width:600px;max-height:92vh">
-    <div class="mo-hdr" style="background:#0E3416;border-radius:var(--rlg) var(--rlg) 0 0">
-      <div>
-        <div class="mo-title" style="color:#fff">New Teams Meeting</div>
-        <div class="mo-sub" style="color:rgba(255,255,255,.65)">Schedule a meeting and send invites</div>
+  <div class="mo-box meeting-modal">
+    <div class="mo-hdr meeting-hdr">
+      <div class="meeting-hdr-main">
+        <span class="meeting-hdr-icon"><svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+        <div>
+          <div class="mo-title" style="color:#fff;font-size:16px">New Meeting</div>
+          <div class="mo-sub" style="color:rgba(255,255,255,.7)">Create an Outlook invitation</div>
+        </div>
       </div>
       <button class="mo-x" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff" onclick="closeMo('mo-new-meeting')">&#10005;</button>
     </div>
-    <div class="mo-body" style="padding:14px 18px">
-      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Subject</span>
-        <input type="text" id="meet-subject" placeholder="Meeting subject..." style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:var(--body);background:transparent">
+    <div class="mo-body meeting-body">
+      <div class="meeting-field meeting-subject-field">
+        <label for="meet-subject">Meeting title <span>*</span></label>
+        <input type="text" id="meet-subject" placeholder="What is this meeting about?">
       </div>
-      <div class="chip-field-wrap" onclick="document.getElementById('meet-required-input').focus()">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Required</span>
+      <section class="meeting-section">
+        <div class="meeting-section-title">Invite people</div>
+      <div class="meeting-field"><label>Required attendees</label><div class="chip-field-wrap meeting-chip-field" onclick="document.getElementById('meet-required-input').focus()">
         <div id="meet-required-chips" style="display:contents"></div>
         <input class="chip-text-input" type="text" id="meet-required-input" placeholder="Type a name or email..." autocomplete="off"
           oninput="showComposeAC('meet-required-input','meet-required-ac')"
           onkeydown="chipKeyDown(event,'meet-required-chips','meet-required','meet-required-input','meet-required-ac')"
           onblur="chipBlur('meet-required-chips','meet-required','meet-required-input');hideComposeAC('meet-required-ac')">
         <input type="hidden" id="meet-required" value="">
-      </div>
+      </div></div>
       <div id="meet-required-ac" class="compose-ac" style="display:none"></div>
-      <div class="chip-field-wrap" onclick="document.getElementById('meet-optional-input').focus()">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Optional</span>
+      <div class="meeting-field"><label>Optional attendees</label><div class="chip-field-wrap meeting-chip-field" onclick="document.getElementById('meet-optional-input').focus()">
         <div id="meet-optional-chips" style="display:contents"></div>
         <input class="chip-text-input" type="text" id="meet-optional-input" placeholder="Type a name or email..." autocomplete="off"
           oninput="showComposeAC('meet-optional-input','meet-optional-ac')"
           onkeydown="chipKeyDown(event,'meet-optional-chips','meet-optional','meet-optional-input','meet-optional-ac')"
           onblur="chipBlur('meet-optional-chips','meet-optional','meet-optional-input');hideComposeAC('meet-optional-ac')">
         <input type="hidden" id="meet-optional" value="">
-      </div>
+      </div></div>
       <div id="meet-optional-ac" class="compose-ac" style="display:none"></div>
-      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Date</span>
-        <input type="date" id="meet-date" style="border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:4px">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Time</span>
-        <input type="time" id="meet-start" style="border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
-        <span style="font-size:11px;color:var(--muted)">to</span>
-        <input type="time" id="meet-end" style="border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:6px 0;margin-bottom:8px">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);width:60px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px">Location</span>
-        <input type="text" id="meet-location" placeholder="Optional room or address..." style="flex:1;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);background:transparent">
-      </div>
-      <textarea id="meet-notes" placeholder="Add notes or agenda (optional)..." style="width:100%;min-height:90px;border:none;outline:none;font-family:Inter,sans-serif;font-size:13px;color:var(--body);resize:vertical;line-height:1.6;background:transparent"></textarea>
+      </section>
+      <section class="meeting-section"><div class="meeting-section-title">Date and time</div>
+        <div class="meeting-time-grid">
+          <div class="meeting-field"><label for="meet-date">Date <span>*</span></label><input type="date" id="meet-date"></div>
+          <div class="meeting-field"><label for="meet-start">Starts <span>*</span></label><input type="time" id="meet-start"></div>
+          <div class="meeting-field"><label for="meet-end">Ends <span>*</span></label><input type="time" id="meet-end"></div>
+        </div>
+        <div class="meeting-field"><label for="meet-location">Room or location</label><input type="text" id="meet-location" placeholder="Optional room, office, or address"></div>
+      </section>
+      <section class="meeting-section meeting-section-last"><div class="meeting-section-title">Agenda</div><textarea id="meet-notes" placeholder="Add an agenda, instructions, or useful details..."></textarea></section>
     </div>
-    <div class="mo-foot" style="border-top:1px solid var(--border)">
-      <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;margin-right:auto;user-select:none">
-        <input type="checkbox" id="meet-teams" checked style="cursor:pointer;accent-color:var(--forest)">
-        Add Teams link
+    <div class="mo-foot meeting-foot">
+      <label class="meeting-teams-toggle">
+        <input type="checkbox" id="meet-teams" checked><span class="meeting-toggle-track"><span></span></span>
+        <span><strong>Teams meeting</strong><small>Add a join link automatically</small></span>
       </label>
       <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-new-meeting')">Cancel</button>
-      <button class="btn btn-primary btn-sm" onclick="scheduleTeamsMeeting()" id="meet-send-btn">Send Invite</button>
+      <button class="btn btn-primary btn-sm meeting-send" onclick="scheduleTeamsMeeting()" id="meet-send-btn">Send invitation</button>
     </div>
   </div>
 </div>

@@ -323,6 +323,12 @@ function updateOlFilterButtons(){
   document.getElementById('ol-filter-icon')?.classList.toggle('active',olListFilter!=='all');
 }
 
+function setOutlookEmailFilterVisible(visible){
+  const menu=document.getElementById('ol-list-filter');
+  if(menu)menu.style.display=visible?'':'none';
+  if(!visible)document.getElementById('ol-filter-pop')?.classList.remove('open');
+}
+
 function toggleOlFilterMenu(event){
   event?.stopPropagation();
   const pop=document.getElementById('ol-filter-pop');
@@ -436,6 +442,7 @@ function renderEmailRows(folder,emails){
 
 async function loadFolder(folder){
   currentFolder=folder;
+  setOutlookEmailFilterVisible(true);
   if(folder==='flagged'&&olListFilter!=='all'){
     olListFilter='all';
     localStorage.setItem('dpeg_outlook_list_filter',olListFilter);
@@ -1589,11 +1596,16 @@ async function scheduleTeamsMeeting(){
   const startVal=document.getElementById('meet-start').value;
   const endVal=document.getElementById('meet-end').value;
   if(!subject||!dateVal||!startVal||!endVal){toast('Please fill in subject, date, and time');return;}
-  const parseAtts=(str,type)=>str.split(/[,;]+/).map(s=>s.trim()).filter(Boolean).map(e=>({emailAddress:{address:e},type}));
-  const attendees=[
-    ...parseAtts(collectChipEmails('meet-required-chips','meet-required-input'),'required'),
-    ...parseAtts(collectChipEmails('meet-optional-chips','meet-optional-input'),'optional')
-  ];
+  const emailOk=e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  const rawAttendees=[
+    ...collectChipEmails('meet-required-chips','meet-required-input').split(/[,;]+/).map(address=>({address:address.trim(),type:'required'})),
+    ...collectChipEmails('meet-optional-chips','meet-optional-input').split(/[,;]+/).map(address=>({address:address.trim(),type:'optional'}))
+  ].filter(a=>a.address);
+  const invalid=rawAttendees.find(a=>!emailOk(a.address));
+  if(invalid){toast(`Check attendee email: ${invalid.address}`);return;}
+  const unique=new Map();
+  rawAttendees.forEach(a=>unique.set(a.address.toLowerCase(),a));
+  const attendees=[...unique.values()].map(a=>({emailAddress:{address:a.address},type:a.type}));
   const location=(document.getElementById('meet-location').value||'').trim();
   const notes=(document.getElementById('meet-notes').value||'').trim();
   const teamsOn=document.getElementById('meet-teams').checked;
@@ -1601,6 +1613,9 @@ async function scheduleTeamsMeeting(){
   // regardless of what timezone the browser is in
   const startDT=new Date(`${dateVal}T${startVal}:00`);
   const endDT=new Date(`${dateVal}T${endVal}:00`);
+  if(Number.isNaN(startDT.getTime())||Number.isNaN(endDT.getTime())){toast('Please enter a valid date and time');return;}
+  if(endDT<=startDT){toast('End time must be after start time');return;}
+  if(startDT.getTime()<Date.now()-60000){toast('Meeting start time cannot be in the past');return;}
   const toUTCStr=dt=>dt.toISOString().replace('Z','');
   const event={
     subject,
@@ -1613,6 +1628,7 @@ async function scheduleTeamsMeeting(){
     onlineMeetingProvider:teamsOn?'teamsForBusiness':'unknown',
     body:{contentType:'HTML',content:notes?`<p>${escapeHtml(notes)}</p>`:''}
   };
+  if(globalThis.crypto?.randomUUID)event.transactionId=crypto.randomUUID();
   if(location)event.location={displayName:location};
   const btn=document.getElementById('meet-send-btn');
   if(btn){btn.disabled=true;btn.textContent='Sending...';}
@@ -1623,14 +1639,15 @@ async function scheduleTeamsMeeting(){
       headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
       body:JSON.stringify(event)
     });
-    if(!res.ok){const err=await res.text();throw new Error(err);}
+    if(!res.ok){const err=await res.text();throw new Error(`${res.status}: ${err}`);}
     closeMo('mo-new-meeting');
     toast('Meeting invite sent!');
+    if(currentFolder==='schedule'||currentFolder==='calendar')await loadScheduleFolder();
   }catch(err){
-    toast('Could not send meeting invite');
+    toast(String(err.message||'').startsWith('403:')?'Calendar write permission is required':'Could not send meeting invite');
     console.error('Meeting invite error:',err);
   }finally{
-    if(btn){btn.disabled=false;btn.textContent='Send Invite';}
+    if(btn){btn.disabled=false;btn.textContent='Send invitation';}
   }
 }
 
@@ -3159,4 +3176,7 @@ async function updateTrackedThreadFromEmail(emailId){
   readEmail(emailId,currentFolder);
 }
 
-function refreshFolder(){loadFolder(currentFolder);}
+function refreshFolder(){
+  if(currentFolder==='schedule'||currentFolder==='calendar'){loadScheduleFolder();return;}
+  loadFolder(currentFolder);
+}

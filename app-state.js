@@ -18,7 +18,7 @@ const MSAL_CONFIG = {
 };
 
 const SCOPES = ["User.Read"];
-const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send", "Calendars.Read", "Tasks.ReadWrite"];
+const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send", "Calendars.ReadWrite", "Tasks.ReadWrite"];
 const SCOPES_DRAFTS   = ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"];
 const SCOPES_TODO     = ["User.Read", "Tasks.ReadWrite"];
 const SCOPES_CONTACTS = ["User.Read", "Contacts.Read", "People.Read", "User.ReadBasic.All"];
