@@ -540,6 +540,20 @@ async function loadTasksFromOneDrive() {
   }
 }
 
+// The proof-upload deep link skips loadTasksFromOneDrive entirely (it never
+// shows the Action Log, so there is nothing to render tasks into) — which
+// also skipped the D1 canary shadow-sync for anyone who only ever opens the
+// app through an email proof link. This runs just that comparison, without
+// touching the Action Log UI, so those accounts still get checked.
+async function syncD1ShadowInBackground(){
+  try{
+    const loaded=await loadLegacyOneDriveData();
+    if(loaded)await compareCanaryD1Tasks(tasks);
+  }catch(err){
+    console.warn('Background D1 shadow sync skipped:',err.message);
+  }
+}
+
 async function compareCanaryD1Tasks(legacyTasks){
   const base=workerBaseUrl();
   if(!base||!currentUser?.email)return {enabled:false};

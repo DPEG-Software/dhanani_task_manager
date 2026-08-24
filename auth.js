@@ -122,6 +122,7 @@ async function loadUser(account) {
 
   if(isProofUploadRoute()){
     await showProofUploadMode();
+    syncD1ShadowInBackground();
     return;
   }
 
