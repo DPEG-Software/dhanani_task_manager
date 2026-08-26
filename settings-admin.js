@@ -413,7 +413,9 @@ async function testAIConnection(){
       const d=await res.json();
       statusEl.innerHTML=`<div class="ai-status-bar ai-ok">✓ Connected — AI returned a summary successfully.</div>`;
     }else{
-      statusEl.innerHTML=`<div class="ai-status-bar ai-err">✗ Function returned ${res.status}. Check deployment and env vars.</div>`;
+      const errBody=await res.json().catch(()=>({}));
+      const detail=String(errBody.detail||errBody.error||'').trim();
+      statusEl.innerHTML=`<div class="ai-status-bar ai-err">✗ Function returned ${res.status}. Check deployment and env vars.${detail?`<div style="margin-top:6px;font-size:11px;font-family:monospace;white-space:pre-wrap;word-break:break-word">${escapeHtml(detail).slice(0,500)}</div>`:''}</div>`;
     }
   }catch(err){
     statusEl.innerHTML=`<div class="ai-status-bar ai-err">✗ Could not reach function: ${err.message}</div>`;

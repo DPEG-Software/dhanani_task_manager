@@ -1073,7 +1073,7 @@ Write 3-5 sentences. No bullet points, no headers. State names, amounts, propert
     method: 'POST',
     headers: { 'Authorization': `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 350,
       temperature: 0.1,
@@ -1117,7 +1117,7 @@ Write 1-3 bullet points (•) summarizing what these attachments contain. Be spe
     method: 'POST',
     headers: { 'Authorization': `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 250,
       temperature: 0.1,
