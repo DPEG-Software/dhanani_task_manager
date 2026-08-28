@@ -840,8 +840,7 @@
   }
 
   window.toggleRecurringHistory=function(id){const el=document.getElementById(`rec-history-${String(id).replace(/[^a-zA-Z0-9_-]/g,'_')}`);if(el)el.style.display=el.style.display==='none'?'block':'none';};
-  window.openRecurringTaskModal=async function(){
-    await window.loadCompanyDirectorySilently?.();
+  window.openRecurringTaskModal=function(){
     const due=document.getElementById('rt-first-due');const today=new Date().toISOString().slice(0,10);if(due){due.min=today;if(!due.value)due.value=today;}
     const dept=document.getElementById('rt-department');if(dept)dept.innerHTML=allDepartments().map(d=>`<option>${escapeHtml(d)}</option>`).join('');
     ['rt-recipient','rt-recipient-email','rt-recipient-name'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
@@ -851,13 +850,27 @@
     const ac=document.getElementById('rt-recipient-ac'),token=String(value||'').trim().toLowerCase();
     const emailEl=document.getElementById('rt-recipient-email'),nameEl=document.getElementById('rt-recipient-name');if(emailEl)emailEl.value='';if(nameEl)nameEl.value='';
     if(!ac||!token){if(ac)ac.style.display='none';return;}
-    const matches=departmentAssignmentContacts().filter(p=>String(p.name||'').toLowerCase().includes(token)||String(p.email||'').toLowerCase().includes(token)||(p.role||'').toLowerCase().includes(token)).slice(0,8);
+    // Use the exact same contact pool and matching rules as Add Task.
+    const seen=new Set();
+    const matches=departmentAssignmentContacts().filter(p=>p?.email||p?.name)
+      .filter(p=>{const k=normEmail(p.email||'')||String(p.name||'').toLowerCase();if(!k||seen.has(k))return false;seen.add(k);
+        return String(p.name||'').toLowerCase().includes(token)||k.includes(token)||String(p.role||'').toLowerCase().includes(token)||String(p.dept||'').toLowerCase().includes(token);
+      }).slice(0,8);
     if(!matches.length){ac.style.display='none';return;}
     ac.innerHTML=matches.map((p,i)=>`<div class="compose-ac-item" onmousedown="event.preventDefault();selectRecurringAssignee(${i})">${av(p.name||p.email||'?',28)}<div style="min-width:0"><div class="compose-ac-name">${escapeHtml(p.name||p.email)}</div><div class="compose-ac-email">${escapeHtml(p.email||'')}</div><div class="compose-ac-role">${escapeHtml(p.dept||p.role||'')}</div></div></div>`).join('');
     window._recurringAssigneeMatches=matches;ac.style.display='block';
   };
   window.selectRecurringAssignee=function(index){const p=(window._recurringAssigneeMatches||[])[index];if(!p)return;document.getElementById('rt-recipient').value=p.name||p.email||'';document.getElementById('rt-recipient-email').value=p.email||'';document.getElementById('rt-recipient-name').value=p.name||'';const dept=document.getElementById('rt-department');if(dept&&p.dept&&[...dept.options].some(o=>o.value===p.dept))dept.value=p.dept;document.getElementById('rt-recipient-ac').style.display='none';};
   window.hideRecurringAssigneeAC=function(){setTimeout(()=>{const ac=document.getElementById('rt-recipient-ac');if(ac)ac.style.display='none';},180);};
+  window.recurringAssigneeACNav=function(e){
+    const ac=document.getElementById('rt-recipient-ac');if(!ac||ac.style.display==='none')return;
+    const items=ac.querySelectorAll('.compose-ac-item');if(!items.length)return;
+    const focused=ac.querySelector('.ac-focused');
+    if(e.key==='ArrowDown'){e.preventDefault();const next=focused?focused.nextElementSibling||items[0]:items[0];items.forEach(i=>i.classList.remove('ac-focused'));next?.classList.add('ac-focused');}
+    else if(e.key==='ArrowUp'){e.preventDefault();const prev=focused?focused.previousElementSibling||items[items.length-1]:items[items.length-1];items.forEach(i=>i.classList.remove('ac-focused'));prev?.classList.add('ac-focused');}
+    else if((e.key==='Enter'||e.key==='Tab')&&focused){e.preventDefault();focused.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));}
+    else if(e.key==='Escape'){ac.style.display='none';}
+  };
   window.saveRecurringSchedule=async function(){
     const title=document.getElementById('rt-title')?.value.trim(),rawRecipient=document.getElementById('rt-recipient')?.value.trim(),firstDueDate=document.getElementById('rt-first-due')?.value;
     let recipientEmail=document.getElementById('rt-recipient-email')?.value.trim(),recipientName=document.getElementById('rt-recipient-name')?.value.trim();

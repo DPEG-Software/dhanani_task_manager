@@ -202,7 +202,6 @@ function departmentAssignmentContacts(){
   Object.values(staffConfig||{}).forEach(add);
   Object.values(userContacts||{}).forEach(add);
   (outlookContacts||[]).forEach(add);
-  (window.companyDirectoryContacts||[]).forEach(add);
   tasks.forEach(t=>add({name:t.person,email:t.email,dept:t.dept}));
   // Keep the shared admin account discoverable by its employee name even
   // when another user's personal Outlook directory has not cached it yet.
