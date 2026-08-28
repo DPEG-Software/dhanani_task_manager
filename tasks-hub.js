@@ -840,7 +840,8 @@
   }
 
   window.toggleRecurringHistory=function(id){const el=document.getElementById(`rec-history-${String(id).replace(/[^a-zA-Z0-9_-]/g,'_')}`);if(el)el.style.display=el.style.display==='none'?'block':'none';};
-  window.openRecurringTaskModal=function(){
+  window.openRecurringTaskModal=async function(){
+    await window.loadCompanyDirectorySilently?.();
     const due=document.getElementById('rt-first-due');const today=new Date().toISOString().slice(0,10);if(due){due.min=today;if(!due.value)due.value=today;}
     const dept=document.getElementById('rt-department');if(dept)dept.innerHTML=allDepartments().map(d=>`<option>${escapeHtml(d)}</option>`).join('');
     ['rt-recipient','rt-recipient-email','rt-recipient-name'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});

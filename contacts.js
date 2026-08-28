@@ -1,4 +1,10 @@
 (function () {
+  // Read-only, session-scoped copy of the tenant directory. This keeps task
+  // assignee search consistent without rewriting anybody's Outlook contacts
+  // or relying on whichever people happen to be in a personal Outlook cache.
+  window.companyDirectoryContacts = window.companyDirectoryContacts || [];
+  let companyDirectoryLoadPromise = null;
+
   function contactEmailValue(item) {
     if (!item) return "";
     if (typeof item === "string") return item;
@@ -108,6 +114,40 @@
     return changed;
   }
 
+  window.loadCompanyDirectorySilently = function loadCompanyDirectorySilently() {
+    if (window.companyDirectoryContacts.length) return Promise.resolve(true);
+    if (companyDirectoryLoadPromise) return companyDirectoryLoadPromise;
+    companyDirectoryLoadPromise = (async () => {
+      try {
+        // Deliberately silent: opening a task form must never cause a consent
+        // popup. The existing Contacts/People permission is requested only by
+        // the app's explicit contact-sync flow.
+        const result = await msalInstance.acquireTokenSilent({ scopes: SCOPES_CONTACTS, account: currentAccount });
+        const users = await graphGetAll(
+          "https://graph.microsoft.com/v1.0/users?$top=999&$select=displayName,mail,userPrincipalName,department,jobTitle,accountEnabled",
+          result.accessToken,
+          50
+        );
+        window.companyDirectoryContacts = users
+          .filter((u) => u.accountEnabled !== false)
+          .map((u) => ({
+            name: String(u.displayName || "").trim(),
+            email: normEmail(u.mail || u.userPrincipalName || ""),
+            dept: String(u.department || "").trim(),
+            role: String(u.jobTitle || "").trim(),
+          }))
+          .filter((u) => u.email && u.email.endsWith("@dhananipeg.com"));
+        return window.companyDirectoryContacts.length > 0;
+      } catch (err) {
+        console.warn("Company directory was not available silently:", err?.message || err);
+        return false;
+      } finally {
+        companyDirectoryLoadPromise = null;
+      }
+    })();
+    return companyDirectoryLoadPromise;
+  };
+
   function contactsFromMessage(m) {
     return [
       m.from?.emailAddress,
@@ -201,6 +241,11 @@
       if (!p?.email || !p?.name) return;
       const key = normEmail(p.email);
       map.set(key, { ...(map.get(key) || {}), ...p, email: key });
+    });
+    (window.companyDirectoryContacts || []).forEach((p) => {
+      if (!p?.email || !p?.name) return;
+      const key = normEmail(p.email);
+      map.set(key, { ...p, ...(map.get(key) || {}), email: key });
     });
     return [...map.values()];
   }

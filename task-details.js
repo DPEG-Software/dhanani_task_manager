@@ -301,7 +301,8 @@ document.querySelectorAll(".mo,.drill-overlay").forEach(m=>m.addEventListener("c
 // ============================================================
 // ADD TASK
 // ============================================================
-function openAdd(){
+async function openAdd(){
+  await window.loadCompanyDirectorySilently?.();
   document.getElementById("nt-date").value='';
   document.getElementById("nt-date").style.display='none';
   document.querySelectorAll('.deadline-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
