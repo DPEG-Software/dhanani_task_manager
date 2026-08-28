@@ -146,7 +146,10 @@
   }
 
   function groupLabel(name, email) {
-    return String(name || email || 'Unassigned').trim();
+    if(name)return String(name).trim();
+    const normalized=String(email||'').toLowerCase();
+    const contact=typeof departmentAssignmentContacts==='function'?departmentAssignmentContacts().find(p=>String(p.email||'').toLowerCase()===normalized):null;
+    return String(contact?.name||email||'Unassigned').trim();
   }
 
   // Most-recent-activity signal used to order both individual cards and the
@@ -828,7 +831,8 @@
     container.innerHTML=`<div style="margin-bottom:12px">${create}</div>`+schedules.map(schedule=>{
       const mine=String(schedule.assigner_email||'').toLowerCase()===String(currentUser?.email||'').toLowerCase();
       const history=occurrences.filter(o=>o.schedule_id===schedule.id);
-      return `<div class="wed-card" style="margin-bottom:10px"><div class="wed-card-head"><div><div class="wed-card-title">${escapeHtml(schedule.title)}</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">${escapeHtml(recurringFrequencyLabel(schedule))} · ${escapeHtml(schedule.recipient_email)} · Next due ${fmtD(schedule.next_due_date)}</div></div><span class="status-badge">${Number(schedule.active)?'Active':'Paused'}</span></div><div class="wed-card-body"><div style="font-size:12px;color:var(--sub)">${history.length} occurrence${history.length===1?'':'s'} retained</div><div class="assign-actions" style="margin-top:9px">${mine?`<button class="btn btn-ghost btn-sm" onclick="toggleRecurringSchedule('${schedule.id}',${Number(schedule.active)?'false':'true'})">${Number(schedule.active)?'Pause':'Resume'}</button>`:''}<button class="btn btn-ghost btn-sm" onclick="toggleRecurringHistory('${schedule.id}')">History</button></div><div id="rec-history-${schedule.id.replace(/[^a-zA-Z0-9_-]/g,'_')}" style="display:none;margin-top:10px">${history.length?history.map(o=>`<div style="padding:7px 0;border-top:1px solid var(--line);font-size:12px">Due ${fmtD(o.due_date)} · ${escapeHtml(o.status)} · Proof: ${escapeHtml(o.proof_status||'none')}</div>`).join(''):'<div style="font-size:12px;color:var(--muted)">No occurrences yet</div>'}</div></div></div>`;
+      const recipientLabel=groupLabel(schedule.recipient_name,schedule.recipient_email);
+      return `<div class="wed-card" style="margin-bottom:10px"><div class="wed-card-head"><div><div class="wed-card-title">${escapeHtml(schedule.title)}</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">${escapeHtml(recurringFrequencyLabel(schedule))} · ${escapeHtml(recipientLabel)} <span style="color:var(--muted)">(${escapeHtml(schedule.recipient_email)})</span> · Next due ${fmtD(schedule.next_due_date)}</div></div><span class="status-badge">${Number(schedule.active)?'Active':'Paused'}</span></div><div class="wed-card-body">${schedule.summary?`<div style="font-size:12px;color:var(--sub);margin-bottom:8px">${escapeHtml(schedule.summary)}</div>`:''}<div style="font-size:12px;color:var(--sub)">${history.length} occurrence${history.length===1?'':'s'} retained</div><div class="assign-actions" style="margin-top:9px">${mine?`<button class="btn btn-ghost btn-sm" onclick="toggleRecurringSchedule('${schedule.id}',${Number(schedule.active)?'false':'true'})">${Number(schedule.active)?'Pause':'Resume'}</button>`:''}<button class="btn btn-ghost btn-sm" onclick="toggleRecurringHistory('${schedule.id}')">History</button></div><div id="rec-history-${schedule.id.replace(/[^a-zA-Z0-9_-]/g,'_')}" style="display:none;margin-top:10px">${history.length?history.map(o=>{const task={status:o.status,proofStatus:o.proof_status};return `<div style="padding:9px 0;border-top:1px solid var(--line);font-size:12px"><div style="font-weight:700;margin-bottom:7px">${escapeHtml(o.schedule_title)} · Due ${fmtD(o.due_date)}</div>${renderStepper(task)}</div>`;}).join(''):'<div style="font-size:12px;color:var(--muted)">No occurrences yet</div>'}</div></div></div>`;
     }).join('');
   }
 
@@ -836,13 +840,27 @@
   window.openRecurringTaskModal=function(){
     const due=document.getElementById('rt-first-due');const today=new Date().toISOString().slice(0,10);if(due){due.min=today;if(!due.value)due.value=today;}
     const dept=document.getElementById('rt-department');if(dept)dept.innerHTML=allDepartments().map(d=>`<option>${escapeHtml(d)}</option>`).join('');
+    ['rt-recipient','rt-recipient-email','rt-recipient-name'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
     document.getElementById('mo-recurring-task')?.classList.add('open');
   };
+  window.showRecurringAssigneeAC=function(value){
+    const ac=document.getElementById('rt-recipient-ac'),token=String(value||'').trim().toLowerCase();
+    const emailEl=document.getElementById('rt-recipient-email'),nameEl=document.getElementById('rt-recipient-name');if(emailEl)emailEl.value='';if(nameEl)nameEl.value='';
+    if(!ac||!token){if(ac)ac.style.display='none';return;}
+    const matches=departmentAssignmentContacts().filter(p=>String(p.name||'').toLowerCase().includes(token)||String(p.email||'').toLowerCase().includes(token)||(p.role||'').toLowerCase().includes(token)).slice(0,8);
+    if(!matches.length){ac.style.display='none';return;}
+    ac.innerHTML=matches.map((p,i)=>`<div class="compose-ac-item" onmousedown="event.preventDefault();selectRecurringAssignee(${i})">${av(p.name||p.email||'?',28)}<div style="min-width:0"><div class="compose-ac-name">${escapeHtml(p.name||p.email)}</div><div class="compose-ac-email">${escapeHtml(p.email||'')}</div><div class="compose-ac-role">${escapeHtml(p.dept||p.role||'')}</div></div></div>`).join('');
+    window._recurringAssigneeMatches=matches;ac.style.display='block';
+  };
+  window.selectRecurringAssignee=function(index){const p=(window._recurringAssigneeMatches||[])[index];if(!p)return;document.getElementById('rt-recipient').value=p.name||p.email||'';document.getElementById('rt-recipient-email').value=p.email||'';document.getElementById('rt-recipient-name').value=p.name||'';const dept=document.getElementById('rt-department');if(dept&&p.dept&&[...dept.options].some(o=>o.value===p.dept))dept.value=p.dept;document.getElementById('rt-recipient-ac').style.display='none';};
+  window.hideRecurringAssigneeAC=function(){setTimeout(()=>{const ac=document.getElementById('rt-recipient-ac');if(ac)ac.style.display='none';},180);};
   window.saveRecurringSchedule=async function(){
-    const title=document.getElementById('rt-title')?.value.trim(),recipientEmail=document.getElementById('rt-recipient')?.value.trim(),firstDueDate=document.getElementById('rt-first-due')?.value;
+    const title=document.getElementById('rt-title')?.value.trim(),rawRecipient=document.getElementById('rt-recipient')?.value.trim(),firstDueDate=document.getElementById('rt-first-due')?.value;
+    let recipientEmail=document.getElementById('rt-recipient-email')?.value.trim(),recipientName=document.getElementById('rt-recipient-name')?.value.trim();
+    if(!recipientEmail){const exact=departmentAssignmentContacts().find(p=>String(p.email||'').toLowerCase()===String(rawRecipient||'').toLowerCase()||String(p.name||'').toLowerCase()===String(rawRecipient||'').toLowerCase());recipientEmail=exact?.email||(rawRecipient?.includes('@')?rawRecipient:'');recipientName=exact?.name||recipientName;}
     if(!title||!recipientEmail||!firstDueDate){toast('Title, recipient and first due date are required');return;}
     const btn=document.getElementById('rt-save');if(btn)btn.disabled=true;
-    try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/recurring-schedules`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({title,recipientEmail,firstDueDate,summary:document.getElementById('rt-summary')?.value||'',departmentName:document.getElementById('rt-department')?.value||'Needs Department',priority:document.getElementById('rt-priority')?.value||'Normal',proofInstructions:document.getElementById('rt-proof')?.value||'',frequencyInterval:Number(document.getElementById('rt-frequency-interval')?.value||1),frequencyUnit:document.getElementById('rt-frequency-unit')?.value||'week',generationLeadDays:4})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not create schedule');closeMo('mo-recurring-task');await renderMyTasks(false);setTasksTabMode('recurring');toast('Recurring schedule created');}catch(err){toast(err.message||'Could not create schedule');}finally{if(btn)btn.disabled=false;}
+    try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/recurring-schedules`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({title,recipientEmail,recipientName,firstDueDate,summary:document.getElementById('rt-summary')?.value||'',departmentName:document.getElementById('rt-department')?.value||'Needs Department',priority:document.getElementById('rt-priority')?.value||'Normal',proofInstructions:document.getElementById('rt-proof')?.value||'',frequencyInterval:Number(document.getElementById('rt-frequency-interval')?.value||1),frequencyUnit:document.getElementById('rt-frequency-unit')?.value||'week',generationLeadDays:4})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not create schedule');closeMo('mo-recurring-task');await renderMyTasks(false);setTasksTabMode('recurring');toast('Recurring schedule created');}catch(err){toast(err.message||'Could not create schedule');}finally{if(btn)btn.disabled=false;}
   };
   window.toggleRecurringSchedule=async function(scheduleId,active){try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/recurring-schedules`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'toggle',scheduleId,active})});if(!res.ok)throw new Error('Could not update schedule');await renderMyTasks(false);setTasksTabMode('recurring');toast(active?'Schedule resumed':'Schedule paused');}catch(err){toast(err.message);}};
 

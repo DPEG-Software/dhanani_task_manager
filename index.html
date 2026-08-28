@@ -85,6 +85,10 @@
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke-width="2" stroke-linecap="round"/></svg>
       Add Task
     </button>
+    <button class="ni" onclick="openRecurringTaskModal()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7h-5V2M4 17h5v5M5.5 9A7 7 0 0117 5l3 2M18.5 15A7 7 0 017 19l-3-2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Recurring Task
+    </button>
   </nav>
   <div class="sb-foot">
     <div class="acct-menu" id="acct-menu">
@@ -781,7 +785,7 @@
     <div class="mo-hdr"><div><div class="mo-title">Create Recurring Task</div><div class="mo-sub">Each occurrence keeps its own proof, messages, and approval history</div></div><button class="mo-x" onclick="closeMo('mo-recurring-task')">&#10005;</button></div>
     <div class="mo-body">
       <div class="form-grp"><label class="form-lbl">Task title</label><input class="form-in" id="rt-title" placeholder="Weekly reconciliation"></div>
-      <div class="form-row"><div class="form-grp"><label class="form-lbl">Recipient email</label><input class="form-in" id="rt-recipient" type="email"></div><div class="form-grp"><label class="form-lbl">Department</label><select class="form-sel" id="rt-department"></select></div></div>
+      <div class="form-row"><div class="form-grp" style="position:relative"><label class="form-lbl">Assign to</label><input class="form-in" id="rt-recipient" placeholder="Type a name or email" autocomplete="off" oninput="showRecurringAssigneeAC(this.value)" onblur="hideRecurringAssigneeAC()"><input type="hidden" id="rt-recipient-email"><input type="hidden" id="rt-recipient-name"><div id="rt-recipient-ac" class="compose-ac" style="display:none;position:absolute;left:0;right:0;z-index:9999"></div></div><div class="form-grp"><label class="form-lbl">Department</label><select class="form-sel" id="rt-department"></select></div></div>
       <div class="form-grp"><label class="form-lbl">Instructions</label><textarea class="form-in" id="rt-summary" rows="3"></textarea></div>
       <div class="form-row"><div class="form-grp"><label class="form-lbl">First due date</label><input class="form-in" id="rt-first-due" type="date"></div><div class="form-grp"><label class="form-lbl">Priority</label><select class="form-sel" id="rt-priority"><option>Normal</option><option>High</option><option>Low</option></select></div></div>
       <div class="form-grp"><label class="form-lbl">Frequency</label><div style="display:flex;gap:8px"><input class="form-in" id="rt-frequency-interval" type="number" min="1" max="365" value="1" style="width:110px"><select class="form-sel" id="rt-frequency-unit"><option value="day">Day(s)</option><option value="week" selected>Week(s)</option><option value="month">Month(s)</option><option value="year">Year(s)</option></select></div></div>

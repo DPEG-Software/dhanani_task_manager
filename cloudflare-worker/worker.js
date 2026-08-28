@@ -1746,8 +1746,9 @@ async function handleRecurringSchedules(request, env) {
         `SELECT * FROM recurring_schedules WHERE assigner_email = ? OR recipient_email = ? ORDER BY updated_at DESC`
       ).bind(email, email).all(),
       env.DPEG_ASSIGNMENTS.prepare(
-        `SELECT o.*, s.title AS schedule_title, s.assigner_email, s.recipient_email,
-                a.status, a.proof_status
+        `SELECT o.*, s.title AS schedule_title, s.summary, s.assigner_email, s.recipient_email,
+                s.recipient_name, s.department_name, s.priority,
+                a.status, a.proof_status, a.proof_submitted_at, a.proof_reviewed_at
            FROM recurring_occurrences o
            JOIN recurring_schedules s ON s.id = o.schedule_id
            JOIN assignments a ON a.id = o.assignment_id
