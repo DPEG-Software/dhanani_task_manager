@@ -4,7 +4,7 @@
 
   let tasksTabMode = 'received'; // 'received' | 'given' | 'department' | 'history'
   let tasksHistoryFilter = 'completed'; // 'completed' | 'cancelled'
-  let tasksTabCache = { assignedToMe: [], assignedByMe: [], overseenByMe: [], recurringSchedules: [], recurringOccurrences: [] };
+  let tasksTabCache = { assignedToMe: [], assignedByMe: [], overseenByMe: [], recurringSchedules: [], recurringOccurrences: [], recurringProofs: [], recurringMessages: [] };
   const tasksTabOpenGroups = { received: new Set(), given: new Set(), department: new Set(), property: new Set(), maintenance: new Set(), recurring: new Set(), history: new Set() };
   const tasksTabVisibleCounts = { received: new Map(), given: new Map(), department: new Map(), property: new Map(), maintenance: new Map(), recurring: new Map(), history: new Map() };
   const tasksHistoryDirections = new Map(); // person key -> 'to' | 'by'
@@ -491,6 +491,7 @@
     const reminders=Math.max(0,Number(a.reminderCount||0));
     const reminderCount=!history&&received&&reminders?`<span class="assign-reminder-count">${reminders} reminder${reminders===1?'':'s'}</span>`:'';
     const changesBadge=changesRequested?'<span class="assign-changes-count">Changes requested</span>':'';
+    const recurringBadge=a.isRecurring?'<span class="assign-history-label">Recurring</span>':'';
     const newReminder=!history&&hasNewReminder(a,received);
     const proofReady=!history&&!received&&awaitingApproval(a);
     const followupHistory=(followupThreadState(a)?.thread||[]).length;
@@ -505,7 +506,7 @@
     return `<div class="wed-card assign-compact-card${hasFollowup ? ' has-followup' : ''}${newReminder?' has-new-reminder':''}${proofReady?' has-proof-ready':''}${changesRequested?' has-changes-requested':''}${overdueCard?' is-overdue':''}${expanded?' is-expanded':''}" data-assignment-id="${escapeHtml(String(a.id))}">
       <div class="wed-card-head assign-compact-head">
         <button type="button" class="assign-title-button" onclick="toggleAssignmentDetails('${a.id}')" aria-expanded="${expanded}">
-          <span class="assign-expand-symbol">${expanded?'−':'+'}</span><span class="wed-card-title">${escapeHtml(a.title || '')}</span>${reminderCount}${changesBadge}
+          <span class="assign-expand-symbol">${expanded?'−':'+'}</span><span class="wed-card-title">${escapeHtml(a.title || '')}</span>${recurringBadge}${reminderCount}${changesBadge}
         </button>
         ${history?'':`<span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span>${pBadge(a.priority)}`}
       </div>
@@ -648,7 +649,7 @@
       ]);
       if (!assignmentRes.ok) throw new Error(`HTTP ${assignmentRes.status}`);
       nextCache = await assignmentRes.json();
-      if(recurringRes.ok){const recurring=await recurringRes.json();nextCache.recurringSchedules=recurring.schedules||[];nextCache.recurringOccurrences=recurring.occurrences||[];}
+      if(recurringRes.ok){const recurring=await recurringRes.json();nextCache.recurringSchedules=recurring.schedules||[];nextCache.recurringOccurrences=recurring.occurrences||[];nextCache.recurringProofs=recurring.proofs||[];nextCache.recurringMessages=recurring.messages||[];}
     } catch (err) {
       console.warn('Load assignments failed:', err.message);
       if (!silent) {
@@ -826,13 +827,15 @@
   function renderRecurringSchedules(container){
     const schedules=tasksTabCache.recurringSchedules||[];
     const occurrences=tasksTabCache.recurringOccurrences||[];
+    const proofs=tasksTabCache.recurringProofs||[],messages=tasksTabCache.recurringMessages||[];
     const create=`<button class="btn btn-primary btn-sm" onclick="openRecurringTaskModal()">+ New Recurring Task</button>`;
     if(!schedules.length){container.innerHTML=`<div style="margin-bottom:12px">${create}</div><div class="empty-state"><div class="es-text">No recurring schedules</div><div class="es-sub">Create one to generate independent tasks automatically.</div></div>`;return;}
     container.innerHTML=`<div style="margin-bottom:12px">${create}</div>`+schedules.map(schedule=>{
       const mine=String(schedule.assigner_email||'').toLowerCase()===String(currentUser?.email||'').toLowerCase();
       const history=occurrences.filter(o=>o.schedule_id===schedule.id);
       const recipientLabel=groupLabel(schedule.recipient_name,schedule.recipient_email);
-      return `<div class="wed-card" style="margin-bottom:10px"><div class="wed-card-head"><div><div class="wed-card-title">${escapeHtml(schedule.title)}</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">${escapeHtml(recurringFrequencyLabel(schedule))} · ${escapeHtml(recipientLabel)} <span style="color:var(--muted)">(${escapeHtml(schedule.recipient_email)})</span> · Next due ${fmtD(schedule.next_due_date)}</div></div><span class="status-badge">${Number(schedule.active)?'Active':'Paused'}</span></div><div class="wed-card-body">${schedule.summary?`<div style="font-size:12px;color:var(--sub);margin-bottom:8px">${escapeHtml(schedule.summary)}</div>`:''}<div style="font-size:12px;color:var(--sub)">${history.length} occurrence${history.length===1?'':'s'} retained</div><div class="assign-actions" style="margin-top:9px">${mine?`<button class="btn btn-ghost btn-sm" onclick="toggleRecurringSchedule('${schedule.id}',${Number(schedule.active)?'false':'true'})">${Number(schedule.active)?'Pause':'Resume'}</button>`:''}<button class="btn btn-ghost btn-sm" onclick="toggleRecurringHistory('${schedule.id}')">History</button></div><div id="rec-history-${schedule.id.replace(/[^a-zA-Z0-9_-]/g,'_')}" style="display:none;margin-top:10px">${history.length?history.map(o=>{const task={status:o.status,proofStatus:o.proof_status};return `<div style="padding:9px 0;border-top:1px solid var(--line);font-size:12px"><div style="font-weight:700;margin-bottom:7px">${escapeHtml(o.schedule_title)} · Due ${fmtD(o.due_date)}</div>${renderStepper(task)}</div>`;}).join(''):'<div style="font-size:12px;color:var(--muted)">No occurrences yet</div>'}</div></div></div>`;
+      const roleTag=mine?`<span class="assign-history-label">Assigned by you to ${escapeHtml(recipientLabel)}</span>`:`<span class="assign-history-label">Assigned to you by ${escapeHtml(schedule.assigner_name||schedule.assigner_email)}</span>`;
+      return `<div class="wed-card" style="margin-bottom:10px"><div class="wed-card-head"><div><div class="wed-card-title">${escapeHtml(schedule.title)} <span class="assign-history-label">Recurring</span></div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">${escapeHtml(recurringFrequencyLabel(schedule))} · ${escapeHtml(recipientLabel)} <span style="color:var(--muted)">(${escapeHtml(schedule.recipient_email)})</span> · Next due ${fmtD(schedule.next_due_date)}</div><div style="margin-top:6px">${roleTag}</div></div><span class="status-badge">${Number(schedule.active)?'Active':'Paused'}</span></div><div class="wed-card-body">${schedule.summary?`<div style="font-size:12px;color:var(--sub);margin-bottom:8px">${escapeHtml(schedule.summary)}</div>`:''}<div style="font-size:12px;color:var(--sub)">${history.length} occurrence${history.length===1?'':'s'} retained</div><div class="assign-actions" style="margin-top:9px">${mine?`<button class="btn btn-ghost btn-sm" onclick="toggleRecurringSchedule('${schedule.id}',${Number(schedule.active)?'false':'true'})">${Number(schedule.active)?'Pause':'Resume'}</button>`:''}<button class="btn btn-ghost btn-sm" onclick="toggleRecurringHistory('${schedule.id}')">History</button></div><div id="rec-history-${schedule.id.replace(/[^a-zA-Z0-9_-]/g,'_')}" style="display:none;margin-top:10px">${history.length?history.map(o=>{const task={status:o.status,proofStatus:o.proof_status};const occurrenceProofs=proofs.filter(p=>p.assignment_id===o.assignment_id),occurrenceMessages=messages.filter(m=>m.assignment_id===o.assignment_id);const files=occurrenceProofs.filter(p=>p.file_name&&p.web_url);return `<div style="padding:10px 0;border-top:1px solid var(--line);font-size:12px"><div style="font-weight:700;margin-bottom:7px">${escapeHtml(o.schedule_title)} · Due ${fmtD(o.due_date)}</div>${renderStepper(task)}<div style="margin-top:8px;color:var(--sub)">${occurrenceMessages.length} message${occurrenceMessages.length===1?'':'s'} · ${files.length} document${files.length===1?'':'s'}</div>${occurrenceMessages.length?`<div style="margin-top:6px">${occurrenceMessages.map(m=>`<div style="padding:5px 0"><b>${escapeHtml(m.sender_name||m.sender_email)}:</b> ${escapeHtml(m.message)}</div>`).join('')}</div>`:''}${files.length?`<div style="margin-top:6px">${files.map(f=>`<a href="${escapeHtml(f.web_url)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">${escapeHtml(f.file_name)}</a>`).join(' ')}</div>`:''}</div>`;}).join(''):'<div style="font-size:12px;color:var(--muted)">No occurrences yet</div>'}</div></div></div>`;
     }).join('');
   }
 

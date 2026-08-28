@@ -296,6 +296,21 @@ async function updateAssignmentProofState(env, details) {
     senderEmail,
     senderEmail,
   ).run();
+  if (proofStatus === 'submitted') {
+    const schedule = await env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT s.* FROM recurring_schedules s
+        JOIN recurring_occurrences o ON o.schedule_id = s.id
+       WHERE o.app_task_id = ? AND s.active = 1 LIMIT 1`
+    ).bind(appTaskId).first();
+    if (schedule?.next_due_date) {
+      const nextDueDate = String(schedule.next_due_date);
+      await createRecurringOccurrence(env, schedule, nextDueDate);
+      const followingDueDate = advanceRecurringDate(nextDueDate, String(schedule.frequency_unit || 'week'), Number(schedule.frequency_interval || 1));
+      await env.DPEG_ASSIGNMENTS.prepare(
+        `UPDATE recurring_schedules SET next_due_date = ?, updated_at = ? WHERE id = ? AND next_due_date = ?`
+      ).bind(followingDueDate, now, schedule.id, nextDueDate).run();
+    }
+  }
 }
 
 // Task conversations use D1 rather than the shared KV document. Each message
@@ -1717,6 +1732,7 @@ async function handleAssignments(request, env) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     version: Number(row.version || 1),
+    isRecurring: String(row.app_task_id || '').includes('rec-task-'),
   });
 
   return json({
@@ -1741,7 +1757,7 @@ async function handleRecurringSchedules(request, env) {
   const email = userEmailFromClaims(claims);
   if (request.method === 'GET') {
     await generateRecurringOccurrences(env);
-    const [schedules, occurrences] = await Promise.all([
+    const [schedules, occurrences, proofs, messages] = await Promise.all([
       env.DPEG_ASSIGNMENTS.prepare(
         `SELECT * FROM recurring_schedules WHERE assigner_email = ? OR recipient_email = ? ORDER BY updated_at DESC`
       ).bind(email, email).all(),
@@ -1755,8 +1771,27 @@ async function handleRecurringSchedules(request, env) {
           WHERE s.assigner_email = ? OR s.recipient_email = ?
           ORDER BY o.due_date DESC`
       ).bind(email, email).all(),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `SELECT o.assignment_id, p.id AS proof_id, p.note, p.status AS proof_review_status,
+                p.submitted_at, p.reviewed_at, p.reviewer_email,
+                f.file_name, f.web_url
+           FROM recurring_occurrences o
+           JOIN recurring_schedules s ON s.id = o.schedule_id
+           JOIN proof_submissions p ON p.assignment_id = o.assignment_id
+           LEFT JOIN proof_files f ON f.submission_id = p.id
+          WHERE s.assigner_email = ? OR s.recipient_email = ?
+          ORDER BY p.submitted_at ASC`
+      ).bind(email, email).all(),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `SELECT o.assignment_id, m.sender_name, m.sender_email, m.message, m.created_at
+           FROM recurring_occurrences o
+           JOIN recurring_schedules s ON s.id = o.schedule_id
+           JOIN task_messages m ON m.app_task_id = o.app_task_id
+          WHERE s.assigner_email = ? OR s.recipient_email = ?
+          ORDER BY m.created_at ASC`
+      ).bind(email, email).all(),
     ]);
-    return json({ schedules: schedules.results || [], occurrences: occurrences.results || [] });
+    return json({ schedules: schedules.results || [], occurrences: occurrences.results || [], proofs: proofs.results || [], messages: messages.results || [] });
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   let body;
@@ -2096,6 +2131,38 @@ function advanceRecurringDate(dateText, unit, interval) {
   return source.toISOString().slice(0, 10);
 }
 
+async function createRecurringOccurrence(env, schedule, dueDate) {
+  const periodKey = `due-${dueDate}`;
+  const safeKey = `${schedule.id}-${dueDate}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+  const taskId = `rec-task-${safeKey}`;
+  const assignmentId = `rec-asg-${safeKey}`;
+  const occurrenceId = `rec-occ-${safeKey}`;
+  const now = new Date().toISOString();
+  const occurrenceTitle = `${schedule.title} — Due ${dueDate}`;
+  await env.DPEG_ASSIGNMENTS.batch([
+    env.DPEG_ASSIGNMENTS.prepare(
+      `INSERT OR IGNORE INTO tasks
+         (id, owner_email, title, summary, department_name, priority, due_date,
+          status, source_type, created_at, updated_at, version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', 'recurring', ?, ?, 1)`
+    ).bind(taskId, schedule.assigner_email, occurrenceTitle, schedule.summary, schedule.department_name, schedule.priority, dueDate, now, now),
+    env.DPEG_ASSIGNMENTS.prepare(
+      `INSERT OR IGNORE INTO assignments
+         (id, app_task_id, title, summary, dept, priority, due_date,
+          assigner_email, assigner_name, recipient_email, recipient_name,
+          status, proof_status, proof_instructions, created_at, updated_at, version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Assigned', 'none', ?, ?, ?, 1)`
+    ).bind(assignmentId, taskId, occurrenceTitle, schedule.summary, schedule.department_name, schedule.priority, dueDate,
+      schedule.assigner_email, schedule.assigner_name, schedule.recipient_email, schedule.recipient_name,
+      schedule.proof_instructions, now, now),
+    env.DPEG_ASSIGNMENTS.prepare(
+      `INSERT OR IGNORE INTO recurring_occurrences
+         (id, schedule_id, period_key, app_task_id, assignment_id, due_date, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(occurrenceId, schedule.id, periodKey, taskId, assignmentId, dueDate, now),
+  ]);
+}
+
 async function generateRecurringOccurrences(env) {
   const schedules = await env.DPEG_ASSIGNMENTS.prepare(
     `SELECT * FROM recurring_schedules WHERE active = 1 ORDER BY next_due_date ASC`
@@ -2105,35 +2172,7 @@ async function generateRecurringOccurrences(env) {
     let dueDate = String(schedule.next_due_date || '');
     let generated = 0;
     while (dueDate && dueDate <= addUtcDays(today, Number(schedule.generation_lead_days || 0)) && generated < 12) {
-      const periodKey = `due-${dueDate}`;
-      const safeKey = `${schedule.id}-${dueDate}`.replace(/[^a-zA-Z0-9_-]/g, '-');
-      const taskId = `stg-rec-task-${safeKey}`;
-      const assignmentId = `stg-rec-asg-${safeKey}`;
-      const occurrenceId = `stg-rec-occ-${safeKey}`;
-      const now = new Date().toISOString();
-      const occurrenceTitle = `${schedule.title} — Due ${dueDate}`;
-      await env.DPEG_ASSIGNMENTS.batch([
-        env.DPEG_ASSIGNMENTS.prepare(
-          `INSERT OR IGNORE INTO tasks
-             (id, owner_email, title, summary, department_name, priority, due_date,
-              status, source_type, created_at, updated_at, version)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', 'recurring', ?, ?, 1)`
-        ).bind(taskId, schedule.assigner_email, occurrenceTitle, schedule.summary, schedule.department_name, schedule.priority, dueDate, now, now),
-        env.DPEG_ASSIGNMENTS.prepare(
-          `INSERT OR IGNORE INTO assignments
-             (id, app_task_id, title, summary, dept, priority, due_date,
-              assigner_email, assigner_name, recipient_email, recipient_name,
-              status, proof_status, proof_instructions, created_at, updated_at, version)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Assigned', 'none', ?, ?, ?, 1)`
-        ).bind(assignmentId, taskId, occurrenceTitle, schedule.summary, schedule.department_name, schedule.priority, dueDate,
-          schedule.assigner_email, schedule.assigner_name, schedule.recipient_email, schedule.recipient_name,
-          schedule.proof_instructions, now, now),
-        env.DPEG_ASSIGNMENTS.prepare(
-          `INSERT OR IGNORE INTO recurring_occurrences
-             (id, schedule_id, period_key, app_task_id, assignment_id, due_date, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        ).bind(occurrenceId, schedule.id, periodKey, taskId, assignmentId, dueDate, now),
-      ]);
+      await createRecurringOccurrence(env, schedule, dueDate);
       dueDate = advanceRecurringDate(
         dueDate,
         String(schedule.frequency_unit || 'week'),
