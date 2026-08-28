@@ -5,8 +5,8 @@
   let tasksTabMode = 'received'; // 'received' | 'given' | 'department' | 'history'
   let tasksHistoryFilter = 'completed'; // 'completed' | 'cancelled'
   let tasksTabCache = { assignedToMe: [], assignedByMe: [], overseenByMe: [] };
-  const tasksTabOpenGroups = { received: new Set(), given: new Set(), department: new Set(), history: new Set() };
-  const tasksTabVisibleCounts = { received: new Map(), given: new Map(), department: new Map(), history: new Map() };
+  const tasksTabOpenGroups = { received: new Set(), given: new Set(), department: new Set(), property: new Set(), maintenance: new Set(), history: new Set() };
+  const tasksTabVisibleCounts = { received: new Map(), given: new Map(), department: new Map(), property: new Map(), maintenance: new Map(), history: new Map() };
   const tasksHistoryDirections = new Map(); // person key -> 'to' | 'by'
   let expandedAssignmentId = null;
   const TASKS_PAGE_SIZE = 10;
@@ -223,8 +223,13 @@
       return { list: [...toMe, ...byMe], received: a => a._received, sortFn: sortHistoryItems };
     }
     if (mode === 'department') {
-      const list = (tasksTabCache.overseenByMe || []).filter(a => stageLabel(a) !== 'Done' && stageLabel(a) !== 'Cancelled');
+      const list = (tasksTabCache.overseenByMe || []).filter(a => (a.oversightScopes||['department']).includes('nikhil')||(a.oversightScopes||['department']).includes('department')).filter(a => stageLabel(a) !== 'Done' && stageLabel(a) !== 'Cancelled');
       return { list, received: false, principal: true, sortFn: sortAssignmentItems };
+    }
+    if (mode === 'property' || mode === 'maintenance') {
+      const scope=mode==='property'?'property_management':'maintenance';
+      const list=(tasksTabCache.overseenByMe||[]).filter(a=>(a.oversightScopes||[]).includes(scope)).filter(a=>stageLabel(a)!=='Done'&&stageLabel(a)!=='Cancelled');
+      return { list, received:false, principal:true, sortFn:sortAssignmentItems };
     }
     const received = mode === 'received';
     const list = (received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []))
@@ -580,12 +585,14 @@
     document.getElementById('tasks-received-btn')?.classList.toggle('active', mode === 'received');
     document.getElementById('tasks-given-btn')?.classList.toggle('active', mode === 'given');
     document.getElementById('tasks-department-btn')?.classList.toggle('active', mode === 'department');
+    document.getElementById('tasks-property-btn')?.classList.toggle('active', mode === 'property');
+    document.getElementById('tasks-maintenance-btn')?.classList.toggle('active', mode === 'maintenance');
     document.getElementById('tasks-history-btn')?.classList.toggle('active', mode === 'history');
     const historyFilter=document.getElementById('tasks-history-filter');
     if(historyFilter)historyFilter.style.display=mode==='history'?'flex':'none';
     const desc = document.getElementById('tasks-tab-description');
     if (desc) {
-      const isAssistant=(tasksTabCache.overseenByMe||[]).some(a=>a.oversightRole==='Executive Assistant');
+      const isAssistant=String(currentUser?.email||'').toLowerCase()==='isha@dhananipeg.com'||(tasksTabCache.overseenByMe||[]).some(a=>a.oversightRole==='Executive Assistant');
       desc.textContent = mode === 'received'
         ? 'Your active assignments, status updates, proof, and conversations.'
         : mode === 'given'
@@ -594,6 +601,10 @@
         ? (isAssistant
           ? 'Tasks assigned by Nikhil. You can monitor progress and send follow-up messages.'
           : 'Tasks in your department. You can monitor activity and participate in messages.')
+        : mode === 'property'
+        ? 'Tasks currently assigned to the Property Management team. You can monitor progress and send follow-up messages.'
+        : mode === 'maintenance'
+        ? 'Tasks currently assigned to the Maintenance team. You can monitor progress and send follow-up messages.'
         : tasksHistoryFilter==='cancelled'
         ? 'Cancelled tasks are kept here for reference.'
         : 'Approved and completed tasks, with their conversations and proof history.';
@@ -646,6 +657,11 @@
       departmentBtn.style.display=(isNikhilAssistant||oversightRows.length)?'':'none';
       departmentBtn.textContent=(isNikhilAssistant||oversightRows.some(a=>a.oversightRole==='Executive Assistant'))?"Nikhil's Tasks":'Department Tasks';
     }
+    const isIsha=String(currentUser?.email||'').toLowerCase()==='isha@dhananipeg.com';
+    const propertyBtn=document.getElementById('tasks-property-btn');
+    const maintenanceBtn=document.getElementById('tasks-maintenance-btn');
+    if(propertyBtn)propertyBtn.style.display=isIsha?'':'none';
+    if(maintenanceBtn)maintenanceBtn.style.display=isIsha?'':'none';
     window.updateNotificationCenter?.();
     renderTasksTabList();
   };
@@ -727,7 +743,7 @@
     const mode = tasksTabMode;
     const { list, received, principal, sortFn } = tasksTabModeSource(mode);
     if (!list.length) {
-      const emptyText = mode === 'department'
+      const emptyText = ['department','property','maintenance'].includes(mode)
         ? 'No tasks available'
         : mode === 'history'
         ? (tasksHistoryFilter==='cancelled'?'No cancelled tasks':'No completed tasks yet')

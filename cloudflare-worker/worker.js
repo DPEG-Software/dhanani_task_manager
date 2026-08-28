@@ -26,6 +26,24 @@ const DEPARTMENT_PRINCIPALS = {
 const ASSIGNER_DELEGATES = {
   'isha@dhananipeg.com': ['nikhil@dhananipeg.com'],
 };
+const TEAM_OVERSIGHT_RECIPIENTS = {
+  'isha@dhananipeg.com': {
+    property_management: [
+      'propertymanagement@dhananipeg.com', 'elanda@dhananipeg.com',
+      'propertyadmin@dhananipeg.com', 'ap@dhananipeg.com',
+      'dhenriquez@dhananipeg.com', 'leasing2@dhananipeg.com',
+      'ar@dhananipeg.com', 'propertymanagement1@dhananipeg.com',
+      'anajus@dhananipeg.com', 'ggonzalez@dhananipeg.com',
+      'girfan@dhananipeg.com', 'tenantrelations@dhananipeg.com',
+      'amadhani@dhananipeg.com', 'systemmanager@dhananipeg.com',
+      'skradjian@dhananipeg.com',
+    ],
+    maintenance: [
+      'maintenance@dhananipeg.com', 'hcuellar@dhananipeg.com',
+      'cramirez@dhananipeg.com',
+    ],
+  },
+};
 
 function departmentPrincipalDepartments(email) {
   return DEPARTMENT_PRINCIPALS[extractEmailAddress(email || '')] || [];
@@ -39,9 +57,18 @@ function delegatedAssigners(email) {
   return ASSIGNER_DELEGATES[extractEmailAddress(email || '')] || [];
 }
 
+function teamOversightGroups(email) {
+  return TEAM_OVERSIGHT_RECIPIENTS[extractEmailAddress(email || '')] || {};
+}
+
+function teamOversightRecipients(email) {
+  return [...new Set(Object.values(teamOversightGroups(email)).flat())];
+}
+
 function canOverseeAssignment(email, assignment) {
   return departmentPrincipalCanOversee(email, assignment?.dept)
-    || delegatedAssigners(email).includes(extractEmailAddress(assignment?.assigner_email || ''));
+    || delegatedAssigners(email).includes(extractEmailAddress(assignment?.assigner_email || ''))
+    || teamOversightRecipients(email).includes(extractEmailAddress(assignment?.recipient_email || ''));
 }
 
 const CORS = {
@@ -385,6 +412,7 @@ async function loadTaskMessageThreads(env, claims, options = {}) {
     ? options.principalDepartments.map(value => String(value || '').trim().toLowerCase()).filter(Boolean)
     : departmentPrincipalDepartments(email);
   const oversightAssigners = delegatedAssigners(email);
+  const oversightRecipients = teamOversightRecipients(email);
   let sql = `SELECT id, app_task_id, task_title, assigner_email, recipient_email, recipient_name,
                     sender_email, sender_name, sender_role, message, created_at
                FROM task_messages
@@ -407,6 +435,10 @@ async function loadTaskMessageThreads(env, claims, options = {}) {
          AND a.assigner_email IN (${oversightAssigners.map(() => '?').join(',')})
     )`;
     bindings.push(...oversightAssigners);
+  }
+  if (oversightRecipients.length) {
+    sql += ` OR task_messages.recipient_email IN (${oversightRecipients.map(() => '?').join(',')})`;
+    bindings.push(...oversightRecipients);
   }
   sql += ')';
   if (taskId) {
@@ -1621,6 +1653,8 @@ async function handleAssignments(request, env) {
 
   const principalDepartments = departmentPrincipalDepartments(tokenEmail);
   const oversightAssigners = delegatedAssigners(tokenEmail);
+  const oversightGroups = teamOversightGroups(tokenEmail);
+  const oversightRecipients = teamOversightRecipients(tokenEmail);
   const oversightClauses = [];
   const oversightBindings = [];
   if (principalDepartments.length) {
@@ -1630,6 +1664,10 @@ async function handleAssignments(request, env) {
   if (oversightAssigners.length) {
     oversightClauses.push(`assigner_email IN (${oversightAssigners.map(() => '?').join(',')})`);
     oversightBindings.push(...oversightAssigners);
+  }
+  if (oversightRecipients.length) {
+    oversightClauses.push(`recipient_email IN (${oversightRecipients.map(() => '?').join(',')})`);
+    oversightBindings.push(...oversightRecipients);
   }
   const overseenQuery = oversightClauses.length
     ? env.DPEG_ASSIGNMENTS.prepare(
@@ -1683,12 +1721,15 @@ async function handleAssignments(request, env) {
   return json({
     assignedToMe: (toMe.results || []).map(shape),
     assignedByMe: (byMe.results || []).map(shape),
-    overseenByMe: (overseen.results || []).map(row => ({
-      ...shape(row),
-      oversightRole: oversightAssigners.includes(extractEmailAddress(row.assigner_email))
-        ? 'Executive Assistant'
-        : 'Department Principal',
-    })),
+    overseenByMe: (overseen.results || []).map(row => {
+      const recipient = extractEmailAddress(row.recipient_email);
+      const scopes = [];
+      if (oversightAssigners.includes(extractEmailAddress(row.assigner_email))) scopes.push('nikhil');
+      if ((oversightGroups.property_management || []).includes(recipient)) scopes.push('property_management');
+      if ((oversightGroups.maintenance || []).includes(recipient)) scopes.push('maintenance');
+      if (!scopes.length) scopes.push('department');
+      return { ...shape(row), oversightRole: scopes.includes('department') ? 'Department Principal' : 'Executive Assistant', oversightScopes: scopes };
+    }),
   });
 }
 
