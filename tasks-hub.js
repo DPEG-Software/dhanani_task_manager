@@ -2,11 +2,11 @@
   const LIVE_STAGES = ['Assigned', 'In Progress', 'Submitted', 'Done'];
   const MANUAL_STATUSES = ['Assigned', 'In Progress'];
 
-  let tasksTabMode = 'received'; // 'received' | 'given' | 'history'
+  let tasksTabMode = 'received'; // 'received' | 'given' | 'department' | 'history'
   let tasksHistoryFilter = 'completed'; // 'completed' | 'cancelled'
-  let tasksTabCache = { assignedToMe: [], assignedByMe: [] };
-  const tasksTabOpenGroups = { received: new Set(), given: new Set(), history: new Set() };
-  const tasksTabVisibleCounts = { received: new Map(), given: new Map(), history: new Map() };
+  let tasksTabCache = { assignedToMe: [], assignedByMe: [], overseenByMe: [] };
+  const tasksTabOpenGroups = { received: new Set(), given: new Set(), department: new Set(), history: new Set() };
+  const tasksTabVisibleCounts = { received: new Map(), given: new Map(), department: new Map(), history: new Map() };
   const tasksHistoryDirections = new Map(); // person key -> 'to' | 'by'
   let expandedAssignmentId = null;
   const TASKS_PAGE_SIZE = 10;
@@ -222,10 +222,14 @@
       const byMe = (tasksTabCache.assignedByMe || []).filter(isPast).map(a => ({ ...a, _received: false }));
       return { list: [...toMe, ...byMe], received: a => a._received, sortFn: sortHistoryItems };
     }
+    if (mode === 'department') {
+      const list = (tasksTabCache.overseenByMe || []).filter(a => stageLabel(a) !== 'Done' && stageLabel(a) !== 'Cancelled');
+      return { list, received: false, principal: true, sortFn: sortAssignmentItems };
+    }
     const received = mode === 'received';
     const list = (received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []))
       .filter(a => stageLabel(a) !== 'Done' && stageLabel(a) !== 'Cancelled');
-    return { list, received, sortFn: sortAssignmentItems };
+    return { list, received, principal: false, sortFn: sortAssignmentItems };
   }
 
   function safeDomId(id) {
@@ -409,7 +413,7 @@
     return `<button type="button" class="btn btn-ghost btn-sm assign-cancel-btn" title="Cancel task" onclick="cancelAssignmentDirect('${a.id}')">Cancel</button>`;
   }
 
-  function assignmentActions(a, received) {
+  function assignmentActions(a, received, principal=false) {
     const proof = proofState(a);
     const cancelled = isCancelled(a);
     // A task that's Done — or Cancelled — has nothing left to follow up or
@@ -418,6 +422,15 @@
     // into the completed/"history" part of its group (see sortAssignmentItems
     // and tasksTabModeSource) and these controls retire along with it.
     const isTerminal = proof === 'approved' || cancelled;
+    if (principal) {
+      const approvalOwner=escapeHtml(a.assignerName||a.assignerEmail||'the assigner');
+      const approvalText=awaitingApproval(a)
+        ?`Proof awaiting approval from ${approvalOwner}`
+        :proof==='approved'
+        ?`✓ Approved by ${approvalOwner}`
+        :`Approval owner: ${approvalOwner}`;
+      return `<span style="font-size:11.5px;color:var(--muted);font-weight:700">${approvalText}</span><span class="assign-actions-trailing">${isTerminal?'':`<button class="btn btn-ghost btn-sm assign-followup-btn" onclick="openTaskFollowup('${a.id}','principal')">Messages</button>`}</span>`;
+    }
     const followBtn = isTerminal ? '' : followupButton(a, received);
     const bellBtn = (isTerminal || awaitingApproval(a)) ? '' : alertBellButton(a, received);
     // Cancelling is an assigner-only action, and only makes sense while a
@@ -460,7 +473,7 @@
     return `${content}<span class="assign-actions-trailing">${followBtn}${bellBtn}${moreBtn}</span>`;
   }
 
-  function assignmentCard(a, received, history=false) {
+  function assignmentCard(a, received, history=false, principal=false) {
     const hasFollowup = !history && proofState(a) !== 'approved' && !isCancelled(a) && followupUnreadCount(a, received) > 0;
     const changesRequested=!history&&received&&proofState(a)==='declined'&&!isCancelled(a);
     const overdueCard=!history&&!received&&isAssignmentOverdue(a);
@@ -492,7 +505,7 @@
         ${historyLabels}
         ${history?`${(a.proofSubmittedAt||proofState(a)==='approved'||proofState(a)==='declined')?`<div class="assign-compact-summary"><div></div><div class="assign-actions"><button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button></div></div>`:''}`:`<div class="assign-compact-summary">
           <div class="assign-card-meta">${dueDateBadge(a)}${isNew?'<span class="assign-task-new">New</span>':''}${proofNotice}</div>
-          <div class="assign-actions">${assignmentActions(a, received)}</div>
+          <div class="assign-actions">${assignmentActions(a, received, principal)}</div>
         </div>`}
         ${expanded?`<div class="assign-expanded-details">${assignmentDescription(a.summary, a.id)}${history?'':renderStepper(a)}${historyProofInline}</div>`:''}
       </div>
@@ -502,7 +515,7 @@
   window.toggleAssignmentDetails = function toggleAssignmentDetails(id) {
     expandedAssignmentId=expandedAssignmentId===id?null:id;
     if(expandedAssignmentId){
-      const a=[...(tasksTabCache.assignedToMe||[]),...(tasksTabCache.assignedByMe||[])].find(row=>row.id===id);
+      const a=[...(tasksTabCache.assignedToMe||[]),...(tasksTabCache.assignedByMe||[]),...(tasksTabCache.overseenByMe||[])].find(row=>row.id===id);
       if(a){
         seenAssignmentStages.add(assignmentSeenKey(a));
         saveSeenStages(seenAssignmentStages);
@@ -566,6 +579,7 @@
     }
     document.getElementById('tasks-received-btn')?.classList.toggle('active', mode === 'received');
     document.getElementById('tasks-given-btn')?.classList.toggle('active', mode === 'given');
+    document.getElementById('tasks-department-btn')?.classList.toggle('active', mode === 'department');
     document.getElementById('tasks-history-btn')?.classList.toggle('active', mode === 'history');
     const historyFilter=document.getElementById('tasks-history-filter');
     if(historyFilter)historyFilter.style.display=mode==='history'?'flex':'none';
@@ -575,6 +589,8 @@
         ? 'Your active assignments, status updates, proof, and conversations.'
         : mode === 'given'
         ? 'Tasks you assigned to others. Submitted proof needing review appears first.'
+        : mode === 'department'
+        ? 'Tasks in your department. You can monitor activity and participate in messages.'
         : tasksHistoryFilter==='cancelled'
         ? 'Cancelled tasks are kept here for reference.'
         : 'Approved and completed tasks, with their conversations and proof history.';
@@ -593,7 +609,7 @@
     const sig = list => (list || [])
       .map(a => [a.id, a.status, a.proofStatus, a.summary, a.dueDate, a.title, a.dept, a.priority, a.updateAlertAt, a.reminderCount, a.assignerMessageSeenCount, a.recipientMessageSeenCount, a.recipientReminderSeenCount, a.version].join('|'))
       .join(';');
-    return `${sig(cache?.assignedToMe)}::${sig(cache?.assignedByMe)}`;
+    return `${sig(cache?.assignedToMe)}::${sig(cache?.assignedByMe)}::${sig(cache?.overseenByMe)}`;
   }
 
   // silent=true is used by the background poll: fetches quietly and only
@@ -620,6 +636,8 @@
     }
     if (silent && assignmentsSignature(nextCache) === assignmentsSignature(tasksTabCache)) return;
     tasksTabCache = nextCache;
+    const departmentBtn=document.getElementById('tasks-department-btn');
+    if(departmentBtn)departmentBtn.style.display=(tasksTabCache.overseenByMe||[]).length?'':'none';
     window.updateNotificationCenter?.();
     renderTasksTabList();
   };
@@ -628,6 +646,7 @@
     return {
       assignedToMe: (tasksTabCache.assignedToMe || []).map(a => ({ ...a })),
       assignedByMe: (tasksTabCache.assignedByMe || []).map(a => ({ ...a })),
+      overseenByMe: (tasksTabCache.overseenByMe || []).map(a => ({ ...a })),
     };
   };
 
@@ -698,7 +717,7 @@
     if (!tb) return;
     updateTasksNavBadges();
     const mode = tasksTabMode;
-    const { list, received, sortFn } = tasksTabModeSource(mode);
+    const { list, received, principal, sortFn } = tasksTabModeSource(mode);
     if (!list.length) {
       const emptyText = mode === 'history'
         ? (tasksHistoryFilter==='cancelled'?'No cancelled tasks':'No completed tasks yet')
@@ -740,7 +759,7 @@
         <button type="button" class="${historyDirection==='by'?'active':''}" onclick="setTasksHistoryDirection(event,${safeGroupKey},'by')" ${byItems.length?'':'disabled'}>Assigned by ${escapeHtml(group.name)} <span>${byItems.length}</span></button>
       </div>`:'';
       const cards = open
-        ? `${directionToggle}<div class="assign-cards">${visibleItems.map(a => assignmentCard(a, mode==='history'?a._received:group.received,mode==='history')).join('')}${remaining?`<button type="button" class="assign-show-more" onclick="showMoreAssignments(${JSON.stringify(pageKey)})">Show 10 more <span>(${remaining} remaining)</span></button>`:''}</div>`
+        ? `${directionToggle}<div class="assign-cards">${visibleItems.map(a => assignmentCard(a, mode==='history'?a._received:group.received,mode==='history',principal)).join('')}${remaining?`<button type="button" class="assign-show-more" onclick="showMoreAssignments(${JSON.stringify(pageKey)})">Show 10 more <span>(${remaining} remaining)</span></button>`:''}</div>`
         : '';
       const groupName = escapeHtml(group.name);
       const historySummary=mode==='history'
@@ -934,7 +953,8 @@
   // Opens the generic task follow-up modal (index.html: showTaskFollowupModal),
   // available on both Received and Delegated cards regardless of proof status.
   window.openTaskFollowup = function openTaskFollowup(id, received) {
-    const list = received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []);
+    const principal=received==='principal';
+    const list = principal ? (tasksTabCache.overseenByMe || []) : received ? (tasksTabCache.assignedToMe || []) : (tasksTabCache.assignedByMe || []);
     const a = list.find(x => x.id === id);
     if (!a || typeof window.showTaskFollowupModal !== 'function') return;
     window.showTaskFollowupModal({
@@ -945,7 +965,7 @@
       assignerName: a.assignerName || '',
       recipientEmail: a.recipientEmail || '',
       recipientName: a.recipientName || '',
-      role: received ? 'assignee' : 'assignor',
+      role: principal ? 'principal' : received ? 'assignee' : 'assignor',
     });
   };
 

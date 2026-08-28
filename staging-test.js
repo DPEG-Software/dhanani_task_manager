@@ -21,8 +21,10 @@ async function token(){
 async function api(body=null){
   const accessToken=await token();
   const options={headers:{Authorization:`Bearer ${accessToken}`}};
-  if(body){options.method='POST';options.headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
-  const response=await fetch(`${STAGING_WORKER}/staging/tasks`,options);
+  const testActorEmail=$('test-actor')?.value||'';
+  if(body){options.method='POST';options.headers['Content-Type']='application/json';options.body=JSON.stringify({...body,testActorEmail});}
+  const endpoint=body?`${STAGING_WORKER}/staging/tasks`:`${STAGING_WORKER}/staging/tasks?testActorEmail=${encodeURIComponent(testActorEmail)}`;
+  const response=await fetch(endpoint,options);
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(data.message||data.error||`Request failed (${response.status})`);
   return data;
@@ -120,8 +122,9 @@ function relatedActivity(a){
     const messages=thread.thread;
     const expanded=expandedThreads.has(a.id);
     const messageRows=expanded?messages.map(message=>{
-      const mine=norm(message.email)===norm(account?.username);
-      const sender=mine?'You':message.name||message.email||'Employee';
+      const mine=norm(message.email)===norm($('test-actor')?.value||account?.username);
+      const isPrincipal=norm(message.email)==='faiz@dhananipeg.com'&&norm(a.dept)==='investor relations';
+      const sender=(mine?'You':message.name||message.email||'Employee')+(isPrincipal?' — Department Principal':'');
       const time=message.createdAt?new Date(message.createdAt).toLocaleString([],{
         month:'short',day:'numeric',hour:'numeric',minute:'2-digit'
       }):'';
@@ -143,17 +146,21 @@ function card(a,role){
   if(role==='assigner'){
     buttons.push(`<button onclick="sendReminder('${a.id}',${version})">Send Reminder</button>`);
     if(pending){buttons.push(`<button class="primary" onclick="reviewProof('${pending.id}',${version},'approved')">Approve Proof</button>`,`<button class="danger" onclick="reviewProof('${pending.id}',${version},'changes_requested')">Request Changes</button>`);}
-  }else{
+  }else if(role==='recipient'){
     if(a.status!=='Submitted'&&a.status!=='Done')buttons.push(`<button onclick="changeStatus('${a.id}',${version},'In Progress')">Start</button>`,`<button class="primary" onclick="submitProof('${a.id}',${version})">Submit Fake Proof</button>`);
   }
-  const person=role==='assigner'?a.recipient_name||a.recipient_email:a.assigner_name||a.assigner_email;
-  return `<article class="card"><div class="card-head"><div><div class="title">${esc(a.title)}</div><div class="meta">${esc(person)} · ${esc(a.dept||'Needs Department')}${a.due_date?` · Due ${esc(a.due_date)}`:''}</div></div><span class="badge">${esc(a.status)}</span></div>${activity.html}<div class="actions">${buttons.join('')}</div></article>`;
+  const person=role==='assigner'?a.recipient_name||a.recipient_email:role==='principal'?a.recipient_name||a.recipient_email:a.assigner_name||a.assigner_email;
+  const roleLabel=role==='principal'?'<div class="meta"><b>Department Principal view</b> · Read and message access</div>':'';
+  return `<article class="card"><div class="card-head"><div><div class="title">${esc(a.title)}</div><div class="meta">${esc(person)} · ${esc(a.dept||'Needs Department')}${a.due_date?` · Due ${esc(a.due_date)}`:''}</div>${roleLabel}</div><span class="badge">${esc(a.status)}</span></div>${activity.html}<div class="actions">${buttons.join('')}</div></article>`;
 }
 function render(){
-  const email=norm(account?.username);const assignments=workflow.assignments||[];
+  const email=norm($('test-actor')?.value||account?.username);const assignments=workflow.assignments||[];
   const by=assignments.filter(a=>norm(a.assigner_email)===email);const to=assignments.filter(a=>norm(a.recipient_email)===email);
+  const department=assignments.filter(a=>email==='faiz@dhananipeg.com'&&norm(a.dept)==='investor relations'&&norm(a.assigner_email)!==email&&norm(a.recipient_email)!==email);
   $('by-me').innerHTML=by.length?by.map(a=>card(a,'assigner')).join(''):'<div class="empty">No fake tasks assigned by you.</div>';
   $('to-me').innerHTML=to.length?to.map(a=>card(a,'recipient')).join(''):'<div class="empty">No fake tasks assigned to you.</div>';
+  $('department-panel').hidden=email!=='faiz@dhananipeg.com';
+  $('department-tasks').innerHTML=department.length?department.map(a=>card(a,'principal')).join(''):'<div class="empty">No Investor Relations tasks.</div>';
 }
 async function action(payload,success){try{setStatus('Saving…');await api(payload);setStatus(success);await loadWorkflow();}catch(error){setStatus(error.message,true);await loadWorkflow();}}
 async function delegate(){
@@ -173,6 +180,7 @@ async function init(){
   await authClient.initialize();const response=await authClient.handleRedirectPromise();account=response?.account||authClient.getAllAccounts()[0]||null;
   $('sign-in').hidden=!!account;$('sign-out').hidden=!account;$('account').textContent=account?`${account.name||''} (${account.username})`:'Not signed in';
   $('sign-in').onclick=signIn;$('sign-out').onclick=signOut;$('delegate').onclick=delegate;$('refresh').onclick=loadWorkflow;
+  $('test-actor').onchange=()=>loadWorkflow();
   document.addEventListener('visibilitychange',()=>{if(account&&!document.hidden)loadWorkflow({silent:true});});
   await checkSafety();if(account){await loadWorkflow();startAutoRefresh();await connectRealtime();}
 }

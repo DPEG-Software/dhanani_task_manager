@@ -42,13 +42,20 @@
         <section class="panel">
           <h2>Signed-in tester</h2>
           <p id="account">Not signed in</p>
+          <label for="test-actor">Test as</label>
+          <select id="test-actor">
+            <option value="nick@dhananipeg.com">Nick — CEO</option>
+            <option value="faiz@dhananipeg.com">Faiz — Investor Relations Principal</option>
+            <option value="invest@dhananipeg.com">Investor Relations Team</option>
+          </select>
+          <p style="margin-top:7px">Staging simulation only. Your Microsoft account remains the authenticated tester.</p>
         </section>
         <section class="panel">
           <h2>Create a fake delegated task</h2>
-          <label for="recipient">Recipient email</label><input class="input" id="recipient" type="email" placeholder="employee@dhananipeg.com">
+          <label for="recipient">Recipient email</label><input class="input" id="recipient" type="email" value="invest@dhananipeg.com" placeholder="employee@dhananipeg.com">
           <label for="title">Task title</label><input class="input" id="title" placeholder="Staging test task">
           <label for="summary">Instructions</label><textarea id="summary" placeholder="This is fake staging data."></textarea>
-          <div class="row"><div><label for="department">Department</label><input class="input" id="department" value="IT"></div><div><label for="priority">Priority</label><select id="priority"><option>Normal</option><option>High</option><option>Low</option></select></div></div>
+          <div class="row"><div><label for="department">Department</label><input class="input" id="department" value="Investor Relations"></div><div><label for="priority">Priority</label><select id="priority"><option>Normal</option><option>High</option><option>Low</option></select></div></div>
           <label for="due-date">Due date</label><input class="input" id="due-date" type="date">
           <button id="delegate" class="primary" style="margin-top:13px;width:100%" disabled>Create Fake Task</button>
           <div id="form-status" class="status"></div>
@@ -60,6 +67,7 @@
           <div id="by-me" class="cards" style="margin-top:13px"><div class="empty">Sign in to load staging tasks.</div></div>
         </section>
         <section class="panel"><h2 style="margin-bottom:3px">Assigned to me</h2><p>Sign in as the recipient to update and submit proof.</p><div id="to-me" class="cards" style="margin-top:13px"><div class="empty">No staging tasks loaded.</div></div></section>
+        <section class="panel" id="department-panel" hidden><h2 style="margin-bottom:3px">Department Tasks</h2><p>Investor Relations oversight. The principal can view activity and contribute messages; task controls remain with the assignee and assigner.</p><div id="department-tasks" class="cards" style="margin-top:13px"><div class="empty">No Investor Relations tasks.</div></div></section>
       </main>
     </div>
   </div>

@@ -20,6 +20,17 @@ const STANDARD_DEPARTMENTS = new Set([
   'property management','maintenance','marketing','legal and title','leasing',
   'it','operations','lending','insurance','multifamily','eb-5',
 ]);
+const DEPARTMENT_PRINCIPALS = {
+  'faiz@dhananipeg.com': ['investor relations'],
+};
+
+function departmentPrincipalDepartments(email) {
+  return DEPARTMENT_PRINCIPALS[extractEmailAddress(email || '')] || [];
+}
+
+function departmentPrincipalCanOversee(email, department) {
+  return departmentPrincipalDepartments(email).includes(String(department || '').trim().toLowerCase());
+}
 
 const CORS = {
   'Access-Control-Allow-Origin':  ALLOWED_ORIGIN,
@@ -291,7 +302,7 @@ async function ensureTaskMessagesTable(env) {
   taskMessagesTableReady = true;
 }
 
-async function insertTaskMessage(env, body, claims) {
+async function insertTaskMessage(env, body, claims, options = {}) {
   if (!env.DPEG_ASSIGNMENTS) {
     return { error: json({ error: 'D1 task-message storage is not configured' }, 501) };
   }
@@ -299,14 +310,14 @@ async function insertTaskMessage(env, body, claims) {
   const appTaskId = String(body.appTaskId || '').trim();
   const recipientEmail = extractEmailAddress(body.recipientEmail || '');
   const assignerEmail = extractEmailAddress(body.assignerEmail || '');
-  const senderEmail = userEmailFromClaims(claims);
+  const senderEmail = extractEmailAddress(options.senderEmail || userEmailFromClaims(claims));
   const message = String(body.message || '').trim();
   if (!appTaskId || !recipientEmail || !assignerEmail) {
     return { error: json({ error: 'Task and both participants are required' }, 400) };
   }
   if (!message) return { error: json({ error: 'Message is required' }, 400) };
   const assignment = await env.DPEG_ASSIGNMENTS.prepare(
-    `SELECT title, assigner_email, recipient_email, recipient_name
+    `SELECT title, dept, assigner_email, recipient_email, recipient_name
        FROM assignments
       WHERE app_task_id = ? AND recipient_email = ?
       ORDER BY created_at DESC LIMIT 1`
@@ -316,7 +327,8 @@ async function insertTaskMessage(env, body, claims) {
   }
   const canonicalAssigner = extractEmailAddress(assignment.assigner_email || '');
   const canonicalRecipient = extractEmailAddress(assignment.recipient_email || '');
-  if (senderEmail !== canonicalAssigner && senderEmail !== canonicalRecipient) {
+  const principalAccess = departmentPrincipalCanOversee(senderEmail, assignment.dept);
+  if (senderEmail !== canonicalAssigner && senderEmail !== canonicalRecipient && !principalAccess && !options.allowPrincipal) {
     return { error: json({ error: 'You are not a participant in this task conversation' }, 403) };
   }
   // Usually identity alone determines the role. A self-assigned task is the
@@ -324,7 +336,7 @@ async function insertTaskMessage(env, body, claims) {
   // the UI context to preserve whether the message was sent from My Tasks or
   // Delegated. Never trust this hint for a normal two-person assignment.
   const requestedRole = body.by === 'assignor' ? 'assignor' : 'assignee';
-  const senderRole = canonicalAssigner === canonicalRecipient
+  const senderRole = principalAccess ? 'assignor' : canonicalAssigner === canonicalRecipient
     ? requestedRole
     : (senderEmail === canonicalRecipient ? 'assignee' : 'assignor');
   const id = `fm-${crypto.randomUUID()}`;
@@ -353,15 +365,28 @@ async function insertTaskMessage(env, body, claims) {
 async function loadTaskMessageThreads(env, claims, options = {}) {
   if (!env.DPEG_ASSIGNMENTS) return [];
   await ensureTaskMessagesTable(env);
-  const email = userEmailFromClaims(claims);
+  const email = extractEmailAddress(options.viewerEmail || userEmailFromClaims(claims));
   const taskId = String(options.taskId || '').trim();
   const recipientEmail = extractEmailAddress(options.recipientEmail || '');
   const since = String(options.since || '').trim();
+  const principalDepartments = Array.isArray(options.principalDepartments)
+    ? options.principalDepartments.map(value => String(value || '').trim().toLowerCase()).filter(Boolean)
+    : departmentPrincipalDepartments(email);
   let sql = `SELECT id, app_task_id, task_title, assigner_email, recipient_email, recipient_name,
                     sender_email, sender_name, sender_role, message, created_at
                FROM task_messages
-              WHERE (assigner_email = ? OR recipient_email = ?)`;
+              WHERE (assigner_email = ? OR recipient_email = ?`;
   const bindings = [email, email];
+  if (principalDepartments.length) {
+    sql += ` OR EXISTS (
+      SELECT 1 FROM assignments a
+       WHERE a.app_task_id = task_messages.app_task_id
+         AND a.recipient_email = task_messages.recipient_email
+         AND LOWER(a.dept) IN (${principalDepartments.map(() => '?').join(',')})
+    )`;
+    bindings.push(...principalDepartments);
+  }
+  sql += ')';
   if (taskId) {
     sql += ' AND app_task_id = ?';
     bindings.push(taskId);
@@ -1572,13 +1597,23 @@ async function handleAssignments(request, env) {
     return json({ error: 'You can only fetch your own assignments' }, 403);
   }
 
-  const [toMe, byMe] = await Promise.all([
+  const principalDepartments = departmentPrincipalDepartments(tokenEmail);
+  const overseenQuery = principalDepartments.length
+    ? env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT * FROM assignments
+        WHERE LOWER(dept) IN (${principalDepartments.map(() => '?').join(',')})
+          AND recipient_email <> ? AND assigner_email <> ?
+        ORDER BY created_at DESC`
+    ).bind(...principalDepartments, tokenEmail, tokenEmail).all()
+    : Promise.resolve({ results: [] });
+  const [toMe, byMe, overseen] = await Promise.all([
     env.DPEG_ASSIGNMENTS.prepare(
       'SELECT * FROM assignments WHERE recipient_email = ? ORDER BY created_at DESC'
     ).bind(tokenEmail).all(),
     env.DPEG_ASSIGNMENTS.prepare(
       'SELECT * FROM assignments WHERE assigner_email = ? ORDER BY created_at DESC'
     ).bind(tokenEmail).all(),
+    overseenQuery,
   ]);
 
   const shape = (row) => ({
@@ -1615,6 +1650,7 @@ async function handleAssignments(request, env) {
   return json({
     assignedToMe: (toMe.results || []).map(shape),
     assignedByMe: (byMe.results || []).map(shape),
+    overseenByMe: (overseen.results || []).map(row => ({ ...shape(row), oversightRole: 'Department Principal' })),
   });
 }
 
@@ -1852,6 +1888,34 @@ async function handleAssignmentCancel(request, env) {
 // It is intentionally unavailable unless APP_ENV is exactly "staging".
 const STAGING_TASK_STATUSES = new Set(['Pending', 'In Progress', 'Done', 'Cancelled']);
 const STAGING_TASK_PRIORITIES = new Set(['Low', 'Normal', 'High']);
+const STAGING_DEPARTMENT_PRINCIPALS = {
+  'faiz@dhananipeg.com': ['investor relations'],
+};
+const STAGING_TEST_ACTORS = new Set([
+  'nick@dhananipeg.com',
+  'faiz@dhananipeg.com',
+  'invest@dhananipeg.com',
+]);
+const STAGING_TEST_ACTOR_NAMES = {
+  'nick@dhananipeg.com': 'Nick Dhanani',
+  'faiz@dhananipeg.com': 'Faiz Hirani',
+  'invest@dhananipeg.com': 'Investor Relations Team',
+};
+
+function stagingPrincipalDepartments(email) {
+  return STAGING_DEPARTMENT_PRINCIPALS[extractEmailAddress(email || '')] || [];
+}
+
+function stagingPrincipalCanOversee(email, department) {
+  return stagingPrincipalDepartments(email).includes(String(department || '').trim().toLowerCase());
+}
+
+function stagingActorEmail(request, body, claims) {
+  const requested = extractEmailAddress(
+    body?.testActorEmail || new URL(request.url).searchParams.get('testActorEmail') || ''
+  );
+  return STAGING_TEST_ACTORS.has(requested) ? requested : userEmailFromClaims(claims);
+}
 
 function stagingTaskShape(row) {
   return {
@@ -1892,8 +1956,20 @@ async function handleStagingTasksCore(request, env) {
   if (error) return json({ error }, status);
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'Staging D1 binding is not configured' }, 501);
 
-  const ownerEmail = userEmailFromClaims(claims);
+  let body = null;
+  if (request.method === 'POST') {
+    try { body = await request.json(); }
+    catch { return json({ error: 'Invalid JSON body' }, 400); }
+  }
+  // Staging-only role simulation lets an authenticated DPEG tester exercise
+  // the three-party workflow without possessing another employee's password.
+  const ownerEmail = stagingActorEmail(request, body, claims);
   if (request.method === 'GET') {
+    const principalDepartments = stagingPrincipalDepartments(ownerEmail);
+    const principalScope = principalDepartments.length
+      ? ` OR LOWER(a.dept) IN (${principalDepartments.map(() => '?').join(',')})`
+      : '';
+    const scopeBindings = [ownerEmail, ownerEmail, ...principalDepartments];
     const [taskResult, assignmentResult, proofResult, reminderResult, allMessageThreads] = await Promise.all([
       env.DPEG_ASSIGNMENTS.prepare(
       `SELECT id, title, summary, department_name, priority, due_date, status,
@@ -1907,28 +1983,28 @@ async function handleStagingTasksCore(request, env) {
            FROM assignments a
            JOIN tasks t ON t.id = a.app_task_id
           WHERE t.source_type = 'staging_test'
-            AND (a.assigner_email = ? OR a.recipient_email = ?)
+            AND (a.assigner_email = ? OR a.recipient_email = ?${principalScope})
           ORDER BY a.updated_at DESC, a.id DESC`
-      ).bind(ownerEmail, ownerEmail).all(),
+      ).bind(...scopeBindings).all(),
       env.DPEG_ASSIGNMENTS.prepare(
         `SELECT p.*
            FROM proof_submissions p
            JOIN assignments a ON a.id = p.assignment_id
            JOIN tasks t ON t.id = a.app_task_id
           WHERE t.source_type = 'staging_test'
-            AND (a.assigner_email = ? OR a.recipient_email = ?)
+            AND (a.assigner_email = ? OR a.recipient_email = ?${principalScope})
           ORDER BY p.submitted_at DESC, p.id DESC`
-      ).bind(ownerEmail, ownerEmail).all(),
+      ).bind(...scopeBindings).all(),
       env.DPEG_ASSIGNMENTS.prepare(
         `SELECT r.*
            FROM reminders r
            JOIN assignments a ON a.id = r.assignment_id
            JOIN tasks t ON t.id = a.app_task_id
           WHERE t.source_type = 'staging_test'
-            AND (a.assigner_email = ? OR a.recipient_email = ?)
+            AND (a.assigner_email = ? OR a.recipient_email = ?${principalScope})
           ORDER BY r.created_at DESC, r.id DESC`
-      ).bind(ownerEmail, ownerEmail).all(),
-      loadTaskMessageThreads(env, claims),
+      ).bind(...scopeBindings).all(),
+      loadTaskMessageThreads(env, claims, { principalDepartments, viewerEmail: ownerEmail }),
     ]);
     const messageThreads = allMessageThreads
       .filter(thread => String(thread.appTaskId || '').startsWith('stg-task-'));
@@ -1942,10 +2018,6 @@ async function handleStagingTasksCore(request, env) {
   }
 
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-  let body;
-  try { body = await request.json(); }
-  catch { return json({ error: 'Invalid JSON body' }, 400); }
-
   const action = String(body.action || '').trim().toLowerCase();
   if (action === 'assignment_status') {
     const assignmentId = String(body.assignmentId || '').trim();
@@ -2003,8 +2075,10 @@ async function handleStagingTasksCore(request, env) {
        WHERE a.id = ? AND t.source_type = 'staging_test'`
     ).bind(assignmentId).first();
     if (!assignment) return json({ error: 'Staging assignment not found' }, 404);
+    const principalAccess = stagingPrincipalCanOversee(ownerEmail, assignment.dept);
     if (ownerEmail !== extractEmailAddress(assignment.assigner_email)
-        && ownerEmail !== extractEmailAddress(assignment.recipient_email)) {
+        && ownerEmail !== extractEmailAddress(assignment.recipient_email)
+        && !principalAccess) {
       return json({ error: 'You are not a participant in this staging assignment' }, 403);
     }
     const inserted = await insertTaskMessage(env, {
@@ -2013,9 +2087,9 @@ async function handleStagingTasksCore(request, env) {
       assignerEmail: assignment.assigner_email,
       recipientEmail: assignment.recipient_email,
       recipientName: assignment.recipient_name,
-      senderName: String(claims.name || ownerEmail),
+      senderName: STAGING_TEST_ACTOR_NAMES[ownerEmail] || String(claims.name || ownerEmail),
       message: body.message,
-    }, claims);
+    }, claims, { allowPrincipal: principalAccess, senderEmail: ownerEmail });
     if (inserted.error) return inserted.error;
     return json({ success: true, message: inserted }, 201);
   }
@@ -2113,7 +2187,7 @@ async function handleStagingTasksCore(request, env) {
         assignmentId,
         assignment.app_task_id,
         ownerEmail,
-        String(claims.name || ownerEmail),
+        STAGING_TEST_ACTOR_NAMES[ownerEmail] || String(claims.name || ownerEmail),
         String(body.note || '').slice(0, 8000),
         now,
         idempotencyKey,
@@ -2240,7 +2314,7 @@ async function handleStagingTasksCore(request, env) {
         priority,
         dueDate,
         ownerEmail,
-        String(claims.name || ownerEmail),
+        STAGING_TEST_ACTOR_NAMES[ownerEmail] || String(claims.name || ownerEmail),
         recipientEmail,
         String(body.recipientName || '').trim().slice(0, 300),
         String(body.proofInstructions || '').slice(0, 4000),
