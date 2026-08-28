@@ -8,6 +8,67 @@
   let readIds = loadReadIds();
   let baselineAt = loadBaselineAt();
   let historyMode = false;
+  let knownEventIds = null;
+  let audioReady = false;
+  let lastIconBadge = -1;
+  const originalFaviconHref = document.querySelector('link[rel="icon"]')?.href || 'icon.svg';
+
+  // Browsers allow sound only after a user gesture. Arm it once, then future
+  // live notifications can play a short generated chime without an audio file.
+  function armNotificationAudio() { audioReady = true; }
+  ['pointerdown','keydown'].forEach(type => document.addEventListener(type, armNotificationAudio, { once: true, passive: true }));
+
+  function playNotificationTone() {
+    if (!audioReady || document.hidden) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(.075, ctx.currentTime + .018);
+      gain.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + .42);
+      gain.connect(ctx.destination);
+      [0, .13].forEach((delay, index) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = index ? 880 : 660;
+        osc.connect(gain);
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + .24);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 700);
+    } catch (err) { console.warn('Notification tone unavailable:', err?.message || err); }
+  }
+
+  function updateAppIconBadge(count) {
+    const value = Math.max(0, Number(count) || 0);
+    if (value === lastIconBadge) return;
+    lastIconBadge = value;
+    try {
+      if (value && navigator.setAppBadge) navigator.setAppBadge(value).catch(() => {});
+      else if (!value && navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+    } catch {}
+
+    const link = document.querySelector('link[rel="icon"]');
+    if (!link) return;
+    if (!value) { link.href = originalFaviconHref; return; }
+    const image = new Image();
+    image.onload = () => {
+      if (lastIconBadge !== value) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0, 64, 64);
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath(); ctx.arc(48, 16, 16, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 19px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(value > 9 ? '9+' : String(value), 48, 16.5);
+      link.href = canvas.toDataURL('image/png');
+    };
+    image.src = originalFaviconHref;
+  }
 
   function enabled() {
     return true;
@@ -95,6 +156,14 @@
     if (host.hidden) return;
     const events = feed();
     const unread = events.filter(e => timeOf(e.at)>baselineAt&&!readIds.has(e.id));
+    if (knownEventIds === null) {
+      knownEventIds = new Set(events.map(e => e.id));
+    } else {
+      const hasNew = unread.some(e => !knownEventIds.has(e.id));
+      events.forEach(e => knownEventIds.add(e.id));
+      if (hasNew) playNotificationTone();
+    }
+    updateAppIconBadge(unread.length);
     const count = document.getElementById('notification-bell-count');
     if (count) { count.textContent = unread.length > 99 ? '99+' : unread.length; count.hidden = !unread.length; }
     const subtitle = document.getElementById('notification-popover-subtitle');
