@@ -23,6 +23,9 @@ const STANDARD_DEPARTMENTS = new Set([
 const DEPARTMENT_PRINCIPALS = {
   'faiz@dhananipeg.com': ['investor relations'],
 };
+const ASSIGNER_DELEGATES = {
+  'isha@dhananipeg.com': ['nikhil@dhananipeg.com'],
+};
 
 function departmentPrincipalDepartments(email) {
   return DEPARTMENT_PRINCIPALS[extractEmailAddress(email || '')] || [];
@@ -30,6 +33,15 @@ function departmentPrincipalDepartments(email) {
 
 function departmentPrincipalCanOversee(email, department) {
   return departmentPrincipalDepartments(email).includes(String(department || '').trim().toLowerCase());
+}
+
+function delegatedAssigners(email) {
+  return ASSIGNER_DELEGATES[extractEmailAddress(email || '')] || [];
+}
+
+function canOverseeAssignment(email, assignment) {
+  return departmentPrincipalCanOversee(email, assignment?.dept)
+    || delegatedAssigners(email).includes(extractEmailAddress(assignment?.assigner_email || ''));
 }
 
 const CORS = {
@@ -327,8 +339,8 @@ async function insertTaskMessage(env, body, claims, options = {}) {
   }
   const canonicalAssigner = extractEmailAddress(assignment.assigner_email || '');
   const canonicalRecipient = extractEmailAddress(assignment.recipient_email || '');
-  const principalAccess = departmentPrincipalCanOversee(senderEmail, assignment.dept);
-  if (senderEmail !== canonicalAssigner && senderEmail !== canonicalRecipient && !principalAccess && !options.allowPrincipal) {
+  const oversightAccess = canOverseeAssignment(senderEmail, assignment);
+  if (senderEmail !== canonicalAssigner && senderEmail !== canonicalRecipient && !oversightAccess && !options.allowPrincipal) {
     return { error: json({ error: 'You are not a participant in this task conversation' }, 403) };
   }
   // Usually identity alone determines the role. A self-assigned task is the
@@ -336,7 +348,7 @@ async function insertTaskMessage(env, body, claims, options = {}) {
   // the UI context to preserve whether the message was sent from My Tasks or
   // Delegated. Never trust this hint for a normal two-person assignment.
   const requestedRole = body.by === 'assignor' ? 'assignor' : 'assignee';
-  const senderRole = principalAccess ? 'assignor' : canonicalAssigner === canonicalRecipient
+  const senderRole = oversightAccess ? 'assignor' : canonicalAssigner === canonicalRecipient
     ? requestedRole
     : (senderEmail === canonicalRecipient ? 'assignee' : 'assignor');
   const id = `fm-${crypto.randomUUID()}`;
@@ -372,6 +384,7 @@ async function loadTaskMessageThreads(env, claims, options = {}) {
   const principalDepartments = Array.isArray(options.principalDepartments)
     ? options.principalDepartments.map(value => String(value || '').trim().toLowerCase()).filter(Boolean)
     : departmentPrincipalDepartments(email);
+  const oversightAssigners = delegatedAssigners(email);
   let sql = `SELECT id, app_task_id, task_title, assigner_email, recipient_email, recipient_name,
                     sender_email, sender_name, sender_role, message, created_at
                FROM task_messages
@@ -385,6 +398,15 @@ async function loadTaskMessageThreads(env, claims, options = {}) {
          AND LOWER(a.dept) IN (${principalDepartments.map(() => '?').join(',')})
     )`;
     bindings.push(...principalDepartments);
+  }
+  if (oversightAssigners.length) {
+    sql += ` OR EXISTS (
+      SELECT 1 FROM assignments a
+       WHERE a.app_task_id = task_messages.app_task_id
+         AND a.recipient_email = task_messages.recipient_email
+         AND a.assigner_email IN (${oversightAssigners.map(() => '?').join(',')})
+    )`;
+    bindings.push(...oversightAssigners);
   }
   sql += ')';
   if (taskId) {
@@ -1598,13 +1620,24 @@ async function handleAssignments(request, env) {
   }
 
   const principalDepartments = departmentPrincipalDepartments(tokenEmail);
-  const overseenQuery = principalDepartments.length
+  const oversightAssigners = delegatedAssigners(tokenEmail);
+  const oversightClauses = [];
+  const oversightBindings = [];
+  if (principalDepartments.length) {
+    oversightClauses.push(`LOWER(dept) IN (${principalDepartments.map(() => '?').join(',')})`);
+    oversightBindings.push(...principalDepartments);
+  }
+  if (oversightAssigners.length) {
+    oversightClauses.push(`assigner_email IN (${oversightAssigners.map(() => '?').join(',')})`);
+    oversightBindings.push(...oversightAssigners);
+  }
+  const overseenQuery = oversightClauses.length
     ? env.DPEG_ASSIGNMENTS.prepare(
       `SELECT * FROM assignments
-        WHERE LOWER(dept) IN (${principalDepartments.map(() => '?').join(',')})
+        WHERE (${oversightClauses.join(' OR ')})
           AND recipient_email <> ? AND assigner_email <> ?
         ORDER BY created_at DESC`
-    ).bind(...principalDepartments, tokenEmail, tokenEmail).all()
+    ).bind(...oversightBindings, tokenEmail, tokenEmail).all()
     : Promise.resolve({ results: [] });
   const [toMe, byMe, overseen] = await Promise.all([
     env.DPEG_ASSIGNMENTS.prepare(
@@ -1650,7 +1683,12 @@ async function handleAssignments(request, env) {
   return json({
     assignedToMe: (toMe.results || []).map(shape),
     assignedByMe: (byMe.results || []).map(shape),
-    overseenByMe: (overseen.results || []).map(row => ({ ...shape(row), oversightRole: 'Department Principal' })),
+    overseenByMe: (overseen.results || []).map(row => ({
+      ...shape(row),
+      oversightRole: oversightAssigners.includes(extractEmailAddress(row.assigner_email))
+        ? 'Executive Assistant'
+        : 'Department Principal',
+    })),
   });
 }
 

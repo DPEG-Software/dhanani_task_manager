@@ -585,12 +585,15 @@
     if(historyFilter)historyFilter.style.display=mode==='history'?'flex':'none';
     const desc = document.getElementById('tasks-tab-description');
     if (desc) {
+      const isAssistant=(tasksTabCache.overseenByMe||[]).some(a=>a.oversightRole==='Executive Assistant');
       desc.textContent = mode === 'received'
         ? 'Your active assignments, status updates, proof, and conversations.'
         : mode === 'given'
         ? 'Tasks you assigned to others. Submitted proof needing review appears first.'
         : mode === 'department'
-        ? 'Tasks in your department. You can monitor activity and participate in messages.'
+        ? (isAssistant
+          ? 'Tasks assigned by Nikhil. You can monitor progress and send follow-up messages.'
+          : 'Tasks in your department. You can monitor activity and participate in messages.')
         : tasksHistoryFilter==='cancelled'
         ? 'Cancelled tasks are kept here for reference.'
         : 'Approved and completed tasks, with their conversations and proof history.';
@@ -637,7 +640,11 @@
     if (silent && assignmentsSignature(nextCache) === assignmentsSignature(tasksTabCache)) return;
     tasksTabCache = nextCache;
     const departmentBtn=document.getElementById('tasks-department-btn');
-    if(departmentBtn)departmentBtn.style.display=(tasksTabCache.overseenByMe||[]).length?'':'none';
+    if(departmentBtn){
+      const oversightRows=tasksTabCache.overseenByMe||[];
+      departmentBtn.style.display=oversightRows.length?'':'none';
+      departmentBtn.textContent=oversightRows.some(a=>a.oversightRole==='Executive Assistant')?"Nikhil's Tasks":'Department Tasks';
+    }
     window.updateNotificationCenter?.();
     renderTasksTabList();
   };
