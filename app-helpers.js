@@ -206,6 +206,7 @@ function departmentAssignmentContacts(){
   // Keep the shared admin account discoverable by its employee name even
   // when another user's personal Outlook directory has not cached it yet.
   add({name:'Nikhil Kumar',email:'propertymanagement2@dhananipeg.com',dept:'Property Management',role:'Admin'});
+  add({name:'Aishwarya Sai',email:'systemmanager1@dhananipeg.com',dept:'Software Development',role:'System Manager'});
   return [...map.values()].sort((a,b)=>String(a.name||a.email).localeCompare(String(b.name||b.email)));
 }
 function setDeptAssignDepartment(dept){
