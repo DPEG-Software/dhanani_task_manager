@@ -642,8 +642,9 @@
     const departmentBtn=document.getElementById('tasks-department-btn');
     if(departmentBtn){
       const oversightRows=tasksTabCache.overseenByMe||[];
-      departmentBtn.style.display=oversightRows.length?'':'none';
-      departmentBtn.textContent=oversightRows.some(a=>a.oversightRole==='Executive Assistant')?"Nikhil's Tasks":'Department Tasks';
+      const isNikhilAssistant=String(currentUser?.email||'').toLowerCase()==='isha@dhananipeg.com';
+      departmentBtn.style.display=(isNikhilAssistant||oversightRows.length)?'':'none';
+      departmentBtn.textContent=(isNikhilAssistant||oversightRows.some(a=>a.oversightRole==='Executive Assistant'))?"Nikhil's Tasks":'Department Tasks';
     }
     window.updateNotificationCenter?.();
     renderTasksTabList();
@@ -726,7 +727,9 @@
     const mode = tasksTabMode;
     const { list, received, principal, sortFn } = tasksTabModeSource(mode);
     if (!list.length) {
-      const emptyText = mode === 'history'
+      const emptyText = mode === 'department'
+        ? 'No tasks available'
+        : mode === 'history'
         ? (tasksHistoryFilter==='cancelled'?'No cancelled tasks':'No completed tasks yet')
         : 'No tasks yet';
       tb.innerHTML = `<div class="empty-state"><div class="es-text">${emptyText}</div></div>`;
