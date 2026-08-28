@@ -3,7 +3,7 @@ const TENANT_ID='9152bf5c-22ff-4e4a-8624-784a2d243006';
 const CLIENT_ID='8d523e65-0163-49c7-881b-407c0222527e';
 const REDIRECT_URI=window.location.origin+window.location.pathname;
 const loginRequest={scopes:['User.Read'],redirectUri:REDIRECT_URI,prompt:'select_account'};
-let authClient=null,account=null,workflow={tasks:[],assignments:[],proofs:[],reminders:[],messageThreads:[]};
+let authClient=null,account=null,workflow={tasks:[],assignments:[],proofs:[],reminders:[],messageThreads:[],recurringSchedules:[],recurringOccurrences:[]};
 let refreshInFlight=false,refreshQueued=false,autoRefreshTimer=null;
 let realtimeSocket=null,reconnectTimer=null,reconnectAttempt=0;
 const expandedThreads=new Set();
@@ -35,7 +35,7 @@ async function checkSafety(){
     const safe=data.environment==='staging'&&data.externalEffectsEnabled===false;
     $('safety').className='safety '+(safe?'':'bad');
     $('safety').textContent=safe?'✓ Safe staging environment confirmed. Email, Microsoft To Do, OneDrive and AI effects are disabled.':'STOP: staging safety could not be confirmed.';
-    $('delegate').disabled=!safe||!account;$('refresh').disabled=!safe||!account;
+    $('delegate').disabled=!safe||!account;$('create-recurring').disabled=!safe||!account;$('refresh').disabled=!safe||!account;
   }catch{$('safety').className='safety bad';$('safety').textContent='STOP: could not reach the staging environment.';}
 }
 async function signIn(){await authClient.loginRedirect(loginRequest);}
@@ -161,6 +161,10 @@ function render(){
   $('to-me').innerHTML=to.length?to.map(a=>card(a,'recipient')).join(''):'<div class="empty">No fake tasks assigned to you.</div>';
   $('department-panel').hidden=email!=='faiz@dhananipeg.com';
   $('department-tasks').innerHTML=department.length?department.map(a=>card(a,'principal')).join(''):'<div class="empty">No Investor Relations tasks.</div>';
+  const schedules=workflow.recurringSchedules||[];
+  $('recurring-schedules').innerHTML=schedules.length?schedules.map(s=>`<article class="card"><div class="card-head"><div><div class="title">${esc(s.title)}</div><div class="meta">Every ${Number(s.frequency_interval||1)} ${esc(s.frequency_unit||'week')}${Number(s.frequency_interval||1)===1?'':'s'} · ${esc(s.recipient_email)} · Next due ${esc(s.next_due_date)}</div></div><span class="badge">${Number(s.active)?'Active':'Paused'}</span></div>${norm(s.assigner_email)===email?`<div class="actions"><button onclick="toggleRecurring('${s.id}',${Number(s.active)?'false':'true'})">${Number(s.active)?'Pause':'Resume'}</button></div>`:''}</article>`).join(''):'<div class="empty">No recurring schedules.</div>';
+  const occurrences=workflow.recurringOccurrences||[];
+  $('recurring-history').innerHTML=occurrences.length?occurrences.map(o=>`<article class="card"><div class="card-head"><div><div class="title">${esc(o.schedule_title)}</div><div class="meta">Due ${esc(o.due_date)} · Proof: ${esc(o.proof_status||'none')}</div></div><span class="badge">${esc(o.status)}</span></div></article>`).join(''):'<div class="empty">No recurring occurrences.</div>';
 }
 async function action(payload,success){try{setStatus('Saving…');await api(payload);setStatus(success);await loadWorkflow();}catch(error){setStatus(error.message,true);await loadWorkflow();}}
 async function delegate(){
@@ -168,20 +172,27 @@ async function delegate(){
   if(!recipientEmail||!title)return setStatus('Recipient email and task title are required.',true);
   await action({action:'delegate',recipientEmail,title,summary:$('summary').value,departmentName:$('department').value,priority:$('priority').value,dueDate:$('due-date').value},'Fake task created.');
 }
+async function createRecurring(){
+  const title=$('rec-title').value.trim(),recipientEmail=$('rec-recipient').value.trim(),firstDueDate=$('rec-first-due').value;
+  if(!title||!recipientEmail||!firstDueDate)return setStatus('Recurring title, recipient and first due date are required.',true);
+  await action({action:'recurring_create',title,recipientEmail,firstDueDate,summary:$('rec-summary').value,departmentName:$('rec-department').value,proofInstructions:$('rec-proof').value,generationLeadDays:4,frequencyInterval:Number($('rec-frequency-interval').value||1),frequencyUnit:$('rec-frequency-unit').value},'Recurring schedule created.');
+}
+async function toggleRecurring(scheduleId,active){await action({action:'recurring_toggle',scheduleId,active},active?'Schedule resumed.':'Schedule paused.');}
 async function sendMessage(assignmentId){const message=prompt('Type a staging-only message:');if(message?.trim())await action({action:'message',assignmentId,message:message.trim()},'Message saved in staging D1.');}
 async function sendReminder(assignmentId,expectedVersion){await action({action:'remind',assignmentId,expectedVersion,idempotencyKey:`ui-rem-${assignmentId}-${crypto.randomUUID()}`},'Reminder saved in staging D1. No email was sent.');}
 async function changeStatus(assignmentId,expectedVersion,status){await action({action:'assignment_status',assignmentId,expectedVersion,status},'Status updated.');}
 async function submitProof(assignmentId,expectedVersion){const note=prompt('Describe the fake proof:','Staging proof completed.');if(note!==null)await action({action:'submit_proof',assignmentId,expectedVersion,note,idempotencyKey:`ui-proof-${assignmentId}-${crypto.randomUUID()}`,files:[{fileName:'staging-proof.txt',mimeType:'text/plain',sizeBytes:10,webUrl:'about:blank'}]},'Fake proof submitted.');}
 async function reviewProof(proofId,expectedVersion,decision){const reason=decision==='changes_requested'?prompt('Reason for requesting changes:','Please update the proof.'):'';if(reason!==null)await action({action:'review_proof',proofId,expectedVersion,decision,reason:reason||''},decision==='approved'?'Proof approved.':'Changes requested.');}
-Object.assign(window,{sendMessage,sendReminder,changeStatus,submitProof,reviewProof,toggleThread});
+Object.assign(window,{sendMessage,sendReminder,changeStatus,submitProof,reviewProof,toggleThread,toggleRecurring});
 
 async function init(){
   authClient=new msal.PublicClientApplication({auth:{clientId:CLIENT_ID,authority:`https://login.microsoftonline.com/${TENANT_ID}`,redirectUri:REDIRECT_URI,navigateToLoginRequestUrl:false},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:true}});
   await authClient.initialize();const response=await authClient.handleRedirectPromise();account=response?.account||authClient.getAllAccounts()[0]||null;
   $('sign-in').hidden=!!account;$('sign-out').hidden=!account;$('account').textContent=account?`${account.name||''} (${account.username})`:'Not signed in';
-  $('sign-in').onclick=signIn;$('sign-out').onclick=signOut;$('delegate').onclick=delegate;$('refresh').onclick=loadWorkflow;
+  $('sign-in').onclick=signIn;$('sign-out').onclick=signOut;$('delegate').onclick=delegate;$('create-recurring').onclick=createRecurring;$('refresh').onclick=loadWorkflow;
   $('test-actor').onchange=()=>loadWorkflow();
   document.addEventListener('visibilitychange',()=>{if(account&&!document.hidden)loadWorkflow({silent:true});});
+  const today=new Date().toISOString().slice(0,10);const nextFriday=new Date();while(nextFriday.getDay()!==5)nextFriday.setDate(nextFriday.getDate()+1);$('rec-first-due').min=today;$('rec-first-due').value=nextFriday.toISOString().slice(0,10);
   await checkSafety();if(account){await loadWorkflow();startAutoRefresh();await connectRealtime();}
 }
 init().catch(error=>setStatus(error.message,true));

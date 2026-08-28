@@ -51,6 +51,17 @@
           <p style="margin-top:7px">Staging simulation only. Your Microsoft account remains the authenticated tester.</p>
         </section>
         <section class="panel">
+          <h2>Create a weekly recurring task</h2>
+          <p>Creates a fresh occurrence each week. Previous proof and messages remain attached to their original week.</p>
+          <label for="rec-title">Task title</label><input class="input" id="rec-title" placeholder="Weekly reconciliation">
+          <label for="rec-recipient">Recipient email</label><input class="input" id="rec-recipient" type="email" value="invest@dhananipeg.com">
+          <label for="rec-summary">Instructions</label><textarea id="rec-summary" placeholder="Complete and submit the weekly reconciliation."></textarea>
+          <div class="row"><div><label for="rec-department">Department</label><input class="input" id="rec-department" value="Investor Relations"></div><div><label for="rec-first-due">First due date</label><input class="input" id="rec-first-due" type="date"></div></div>
+          <label>Frequency</label><div class="row"><div><input class="input" id="rec-frequency-interval" type="number" min="1" max="365" value="1"></div><div><select id="rec-frequency-unit"><option value="day">Day(s)</option><option value="week" selected>Week(s)</option><option value="month">Month(s)</option><option value="year">Year(s)</option></select></div></div>
+          <label for="rec-proof">Proof required</label><input class="input" id="rec-proof" placeholder="Upload the reconciliation report">
+          <button id="create-recurring" class="primary" style="margin-top:13px;width:100%" disabled>Create Weekly Schedule</button>
+        </section>
+        <section class="panel">
           <h2>Create a fake delegated task</h2>
           <label for="recipient">Recipient email</label><input class="input" id="recipient" type="email" value="invest@dhananipeg.com" placeholder="employee@dhananipeg.com">
           <label for="title">Task title</label><input class="input" id="title" placeholder="Staging test task">
@@ -68,6 +79,8 @@
         </section>
         <section class="panel"><h2 style="margin-bottom:3px">Assigned to me</h2><p>Sign in as the recipient to update and submit proof.</p><div id="to-me" class="cards" style="margin-top:13px"><div class="empty">No staging tasks loaded.</div></div></section>
         <section class="panel" id="department-panel" hidden><h2 style="margin-bottom:3px">Department Tasks</h2><p>Investor Relations oversight. The principal can view activity and contribute messages; task controls remain with the assignee and assigner.</p><div id="department-tasks" class="cards" style="margin-top:13px"><div class="empty">No Investor Relations tasks.</div></div></section>
+        <section class="panel"><h2 style="margin-bottom:3px">Recurring Schedules</h2><p>Each generated week is an independent task. Pausing stops future occurrences without removing history.</p><div id="recurring-schedules" class="cards" style="margin-top:13px"><div class="empty">No recurring schedules.</div></div></section>
+        <section class="panel"><h2 style="margin-bottom:3px">Recurring History</h2><p>Past and current occurrences retain their own status, messages, proof, and approval.</p><div id="recurring-history" class="cards" style="margin-top:13px"><div class="empty">No recurring occurrences.</div></div></section>
       </main>
     </div>
   </div>

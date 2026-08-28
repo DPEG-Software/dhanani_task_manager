@@ -254,6 +254,7 @@
       <button id="tasks-department-btn" style="display:none" onclick="setTasksTabMode('department')">Department Tasks</button>
       <button id="tasks-property-btn" style="display:none" onclick="setTasksTabMode('property')">Property Management</button>
       <button id="tasks-maintenance-btn" style="display:none" onclick="setTasksTabMode('maintenance')">Maintenance</button>
+      <button id="tasks-recurring-btn" onclick="setTasksTabMode('recurring')">Recurring</button>
       <button id="tasks-history-btn" onclick="setTasksTabMode('history')">History <span class="nb red" id="tasks-history-badge" style="margin-left:6px;display:none">0</span></button>
     </div>
     <div class="directory-toggle" id="tasks-history-filter" style="display:none;margin-top:-5px;margin-bottom:10px">
@@ -771,6 +772,22 @@
       <button class="btn btn-ghost btn-sm" onclick="closeMo('mo-unread-check')">Go back</button>
       <button class="btn btn-primary btn-sm" onclick="closeMo('mo-unread-check');proceedSend()">Send anyway</button>
     </div>
+  </div>
+</div>
+
+<!-- RECURRING TASK SCHEDULE -->
+<div class="mo" id="mo-recurring-task">
+  <div class="mo-box" style="max-width:620px">
+    <div class="mo-hdr"><div><div class="mo-title">Create Recurring Task</div><div class="mo-sub">Each occurrence keeps its own proof, messages, and approval history</div></div><button class="mo-x" onclick="closeMo('mo-recurring-task')">&#10005;</button></div>
+    <div class="mo-body">
+      <div class="form-grp"><label class="form-lbl">Task title</label><input class="form-in" id="rt-title" placeholder="Weekly reconciliation"></div>
+      <div class="form-row"><div class="form-grp"><label class="form-lbl">Recipient email</label><input class="form-in" id="rt-recipient" type="email"></div><div class="form-grp"><label class="form-lbl">Department</label><select class="form-sel" id="rt-department"></select></div></div>
+      <div class="form-grp"><label class="form-lbl">Instructions</label><textarea class="form-in" id="rt-summary" rows="3"></textarea></div>
+      <div class="form-row"><div class="form-grp"><label class="form-lbl">First due date</label><input class="form-in" id="rt-first-due" type="date"></div><div class="form-grp"><label class="form-lbl">Priority</label><select class="form-sel" id="rt-priority"><option>Normal</option><option>High</option><option>Low</option></select></div></div>
+      <div class="form-grp"><label class="form-lbl">Frequency</label><div style="display:flex;gap:8px"><input class="form-in" id="rt-frequency-interval" type="number" min="1" max="365" value="1" style="width:110px"><select class="form-sel" id="rt-frequency-unit"><option value="day">Day(s)</option><option value="week" selected>Week(s)</option><option value="month">Month(s)</option><option value="year">Year(s)</option></select></div></div>
+      <div class="form-grp"><label class="form-lbl">Proof required</label><input class="form-in" id="rt-proof" placeholder="Upload the completed reconciliation report"></div>
+    </div>
+    <div class="mo-foot"><button class="btn btn-ghost btn-sm" onclick="closeMo('mo-recurring-task')">Cancel</button><button class="btn btn-primary btn-sm" id="rt-save" onclick="saveRecurringSchedule()">Create Schedule</button></div>
   </div>
 </div>
 

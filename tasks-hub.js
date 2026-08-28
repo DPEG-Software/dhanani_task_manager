@@ -4,9 +4,9 @@
 
   let tasksTabMode = 'received'; // 'received' | 'given' | 'department' | 'history'
   let tasksHistoryFilter = 'completed'; // 'completed' | 'cancelled'
-  let tasksTabCache = { assignedToMe: [], assignedByMe: [], overseenByMe: [] };
-  const tasksTabOpenGroups = { received: new Set(), given: new Set(), department: new Set(), property: new Set(), maintenance: new Set(), history: new Set() };
-  const tasksTabVisibleCounts = { received: new Map(), given: new Map(), department: new Map(), property: new Map(), maintenance: new Map(), history: new Map() };
+  let tasksTabCache = { assignedToMe: [], assignedByMe: [], overseenByMe: [], recurringSchedules: [], recurringOccurrences: [] };
+  const tasksTabOpenGroups = { received: new Set(), given: new Set(), department: new Set(), property: new Set(), maintenance: new Set(), recurring: new Set(), history: new Set() };
+  const tasksTabVisibleCounts = { received: new Map(), given: new Map(), department: new Map(), property: new Map(), maintenance: new Map(), recurring: new Map(), history: new Map() };
   const tasksHistoryDirections = new Map(); // person key -> 'to' | 'by'
   let expandedAssignmentId = null;
   const TASKS_PAGE_SIZE = 10;
@@ -587,6 +587,7 @@
     document.getElementById('tasks-department-btn')?.classList.toggle('active', mode === 'department');
     document.getElementById('tasks-property-btn')?.classList.toggle('active', mode === 'property');
     document.getElementById('tasks-maintenance-btn')?.classList.toggle('active', mode === 'maintenance');
+    document.getElementById('tasks-recurring-btn')?.classList.toggle('active', mode === 'recurring');
     document.getElementById('tasks-history-btn')?.classList.toggle('active', mode === 'history');
     const historyFilter=document.getElementById('tasks-history-filter');
     if(historyFilter)historyFilter.style.display=mode==='history'?'flex':'none';
@@ -605,6 +606,8 @@
         ? 'Tasks currently assigned to the Property Management team. You can monitor progress and send follow-up messages.'
         : mode === 'maintenance'
         ? 'Tasks currently assigned to the Maintenance team. You can monitor progress and send follow-up messages.'
+        : mode === 'recurring'
+        ? 'Manage repeating schedules. Every occurrence keeps separate proof, messages, and approval history.'
         : tasksHistoryFilter==='cancelled'
         ? 'Cancelled tasks are kept here for reference.'
         : 'Approved and completed tasks, with their conversations and proof history.';
@@ -636,11 +639,13 @@
     let nextCache;
     try {
       const userToken = await getAccessToken();
-      const res = await fetch(`${fnBaseUrl()}/assignments?email=${encodeURIComponent(currentUser.email)}`, {
-        headers: { Authorization: `Bearer ${userToken}` },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      nextCache = await res.json();
+      const [assignmentRes, recurringRes] = await Promise.all([
+        fetch(`${fnBaseUrl()}/assignments?email=${encodeURIComponent(currentUser.email)}`, {headers:{Authorization:`Bearer ${userToken}`}}),
+        fetch(`${fnBaseUrl()}/recurring-schedules`, {headers:{Authorization:`Bearer ${userToken}`}}),
+      ]);
+      if (!assignmentRes.ok) throw new Error(`HTTP ${assignmentRes.status}`);
+      nextCache = await assignmentRes.json();
+      if(recurringRes.ok){const recurring=await recurringRes.json();nextCache.recurringSchedules=recurring.schedules||[];nextCache.recurringOccurrences=recurring.occurrences||[];}
     } catch (err) {
       console.warn('Load assignments failed:', err.message);
       if (!silent) {
@@ -741,6 +746,7 @@
     if (!tb) return;
     updateTasksNavBadges();
     const mode = tasksTabMode;
+    if(mode==='recurring'){renderRecurringSchedules(tb);return;}
     const { list, received, principal, sortFn } = tasksTabModeSource(mode);
     if (!list.length) {
       const emptyText = ['department','property','maintenance'].includes(mode)
@@ -808,6 +814,37 @@
     }).join('');
     syncAssignDescClamped(tb);
   }
+
+  function recurringFrequencyLabel(schedule){
+    const count=Number(schedule.frequency_interval||1),unit=String(schedule.frequency_unit||'week');
+    return `Every ${count} ${unit}${count===1?'':'s'}`;
+  }
+
+  function renderRecurringSchedules(container){
+    const schedules=tasksTabCache.recurringSchedules||[];
+    const occurrences=tasksTabCache.recurringOccurrences||[];
+    const create=`<button class="btn btn-primary btn-sm" onclick="openRecurringTaskModal()">+ New Recurring Task</button>`;
+    if(!schedules.length){container.innerHTML=`<div style="margin-bottom:12px">${create}</div><div class="empty-state"><div class="es-text">No recurring schedules</div><div class="es-sub">Create one to generate independent tasks automatically.</div></div>`;return;}
+    container.innerHTML=`<div style="margin-bottom:12px">${create}</div>`+schedules.map(schedule=>{
+      const mine=String(schedule.assigner_email||'').toLowerCase()===String(currentUser?.email||'').toLowerCase();
+      const history=occurrences.filter(o=>o.schedule_id===schedule.id);
+      return `<div class="wed-card" style="margin-bottom:10px"><div class="wed-card-head"><div><div class="wed-card-title">${escapeHtml(schedule.title)}</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">${escapeHtml(recurringFrequencyLabel(schedule))} · ${escapeHtml(schedule.recipient_email)} · Next due ${fmtD(schedule.next_due_date)}</div></div><span class="status-badge">${Number(schedule.active)?'Active':'Paused'}</span></div><div class="wed-card-body"><div style="font-size:12px;color:var(--sub)">${history.length} occurrence${history.length===1?'':'s'} retained</div><div class="assign-actions" style="margin-top:9px">${mine?`<button class="btn btn-ghost btn-sm" onclick="toggleRecurringSchedule('${schedule.id}',${Number(schedule.active)?'false':'true'})">${Number(schedule.active)?'Pause':'Resume'}</button>`:''}<button class="btn btn-ghost btn-sm" onclick="toggleRecurringHistory('${schedule.id}')">History</button></div><div id="rec-history-${schedule.id.replace(/[^a-zA-Z0-9_-]/g,'_')}" style="display:none;margin-top:10px">${history.length?history.map(o=>`<div style="padding:7px 0;border-top:1px solid var(--line);font-size:12px">Due ${fmtD(o.due_date)} · ${escapeHtml(o.status)} · Proof: ${escapeHtml(o.proof_status||'none')}</div>`).join(''):'<div style="font-size:12px;color:var(--muted)">No occurrences yet</div>'}</div></div></div>`;
+    }).join('');
+  }
+
+  window.toggleRecurringHistory=function(id){const el=document.getElementById(`rec-history-${String(id).replace(/[^a-zA-Z0-9_-]/g,'_')}`);if(el)el.style.display=el.style.display==='none'?'block':'none';};
+  window.openRecurringTaskModal=function(){
+    const due=document.getElementById('rt-first-due');const today=new Date().toISOString().slice(0,10);if(due){due.min=today;if(!due.value)due.value=today;}
+    const dept=document.getElementById('rt-department');if(dept)dept.innerHTML=allDepartments().map(d=>`<option>${escapeHtml(d)}</option>`).join('');
+    document.getElementById('mo-recurring-task')?.classList.add('open');
+  };
+  window.saveRecurringSchedule=async function(){
+    const title=document.getElementById('rt-title')?.value.trim(),recipientEmail=document.getElementById('rt-recipient')?.value.trim(),firstDueDate=document.getElementById('rt-first-due')?.value;
+    if(!title||!recipientEmail||!firstDueDate){toast('Title, recipient and first due date are required');return;}
+    const btn=document.getElementById('rt-save');if(btn)btn.disabled=true;
+    try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/recurring-schedules`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({title,recipientEmail,firstDueDate,summary:document.getElementById('rt-summary')?.value||'',departmentName:document.getElementById('rt-department')?.value||'Needs Department',priority:document.getElementById('rt-priority')?.value||'Normal',proofInstructions:document.getElementById('rt-proof')?.value||'',frequencyInterval:Number(document.getElementById('rt-frequency-interval')?.value||1),frequencyUnit:document.getElementById('rt-frequency-unit')?.value||'week',generationLeadDays:4})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not create schedule');closeMo('mo-recurring-task');await renderMyTasks(false);setTasksTabMode('recurring');toast('Recurring schedule created');}catch(err){toast(err.message||'Could not create schedule');}finally{if(btn)btn.disabled=false;}
+  };
+  window.toggleRecurringSchedule=async function(scheduleId,active){try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/recurring-schedules`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'toggle',scheduleId,active})});if(!res.ok)throw new Error('Could not update schedule');await renderMyTasks(false);setTasksTabMode('recurring');toast(active?'Schedule resumed':'Schedule paused');}catch(err){toast(err.message);}};
 
   window.showMoreAssignments = function showMoreAssignments(key) {
     const map=tasksTabVisibleCounts[tasksTabMode];

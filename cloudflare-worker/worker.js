@@ -1643,6 +1643,7 @@ async function handleAssignments(request, env) {
   if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
   await ensureAssignmentProofColumns(env);
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+  await generateRecurringOccurrences(env);
 
   const url = new URL(request.url);
   const requestedEmail = extractEmailAddress(url.searchParams.get('email') || '');
@@ -1731,6 +1732,66 @@ async function handleAssignments(request, env) {
       return { ...shape(row), oversightRole: scopes.includes('department') ? 'Department Principal' : 'Executive Assistant', oversightScopes: scopes };
     }),
   });
+}
+
+async function handleRecurringSchedules(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'DPEG_ASSIGNMENTS D1 binding is not configured' }, 501);
+  const email = userEmailFromClaims(claims);
+  if (request.method === 'GET') {
+    await generateRecurringOccurrences(env);
+    const [schedules, occurrences] = await Promise.all([
+      env.DPEG_ASSIGNMENTS.prepare(
+        `SELECT * FROM recurring_schedules WHERE assigner_email = ? OR recipient_email = ? ORDER BY updated_at DESC`
+      ).bind(email, email).all(),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `SELECT o.*, s.title AS schedule_title, s.assigner_email, s.recipient_email,
+                a.status, a.proof_status
+           FROM recurring_occurrences o
+           JOIN recurring_schedules s ON s.id = o.schedule_id
+           JOIN assignments a ON a.id = o.assignment_id
+          WHERE s.assigner_email = ? OR s.recipient_email = ?
+          ORDER BY o.due_date DESC`
+      ).bind(email, email).all(),
+    ]);
+    return json({ schedules: schedules.results || [], occurrences: occurrences.results || [] });
+  }
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
+  const action = String(body.action || 'create');
+  if (action === 'toggle') {
+    const result = await env.DPEG_ASSIGNMENTS.prepare(
+      `UPDATE recurring_schedules SET active = ?, updated_at = ? WHERE id = ? AND assigner_email = ?`
+    ).bind(body.active ? 1 : 0, new Date().toISOString(), String(body.scheduleId || ''), email).run();
+    if (!result.meta?.changes) return json({ error: 'Schedule not found or not owned by you' }, 404);
+    return json({ success: true });
+  }
+  const title = String(body.title || '').trim().slice(0, 500);
+  const recipientEmail = extractEmailAddress(body.recipientEmail || '');
+  const firstDueDate = String(body.firstDueDate || '').trim();
+  const today = new Date().toISOString().slice(0, 10);
+  if (!title || !recipientEmail || !/^\d{4}-\d{2}-\d{2}$/.test(firstDueDate)) return json({ error: 'Title, recipient and first due date are required' }, 400);
+  if (firstDueDate < today) return json({ error: 'The first due date cannot be in the past' }, 400);
+  if (!recipientEmail.endsWith('@dhananipeg.com')) return json({ error: 'Only DPEG recipients are supported' }, 403);
+  const frequencyUnit = new Set(['day','week','month','year']).has(body.frequencyUnit) ? body.frequencyUnit : 'week';
+  const frequencyInterval = Math.max(1, Math.min(365, Number(body.frequencyInterval || 1)));
+  const now = new Date().toISOString();
+  const id = `rec-${crypto.randomUUID()}`;
+  await env.DPEG_ASSIGNMENTS.prepare(
+    `INSERT INTO recurring_schedules
+       (id, title, summary, department_name, priority, proof_instructions,
+        assigner_email, assigner_name, recipient_email, recipient_name,
+        cadence, interval_weeks, generation_lead_days, next_due_date, active, created_at, updated_at,
+        frequency_unit, frequency_interval)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'weekly', 1, ?, ?, 1, ?, ?, ?, ?)`
+  ).bind(id, title, String(body.summary || '').slice(0, 8000), String(body.departmentName || 'Needs Department').slice(0, 200),
+    STAGING_TASK_PRIORITIES.has(body.priority) ? body.priority : 'Normal', String(body.proofInstructions || '').slice(0, 4000),
+    email, String(claims.name || email), recipientEmail, String(body.recipientName || '').slice(0, 300),
+    Math.max(0, Math.min(30, Number(body.generationLeadDays || 4))), firstDueDate, now, now, frequencyUnit, frequencyInterval).run();
+  await generateRecurringOccurrences(env);
+  return json({ success: true, scheduleId: id }, 201);
 }
 
 // ── /assignment-status endpoint: recipient updates progress (D1) ─────────────
@@ -2014,6 +2075,79 @@ function stagingTaskShape(row) {
   };
 }
 
+function addUtcDays(dateText, days) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + Number(days || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+function advanceRecurringDate(dateText, unit, interval) {
+  const amount = Math.max(1, Number(interval || 1));
+  if (unit === 'day') return addUtcDays(dateText, amount);
+  if (unit === 'week') return addUtcDays(dateText, amount * 7);
+  const source = new Date(`${dateText}T00:00:00Z`);
+  const originalDay = source.getUTCDate();
+  source.setUTCDate(1);
+  if (unit === 'month') source.setUTCMonth(source.getUTCMonth() + amount);
+  else source.setUTCFullYear(source.getUTCFullYear() + amount);
+  const lastDay = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth() + 1, 0)).getUTCDate();
+  source.setUTCDate(Math.min(originalDay, lastDay));
+  return source.toISOString().slice(0, 10);
+}
+
+async function generateRecurringOccurrences(env) {
+  const schedules = await env.DPEG_ASSIGNMENTS.prepare(
+    `SELECT * FROM recurring_schedules WHERE active = 1 ORDER BY next_due_date ASC`
+  ).all();
+  const today = new Date().toISOString().slice(0, 10);
+  for (const schedule of schedules.results || []) {
+    let dueDate = String(schedule.next_due_date || '');
+    let generated = 0;
+    while (dueDate && dueDate <= addUtcDays(today, Number(schedule.generation_lead_days || 0)) && generated < 12) {
+      const periodKey = `due-${dueDate}`;
+      const safeKey = `${schedule.id}-${dueDate}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+      const taskId = `stg-rec-task-${safeKey}`;
+      const assignmentId = `stg-rec-asg-${safeKey}`;
+      const occurrenceId = `stg-rec-occ-${safeKey}`;
+      const now = new Date().toISOString();
+      const occurrenceTitle = `${schedule.title} — Due ${dueDate}`;
+      await env.DPEG_ASSIGNMENTS.batch([
+        env.DPEG_ASSIGNMENTS.prepare(
+          `INSERT OR IGNORE INTO tasks
+             (id, owner_email, title, summary, department_name, priority, due_date,
+              status, source_type, created_at, updated_at, version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', 'recurring', ?, ?, 1)`
+        ).bind(taskId, schedule.assigner_email, occurrenceTitle, schedule.summary, schedule.department_name, schedule.priority, dueDate, now, now),
+        env.DPEG_ASSIGNMENTS.prepare(
+          `INSERT OR IGNORE INTO assignments
+             (id, app_task_id, title, summary, dept, priority, due_date,
+              assigner_email, assigner_name, recipient_email, recipient_name,
+              status, proof_status, proof_instructions, created_at, updated_at, version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Assigned', 'none', ?, ?, ?, 1)`
+        ).bind(assignmentId, taskId, occurrenceTitle, schedule.summary, schedule.department_name, schedule.priority, dueDate,
+          schedule.assigner_email, schedule.assigner_name, schedule.recipient_email, schedule.recipient_name,
+          schedule.proof_instructions, now, now),
+        env.DPEG_ASSIGNMENTS.prepare(
+          `INSERT OR IGNORE INTO recurring_occurrences
+             (id, schedule_id, period_key, app_task_id, assignment_id, due_date, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(occurrenceId, schedule.id, periodKey, taskId, assignmentId, dueDate, now),
+      ]);
+      dueDate = advanceRecurringDate(
+        dueDate,
+        String(schedule.frequency_unit || 'week'),
+        Number(schedule.frequency_interval || schedule.interval_weeks || 1),
+      );
+      generated += 1;
+    }
+    if (generated) {
+      await env.DPEG_ASSIGNMENTS.prepare(
+        'UPDATE recurring_schedules SET next_due_date = ?, updated_at = ? WHERE id = ?'
+      ).bind(dueDate, new Date().toISOString(), schedule.id).run();
+    }
+  }
+}
+
 async function recordStagingTaskEvent(env, taskId, actorEmail, eventType, eventData, createdAt) {
   await env.DPEG_ASSIGNMENTS.prepare(
     `INSERT INTO task_events
@@ -2044,12 +2178,13 @@ async function handleStagingTasksCore(request, env) {
   // the three-party workflow without possessing another employee's password.
   const ownerEmail = stagingActorEmail(request, body, claims);
   if (request.method === 'GET') {
+    await generateRecurringOccurrences(env);
     const principalDepartments = stagingPrincipalDepartments(ownerEmail);
     const principalScope = principalDepartments.length
       ? ` OR LOWER(a.dept) IN (${principalDepartments.map(() => '?').join(',')})`
       : '';
     const scopeBindings = [ownerEmail, ownerEmail, ...principalDepartments];
-    const [taskResult, assignmentResult, proofResult, reminderResult, allMessageThreads] = await Promise.all([
+    const [taskResult, assignmentResult, proofResult, reminderResult, scheduleResult, occurrenceResult, allMessageThreads] = await Promise.all([
       env.DPEG_ASSIGNMENTS.prepare(
       `SELECT id, title, summary, department_name, priority, due_date, status,
               source_type, created_at, updated_at, completed_at, cancelled_at, version
@@ -2061,7 +2196,7 @@ async function handleStagingTasksCore(request, env) {
         `SELECT a.*
            FROM assignments a
            JOIN tasks t ON t.id = a.app_task_id
-          WHERE t.source_type = 'staging_test'
+          WHERE t.source_type IN ('staging_test','recurring')
             AND (a.assigner_email = ? OR a.recipient_email = ?${principalScope})
           ORDER BY a.updated_at DESC, a.id DESC`
       ).bind(...scopeBindings).all(),
@@ -2070,7 +2205,7 @@ async function handleStagingTasksCore(request, env) {
            FROM proof_submissions p
            JOIN assignments a ON a.id = p.assignment_id
            JOIN tasks t ON t.id = a.app_task_id
-          WHERE t.source_type = 'staging_test'
+          WHERE t.source_type IN ('staging_test','recurring')
             AND (a.assigner_email = ? OR a.recipient_email = ?${principalScope})
           ORDER BY p.submitted_at DESC, p.id DESC`
       ).bind(...scopeBindings).all(),
@@ -2079,25 +2214,83 @@ async function handleStagingTasksCore(request, env) {
            FROM reminders r
            JOIN assignments a ON a.id = r.assignment_id
            JOIN tasks t ON t.id = a.app_task_id
-          WHERE t.source_type = 'staging_test'
+          WHERE t.source_type IN ('staging_test','recurring')
             AND (a.assigner_email = ? OR a.recipient_email = ?${principalScope})
           ORDER BY r.created_at DESC, r.id DESC`
       ).bind(...scopeBindings).all(),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `SELECT * FROM recurring_schedules
+          WHERE assigner_email = ? OR recipient_email = ?
+          ORDER BY updated_at DESC`
+      ).bind(ownerEmail, ownerEmail).all(),
+      env.DPEG_ASSIGNMENTS.prepare(
+        `SELECT o.*, s.title AS schedule_title, a.status, a.proof_status
+           FROM recurring_occurrences o
+           JOIN recurring_schedules s ON s.id = o.schedule_id
+           JOIN assignments a ON a.id = o.assignment_id
+          WHERE s.assigner_email = ? OR s.recipient_email = ?
+          ORDER BY o.due_date DESC`
+      ).bind(ownerEmail, ownerEmail).all(),
       loadTaskMessageThreads(env, claims, { principalDepartments, viewerEmail: ownerEmail }),
     ]);
     const messageThreads = allMessageThreads
-      .filter(thread => String(thread.appTaskId || '').startsWith('stg-task-'));
+      .filter(thread => String(thread.appTaskId || '').startsWith('stg-'));
     return json({
       tasks: (taskResult.results || []).map(stagingTaskShape),
       assignments: assignmentResult.results || [],
       proofs: proofResult.results || [],
       reminders: reminderResult.results || [],
+      recurringSchedules: scheduleResult.results || [],
+      recurringOccurrences: occurrenceResult.results || [],
       messageThreads,
     });
   }
 
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   const action = String(body.action || '').trim().toLowerCase();
+  if (action === 'recurring_create') {
+    const title = String(body.title || '').trim().slice(0, 500);
+    const recipientEmail = extractEmailAddress(body.recipientEmail || '');
+    const firstDueDate = String(body.firstDueDate || '').trim();
+    const frequencyUnit = new Set(['day','week','month','year']).has(String(body.frequencyUnit || ''))
+      ? String(body.frequencyUnit)
+      : 'week';
+    const frequencyInterval = Math.max(1, Math.min(365, Number(body.frequencyInterval || 1)));
+    if (!title || !recipientEmail || !/^\d{4}-\d{2}-\d{2}$/.test(firstDueDate)) {
+      return json({ error: 'title, recipientEmail and firstDueDate are required' }, 400);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (firstDueDate < today) {
+      return json({ error: 'The first due date cannot be in the past' }, 400);
+    }
+    if (!recipientEmail.endsWith('@dhananipeg.com')) return json({ error: 'Only DPEG recipients are supported' }, 403);
+    const now = new Date().toISOString();
+    const id = `stg-rec-${crypto.randomUUID()}`;
+    await env.DPEG_ASSIGNMENTS.prepare(
+      `INSERT INTO recurring_schedules
+         (id, title, summary, department_name, priority, proof_instructions,
+          assigner_email, assigner_name, recipient_email, recipient_name,
+          cadence, interval_weeks, generation_lead_days, next_due_date, active, created_at, updated_at,
+          frequency_unit, frequency_interval)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'weekly', 1, ?, ?, 1, ?, ?, ?, ?)`
+    ).bind(id, title, String(body.summary || '').slice(0, 8000), String(body.departmentName || 'Needs Department').slice(0, 200),
+      STAGING_TASK_PRIORITIES.has(body.priority) ? body.priority : 'Normal', String(body.proofInstructions || '').slice(0, 4000),
+      ownerEmail, STAGING_TEST_ACTOR_NAMES[ownerEmail] || String(claims.name || ownerEmail), recipientEmail,
+      String(body.recipientName || '').slice(0, 300), Math.max(0, Math.min(30, Number(body.generationLeadDays || 4))), firstDueDate, now, now,
+      frequencyUnit, frequencyInterval).run();
+    await generateRecurringOccurrences(env);
+    return json({ success: true, scheduleId: id }, 201);
+  }
+
+  if (action === 'recurring_toggle') {
+    const id = String(body.scheduleId || '');
+    const active = body.active ? 1 : 0;
+    const result = await env.DPEG_ASSIGNMENTS.prepare(
+      `UPDATE recurring_schedules SET active = ?, updated_at = ? WHERE id = ? AND assigner_email = ?`
+    ).bind(active, new Date().toISOString(), id, ownerEmail).run();
+    if (!result.meta?.changes) return json({ error: 'Schedule not found or not owned by you' }, 404);
+    return json({ success: true, active: !!active });
+  }
   if (action === 'assignment_status') {
     const assignmentId = String(body.assignmentId || '').trim();
     const expectedVersion = Number(body.expectedVersion);
@@ -2109,7 +2302,7 @@ async function handleStagingTasksCore(request, env) {
     const assignment = await env.DPEG_ASSIGNMENTS.prepare(
       `SELECT a.* FROM assignments a
         JOIN tasks t ON t.id = a.app_task_id
-       WHERE a.id = ? AND t.source_type = 'staging_test'`
+       WHERE a.id = ? AND t.source_type IN ('staging_test','recurring')`
     ).bind(assignmentId).first();
     if (!assignment) return json({ error: 'Staging assignment not found' }, 404);
     if (ownerEmail !== extractEmailAddress(assignment.recipient_email)) {
@@ -2151,7 +2344,7 @@ async function handleStagingTasksCore(request, env) {
     const assignment = await env.DPEG_ASSIGNMENTS.prepare(
       `SELECT a.* FROM assignments a
         JOIN tasks t ON t.id = a.app_task_id
-       WHERE a.id = ? AND t.source_type = 'staging_test'`
+       WHERE a.id = ? AND t.source_type IN ('staging_test','recurring')`
     ).bind(assignmentId).first();
     if (!assignment) return json({ error: 'Staging assignment not found' }, 404);
     const principalAccess = stagingPrincipalCanOversee(ownerEmail, assignment.dept);
@@ -2182,7 +2375,7 @@ async function handleStagingTasksCore(request, env) {
     const assignment = await env.DPEG_ASSIGNMENTS.prepare(
       `SELECT a.* FROM assignments a
         JOIN tasks t ON t.id = a.app_task_id
-       WHERE a.id = ? AND t.source_type = 'staging_test'`
+       WHERE a.id = ? AND t.source_type IN ('staging_test','recurring')`
     ).bind(assignmentId).first();
     if (!assignment) return json({ error: 'Staging assignment not found' }, 404);
     if (ownerEmail !== extractEmailAddress(assignment.assigner_email)) {
@@ -2230,7 +2423,7 @@ async function handleStagingTasksCore(request, env) {
     const assignment = await env.DPEG_ASSIGNMENTS.prepare(
       `SELECT a.* FROM assignments a
         JOIN tasks t ON t.id = a.app_task_id
-       WHERE a.id = ? AND t.source_type = 'staging_test'`
+       WHERE a.id = ? AND t.source_type IN ('staging_test','recurring')`
     ).bind(assignmentId).first();
     if (!assignment) return json({ error: 'Staging assignment not found' }, 404);
     if (ownerEmail !== extractEmailAddress(assignment.recipient_email)) {
@@ -2312,7 +2505,7 @@ async function handleStagingTasksCore(request, env) {
          FROM proof_submissions p
          JOIN assignments a ON a.id = p.assignment_id
          JOIN tasks t ON t.id = a.app_task_id
-        WHERE p.id = ? AND t.source_type = 'staging_test'`
+        WHERE p.id = ? AND t.source_type IN ('staging_test','recurring')`
     ).bind(proofId).first();
     if (!proof) return json({ error: 'Staging proof not found' }, 404);
     if (ownerEmail !== extractEmailAddress(proof.assigner_email)) {
@@ -2670,6 +2863,7 @@ async function routeRequest(request, env) {
     if (path === '/task-edit-lock') return handleTaskEditLock(request, env);
     if (path === '/notify') return withStagingRealtimeBroadcast(request, env, handleNotify(request, env));
     if (path === '/assignments') return handleAssignments(request, env);
+    if (path === '/recurring-schedules') return withStagingRealtimeBroadcast(request, env, handleRecurringSchedules(request, env));
 
     if (request.method !== 'POST') {
       return json({ error: 'Only POST allowed' }, 405);
