@@ -129,15 +129,17 @@ function renderMaster(){
   const list=getVis(),tb=document.getElementById("master-tbody");
   if(!list.length){
     tb.innerHTML=showMasterCompleted
-      ?`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No completed tasks assigned this week</div><div class="es-sub">Completed tasks remain in the week they were originally assigned</div></div></td></tr>`
-      :`<tr><td colspan="8"><div class="empty-state"><div class="es-text">No active tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
+      ?`<tr><td colspan="9"><div class="empty-state"><div class="es-text">No completed tasks assigned this week</div><div class="es-sub">Completed tasks remain in the week they were originally assigned</div></div></td></tr>`
+      :`<tr><td colspan="9"><div class="empty-state"><div class="es-text">No active tasks yet</div><div class="es-sub">Tasks appear automatically when you add emails or forward messages to team members</div></div></td></tr>`;
+    syncSelectAllCheckbox();
     return;
   }
   tb.innerHTML=list.map(t=>{
     const priorityNote=String(t.priority||"Normal").toLowerCase()==="high"?`<div style="margin-top:4px;color:#b91c1c;font-size:10.5px;font-weight:700">Prioritized from Outlook</div>`:'';
     return `
     <tr onclick="openDetail(${t.id})">
-      <td style="padding:10px 14px 10px 16px">
+      <td onclick="event.stopPropagation()" style="padding:10px 4px 10px 16px"><input type="checkbox" ${selectedTaskIds.has(t.id)?'checked':''} onclick="toggleTaskSelected(${t.id},this.checked)" style="cursor:pointer;accent-color:var(--forest)"></td>
+      <td style="padding:10px 14px 10px 10px">
         <div style="font-size:13px;font-weight:600;color:var(--body);line-height:1.3">${emailSubject(t)}</div>
         ${t.replyCount>1?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${t.replyCount} msgs</div>`:""}
         ${priorityNote}
@@ -158,15 +160,23 @@ function renderMaster(){
         </div>
       </td>
     </tr>`}).join("");
+  syncSelectAllCheckbox();
 }
 function selectedVisibleTasks(){
   const visible=new Set(getVis().map(t=>t.id));
   selectedTaskIds.forEach(id=>{if(!visible.has(id))selectedTaskIds.delete(id);});
   return tasks.filter(t=>selectedTaskIds.has(t.id));
 }
+function syncSelectAllCheckbox(){
+  const el=document.getElementById('master-select-all');
+  if(!el)return;
+  const visible=getVis();
+  el.checked=visible.length>0&&visible.every(t=>selectedTaskIds.has(t.id));
+}
 function toggleTaskSelected(id,checked){
   if(checked)selectedTaskIds.add(id);
   else selectedTaskIds.delete(id);
+  syncSelectAllCheckbox();
 }
 function toggleAllSelected(checked){
   getVis().forEach(t=>{
@@ -187,13 +197,17 @@ async function moveSelectedToWed(){
 async function deleteSelectedTasks(){
   const selected=selectedVisibleTasks();
   if(!selected.length){toast("Select at least one task");return;}
-  if(!confirm(`Remove ${selected.length} selected task${selected.length!==1?"s":""} from the Action Log?`))return;
+  if(!confirm(`Delete ${selected.length} selected task${selected.length!==1?"s":""} from the Action Log?\n\nAny linked assignment in the Tasks tab will be cancelled too.`))return;
+  const results=await Promise.all(selected.map(t=>cancelLinkedAssignment(t)));
+  const failed=results.filter(ok=>!ok).length;
   const ids=new Set(selected.map(t=>t.id));
   tasks=tasks.filter(t=>!ids.has(t.id));
   selectedTaskIds.clear();
   buildTrackedSet();
   refreshAll();
-  toast(`${selected.length} task${selected.length!==1?"s":""} removed`);
+  toast(failed
+    ?`${selected.length} removed — ${failed} linked assignment${failed!==1?'s':''} could not be cancelled`
+    :`${selected.length} task${selected.length!==1?"s":""} removed`);
   await saveTasksToOneDrive();
 }
 async function togWed(id){

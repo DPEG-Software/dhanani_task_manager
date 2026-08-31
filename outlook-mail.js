@@ -3090,21 +3090,38 @@ async function sendTaskUpdateNotification(task,changes){
 // ============================================================
 // REMOVE TASK
 // ============================================================
+// Shared by cancelActionTask and bulk delete: cancels the D1 assignment
+// linked to this task (if any), so a task that's cancelled or deleted from
+// the Action Log doesn't leave an orphaned row in the recipient's Tasks tab.
+// Returns true if there was nothing to cancel, cancellation succeeded, or
+// the assignment was already in a terminal state (409) — false only on a
+// genuine failure to reach/update the Worker.
+async function cancelLinkedAssignment(task){
+  if(!task.assignmentId){
+    await window.renderMyTasks?.(true);
+    task.assignmentId=window.findDelegatedAssignmentByAppTaskId?.(task.id)?.id||'';
+  }
+  if(!task.assignmentId){task.cancelledAt=new Date().toISOString();return true;}
+  try{
+    const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
+    const token=await getAccessToken();
+    const res=await fetch(`${fnUrl}/assignment-cancel`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({id:task.assignmentId,reason:''})});
+    if(res.ok){
+      const data=await res.json().catch(()=>({}));
+      task.cancelledAt=data.cancelledAt||new Date().toISOString();
+      return true;
+    }
+    // Already Done or already Cancelled server-side — nothing left to clean up.
+    if(res.status===409){task.cancelledAt=new Date().toISOString();return true;}
+    return false;
+  }catch{return false;}
+}
+
 async function cancelActionTask(id){
   const task=tasks.find(t=>t.id===id);if(!task)return;
   if(!confirm(`Cancel "${task.title||'this task'}"?\n\nIt will be removed from active tasks and moved to Cancelled History.`))return;
   try{
-    if(!task.assignmentId){
-      await window.renderMyTasks?.(true);
-      task.assignmentId=window.findDelegatedAssignmentByAppTaskId?.(task.id)?.id||'';
-    }
-    if(task.assignmentId){
-      const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
-      const token=await getAccessToken();
-      const res=await fetch(`${fnUrl}/assignment-cancel`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({id:task.assignmentId,reason:''})});
-      if(!res.ok){const detail=await res.json().catch(()=>({}));throw new Error(detail.error||`HTTP ${res.status}`);}
-      const data=await res.json();task.cancelledAt=data.cancelledAt||new Date().toISOString();
-    }else task.cancelledAt=new Date().toISOString();
+    if(!await cancelLinkedAssignment(task))throw new Error('Could not cancel the linked assignment');
     task.status='Cancelled';task.cancelReason='';
     closeMo('mo-detail');syncBadges();refreshAll();await saveTasksToOneDrive();
     await window.sendTaskCancelledEmail?.({
