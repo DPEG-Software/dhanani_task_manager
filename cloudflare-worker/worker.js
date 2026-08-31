@@ -1590,6 +1590,12 @@ async function handleCreateAssignment(request, env) {
   const assignerEmail = userEmailFromClaims(claims);
   const assignerName = String(body.assignerName || claims.name || assignerEmail || '').trim();
   const now = new Date().toISOString();
+  const allowedInitialStatuses = new Set(['Assigned', 'In Progress', 'Done', 'Cancelled']);
+  const initialStatus = allowedInitialStatuses.has(String(body.initialStatus || '')) ? String(body.initialStatus) : 'Assigned';
+  const requestedCreatedAt = new Date(String(body.initialCreatedAt || '')).getTime();
+  const initialCreatedAt = Number.isFinite(requestedCreatedAt) && requestedCreatedAt <= Date.now()
+    ? new Date(requestedCreatedAt).toISOString()
+    : now;
   const existingRow = await env.DPEG_ASSIGNMENTS.prepare(
     'SELECT assigner_email, version FROM assignments WHERE id = ?'
   ).bind(id).first();
@@ -1611,7 +1617,7 @@ async function handleCreateAssignment(request, env) {
        assigner_email, assigner_name, recipient_email, recipient_name,
        status, progress_note, proof_status, proof_submitted_at, proof_reviewed_at, proof_notification_id, recipient_todo_list_id, recipient_todo_task_id,
        proof_instructions, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,'Assigned',NULL,'none',NULL,NULL,NULL,?,?,?,?,?)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,NULL,'none',NULL,NULL,NULL,?,?,?,?,?)
      ON CONFLICT(id) DO UPDATE SET
        app_task_id = excluded.app_task_id,
        title = excluded.title,
@@ -1640,10 +1646,11 @@ async function handleCreateAssignment(request, env) {
     assignerName,
     recipientEmail,
     String(body.recipientName || ''),
+    initialStatus,
     String(body.recipientTodoListId || ''),
     String(body.recipientTodoTaskId || ''),
     String(body.proofInstructions || ''),
-    now,
+    initialCreatedAt,
     now,
   ).run();
 

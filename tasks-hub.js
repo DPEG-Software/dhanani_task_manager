@@ -564,6 +564,8 @@
           recipientTodoListId: task.recipientTodoListId || '',
           recipientTodoTaskId: task.recipientTodoTaskId || '',
           proofInstructions: task.proofInstructions || '',
+          initialStatus: (()=>{const s=nstt(task.status);return s==='Done'?'Done':s==='In Progress'?'In Progress':s==='Cancelled'?'Cancelled':'Assigned';})(),
+          initialCreatedAt: task.assignedAt || task.createdAt || '',
           expectedVersion: task.assignmentVersion??null,
         }),
       });
@@ -577,6 +579,32 @@
       return false;
     }
   };
+
+  // Older Action Log entries predate the shared Tasks tab. Backfill only
+  // Nikhil's missing records, using the Action Log as the allow-list; this
+  // never scans/imports unrelated items from anyone's Microsoft To Do.
+  async function backfillLegacyNikhilAssignments(cache) {
+    const target='nikhil@dhananipeg.com';
+    const sessionKey=`dpeg_nikhil_tasks_backfill_${String(currentUser?.email||'').toLowerCase()}`;
+    if(sessionStorage.getItem(sessionKey)==='done')return 0;
+    const existing=new Set((cache?.assignedByMe||[]).map(a=>`${String(a.appTaskId||'')}::${String(a.recipientEmail||'').toLowerCase()}`));
+    const candidates=(Array.isArray(tasks)?tasks:[]).filter(task=>
+      String(task?.email||'').trim().toLowerCase()===target &&
+      task?.id!=null &&
+      !existing.has(`${String(task.id)}::${target}`)
+    );
+    let imported=0;
+    for(const task of candidates){
+      task.assignmentId=task.assignmentId||`legacy-${String(currentUser.email).toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${String(task.id).replace(/[^a-zA-Z0-9_-]+/g,'-')}`;
+      if(await recordAssignment(task))imported++;
+    }
+    if(imported){
+      await saveTasksToOneDrive();
+      toast(`${imported} older Nikhil task${imported===1?'':'s'} added to Tasks`);
+    }
+    if(imported===candidates.length)sessionStorage.setItem(sessionKey,'done');
+    return imported;
+  }
 
   window.setTasksTabMode = function setTasksTabMode(mode) {
     tasksTabMode = mode;
@@ -650,6 +678,14 @@
       if (!assignmentRes.ok) throw new Error(`HTTP ${assignmentRes.status}`);
       nextCache = await assignmentRes.json();
       if(recurringRes.ok){const recurring=await recurringRes.json();nextCache.recurringSchedules=recurring.schedules||[];nextCache.recurringOccurrences=recurring.occurrences||[];nextCache.recurringProofs=recurring.proofs||[];nextCache.recurringMessages=recurring.messages||[];}
+      const imported=await backfillLegacyNikhilAssignments(nextCache);
+      if(imported){
+        const refreshed=await fetch(`${fnBaseUrl()}/assignments?email=${encodeURIComponent(currentUser.email)}`,{headers:{Authorization:`Bearer ${userToken}`}});
+        if(refreshed.ok){
+          const refreshedAssignments=await refreshed.json();
+          nextCache={...nextCache,...refreshedAssignments};
+        }
+      }
     } catch (err) {
       console.warn('Load assignments failed:', err.message);
       if (!silent) {
