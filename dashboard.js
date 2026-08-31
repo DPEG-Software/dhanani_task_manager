@@ -136,13 +136,25 @@ function renderCharts(){
   });
   allDepartments().forEach(d=>{if(!dp[d])dp[d]={tot:0,dn:0,ov:0};});
   const dk=allDepartments().filter(d=>dp[d].tot>0);
+  const wrapDepartmentLabel=name=>{
+    const words=String(name||'').trim().split(/\s+/).filter(Boolean);
+    const lines=[];let line='';
+    words.forEach(word=>{
+      if(!line){line=word;return;}
+      if(`${line} ${word}`.length<=19)line+=` ${word}`;
+      else{lines.push(line);line=word;}
+    });
+    if(line)lines.push(line);
+    return lines.length>1?lines:String(name||'');
+  };
+  const deptLabels=dk.map(wrapDepartmentLabel);
   const deptHost=document.getElementById('ch-dept')?.parentElement;
-  if(deptHost)deptHost.style.height='250px';
-  mkChart("ch-dept","bar",dk,[
+  if(deptHost)deptHost.style.height=Math.max(250,dk.length*42+76)+'px';
+  mkChart("ch-dept","bar",deptLabels,[
     {label:"Overdue",data:dk.map(d=>dp[d].ov),backgroundColor:"#ef9a9a",hoverBackgroundColor:"#e57373",borderRadius:5,borderSkipped:false,maxBarThickness:18,barPercentage:.8,categoryPercentage:.72},
     {label:"Pending",data:dk.map(d=>dp[d].tot-dp[d].dn-dp[d].ov),backgroundColor:th.dark?"#64748b":"#d7dee8",hoverBackgroundColor:th.dark?"#94a3b8":"#c3ccd8",borderRadius:5,borderSkipped:false,maxBarThickness:18,barPercentage:.8,categoryPercentage:.72},
     {label:"Done",data:dk.map(d=>dp[d].dn),backgroundColor:"#8ecaa0",hoverBackgroundColor:"#6fb783",borderRadius:5,borderSkipped:false,maxBarThickness:18,barPercentage:.8,categoryPercentage:.72},
-  ],{legend:true,interaction:{mode:"index",axis:"x",intersect:false},tooltipCallbacks:{title:items=>items.length?[dk[items[0].dataIndex]]:[],label:item=>`${item.dataset.label}: ${item.parsed.y}`},extra:{scales:{x:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:th.text,maxRotation:0,autoSkip:false},border:{display:false}},y:{grid:{color:th.grid},ticks:{font:{family:"Inter",size:11,weight:"600"},color:th.muted,precision:0},beginAtZero:true,border:{display:false}}}},onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
+  ],{legend:true,interaction:{mode:"index",axis:"y",intersect:false},tooltipCallbacks:{title:items=>items.length?[dk[items[0].dataIndex]]:[],label:item=>`${item.dataset.label}: ${item.parsed.x}`},extra:{indexAxis:"y",scales:{x:{grid:{color:th.grid},ticks:{font:{family:"Inter",size:11,weight:"600"},color:th.muted,precision:0},beginAtZero:true,border:{display:false}},y:{grid:{display:false},ticks:{font:{family:"Inter",size:10,weight:"600"},color:th.text,autoSkip:false},border:{display:false}}}},onClick:(evt,elements)=>{if(elements.length){const d=dk[elements[0].index];nav("people","departments");selectDept(d);}}});
 
   // Open workload — normalise by staffKey so the same person doesn't split across entries
   const pp={};
