@@ -6,10 +6,8 @@
   let tasksHistoryFilter = 'completed'; // 'completed' | 'cancelled'
   let tasksTabCache = { assignedToMe: [], assignedByMe: [], overseenByMe: [], recurringSchedules: [], recurringOccurrences: [], recurringProofs: [], recurringMessages: [] };
   const tasksTabOpenGroups = { received: new Set(), given: new Set(), department: new Set(), property: new Set(), maintenance: new Set(), recurring: new Set(), history: new Set() };
-  const tasksTabVisibleCounts = { received: new Map(), given: new Map(), department: new Map(), property: new Map(), maintenance: new Map(), recurring: new Map(), history: new Map() };
   const tasksHistoryDirections = new Map(); // person key -> 'to' | 'by'
   let expandedAssignmentId = null;
-  const TASKS_PAGE_SIZE = 10;
 
   // Proof notifications created from older/manual assignments do not always
   // contain the assignor email. Let the notification loader verify ownership
@@ -822,16 +820,12 @@
       const defaultDirection=toItems.length?'to':'by';
       const historyDirection=mode==='history'?(tasksHistoryDirections.get(group.key)||defaultDirection):'';
       const shownItems=mode==='history'?(historyDirection==='by'?byItems:toItems):group.items;
-      const pageKey=mode==='history'?`${group.key}::${historyDirection}`:group.key;
-      const visibleCount=tasksTabVisibleCounts[mode].get(pageKey)||TASKS_PAGE_SIZE;
-      const visibleItems=shownItems.slice(0,visibleCount);
-      const remaining=Math.max(0,shownItems.length-visibleItems.length);
       const directionToggle=mode==='history'?`<div class="assign-history-direction">
         <button type="button" class="${historyDirection==='to'?'active':''}" onclick="setTasksHistoryDirection(event,${safeGroupKey},'to')" ${toItems.length?'':'disabled'}>Assigned to ${escapeHtml(group.name)} <span>${toItems.length}</span></button>
         <button type="button" class="${historyDirection==='by'?'active':''}" onclick="setTasksHistoryDirection(event,${safeGroupKey},'by')" ${byItems.length?'':'disabled'}>Assigned by ${escapeHtml(group.name)} <span>${byItems.length}</span></button>
       </div>`:'';
       const cards = open
-        ? `${directionToggle}<div class="assign-cards">${visibleItems.map(a => assignmentCard(a, mode==='history'?a._received:group.received,mode==='history',principal)).join('')}${remaining?`<button type="button" class="assign-show-more" onclick="showMoreAssignments(${JSON.stringify(pageKey)})">Show 10 more <span>(${remaining} remaining)</span></button>`:''}</div>`
+        ? `${directionToggle}<div class="assign-cards">${shownItems.map(a => assignmentCard(a, mode==='history'?a._received:group.received,mode==='history',principal)).join('')}</div>`
         : '';
       const groupName = escapeHtml(group.name);
       const historySummary=mode==='history'
@@ -916,12 +910,6 @@
     try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/recurring-schedules`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({title,recipientEmail,recipientName,firstDueDate,summary:document.getElementById('rt-summary')?.value||'',departmentName:document.getElementById('rt-department')?.value||'Needs Department',priority:document.getElementById('rt-priority')?.value||'Normal',proofInstructions:document.getElementById('rt-proof')?.value||'',frequencyInterval:Number(document.getElementById('rt-frequency-interval')?.value||1),frequencyUnit:document.getElementById('rt-frequency-unit')?.value||'week',generationLeadDays:4})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not create schedule');closeMo('mo-recurring-task');await renderMyTasks(false);setTasksTabMode('recurring');toast('Recurring schedule created');}catch(err){toast(err.message||'Could not create schedule');}finally{if(btn)btn.disabled=false;}
   };
   window.toggleRecurringSchedule=async function(scheduleId,active){try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/recurring-schedules`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'toggle',scheduleId,active})});if(!res.ok)throw new Error('Could not update schedule');await renderMyTasks(false);setTasksTabMode('recurring');toast(active?'Schedule resumed':'Schedule paused');}catch(err){toast(err.message);}};
-
-  window.showMoreAssignments = function showMoreAssignments(key) {
-    const map=tasksTabVisibleCounts[tasksTabMode];
-    map.set(key,(map.get(key)||TASKS_PAGE_SIZE)+TASKS_PAGE_SIZE);
-    renderTasksTabList();
-  };
 
   window.setTasksHistoryDirection = function setTasksHistoryDirection(event,key,direction) {
     event?.stopPropagation();

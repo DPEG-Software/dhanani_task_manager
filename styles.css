@@ -357,6 +357,7 @@ td{padding:7px 10px;font-size:12.5px;vertical-align:middle;overflow-wrap:anywher
 .assign-group-summary{margin-left:auto;font-size:11px;color:var(--sub);font-weight:700;text-align:right}
 .assign-cards{display:grid;gap:8px;margin:8px 0 12px 28px;padding-left:12px;border-left:2px solid var(--sage)}
 .assign-cards .wed-card{margin:0}
+#page-tasks .assign-cards{max-height:520px;overflow-y:auto;padding-right:6px}
 .assign-card-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--muted);font-weight:600}
 .assign-due{white-space:nowrap}
 .assign-due.is-overdue{color:var(--ruby);font-weight:700}
