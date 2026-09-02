@@ -296,7 +296,14 @@ function closeMo(id){
   if(id==='mo-detail')releaseDetailEditLock();
   document.getElementById(id).classList.remove("open");
 }
-document.querySelectorAll(".mo,.drill-overlay").forEach(m=>m.addEventListener("click",e=>{if(e.target===m){if(m.classList.contains('mo'))closeMo(m.id);else m.classList.remove("open");}}));
+document.querySelectorAll(".mo,.drill-overlay").forEach(m=>m.addEventListener("click",e=>{
+  if(e.target!==m)return;
+  // Add Task holds an in-progress, unsaved form — a stray click outside it
+  // must not silently discard what's been typed. Only its own X/Cancel
+  // controls (which call closeMo directly) may close it.
+  if(m.id==='mo-add')return;
+  if(m.classList.contains('mo'))closeMo(m.id);else m.classList.remove("open");
+}));
 
 // ============================================================
 // ADD TASK
