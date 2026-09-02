@@ -27,6 +27,7 @@ function isNotifUnseen(n){ return n.status==='pending' && !notifSeenIds.has(noti
 let processedEmailIds=new Set(JSON.parse(localStorage.getItem('dpeg_processed_done_emails')||'[]'));
 let _notifPollTimer=null;
 let _notifPollCycle=0;
+let _notifPollBusy=false;
 let pendingProofFiles=[];
 let pendingFollowupFiles=[];
 let _taskMessagePollInitialized=false;
@@ -211,7 +212,8 @@ async function checkAndLoadProofNotifications(){
     updateNotifBadge();
     renderNotifications();
     window.updateNotificationCenter?.();
-    await saveNotifications();
+    // These notifications already live in shared server storage. Do not
+    // block the live UI on a separate OneDrive task-file save.
     refreshAll();
     if(newAdded>0)toast(`${newAdded} proof submission${newAdded>1?'s':''} ready for review in Assigned by Me`);
   }
@@ -1256,22 +1258,27 @@ async function pollNow(){
   if(btn){btn.disabled=false;btn.textContent='Poll Now';}
 }
 
+async function runLiveTaskPoll(){
+  if(_notifPollBusy||document.hidden)return;
+  _notifPollBusy=true;
+  try{
+    _notifPollCycle++;
+    if(_notifPollCycle%8===0)pollToDoCompletions();
+    await Promise.allSettled([
+      checkAndLoadProofNotifications(),
+      Promise.resolve(window.renderMyTasks?.(true)),
+    ]);
+  }finally{_notifPollBusy=false;}
+}
+
 function startNotifPolling(){
   if(_notifPollTimer)return;
-  _notifPollTimer=setInterval(()=>{
-    if(document.hidden)return;
-    _notifPollCycle++;
-    if(_notifPollCycle%4===0)pollToDoCompletions();
-    checkAndLoadProofNotifications().catch(()=>{});
-    // Keep the Tasks tab's status/proof stages live without a manual reopen,
-    // and keep the sidebar/tab alert badges current from any page — silent=true
-    // so it only redraws the (possibly-hidden) tab DOM when something changed
-    renderMyTasks(true);
-  },8000);
+  // One guarded cycle prevents an older, slower request from overwriting a
+  // newer proof/message response. Four seconds keeps cross-user handoffs live
+  // without disturbing the page or creating overlapping network traffic.
+  _notifPollTimer=setInterval(runLiveTaskPoll,4000);
+  runLiveTaskPoll();
   document.addEventListener('visibilitychange',()=>{
-    if(!document.hidden){
-      checkAndLoadProofNotifications().catch(()=>{});
-      renderMyTasks(true);
-    }
+    if(!document.hidden)runLiveTaskPoll();
   });
 }

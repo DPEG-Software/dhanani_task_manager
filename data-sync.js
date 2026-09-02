@@ -715,7 +715,6 @@ function finishDataLoad(){
   updateNotifBadge();
   startNotifPolling();
   pollToDoCompletions().catch(()=>{});
-  checkAndLoadProofNotifications().catch(()=>{});
 }
 
 function companyDataIsEmpty(){
