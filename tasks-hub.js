@@ -501,7 +501,9 @@
     const reminderCount=!history&&received&&reminders?`<span class="assign-reminder-count">${reminders} reminder${reminders===1?'':'s'}</span>`:'';
     const changesBadge=changesRequested?'<span class="assign-changes-count">Changes requested</span>':'';
     const recurringBadge=a.isRecurring?'<span class="assign-history-label">Recurring</span>':'';
-    const isDelegated=!!(a.parentAssignmentId||a.delegatedToEmail||a.status==='Delegated'||(Array.isArray(a.chain)&&a.chain.length>1));
+    // A chain can contain cancelled historical children. Highlight only a
+    // currently active delegation link, not the audit trail by itself.
+    const isDelegated=!!(a.parentAssignmentId||a.delegatedToEmail||a.status==='Delegated');
     const delegatedBadge=isDelegated?'<span class="assign-delegated-badge">Delegated</span>':'';
     const newReminder=!history&&hasNewReminder(a,received);
     const proofReady=!history&&!received&&awaitingApproval(a);
@@ -1111,16 +1113,16 @@
         const detail = await res.json().catch(() => ({}));
         throw new Error(detail.error || `HTTP ${res.status}`);
       }
-      const { cancelledAt } = await res.json();
+      const { cancelledAt, resumedParentId } = await res.json();
       a.status = 'Cancelled';
       a.cancelReason = reason;
       a.cancelledAt = cancelledAt || new Date().toISOString();
       a.updatedAt = a.cancelledAt;
       a.updateAlertAt = null;
       const localTask=(typeof tasks!=='undefined'?tasks:[]).find(t=>String(t.id)===String(a.appTaskId));
-      if(localTask){localTask.status='Cancelled';localTask.cancelledAt=a.cancelledAt;localTask.cancelReason=reason;await saveTasksToOneDrive();refreshAll();}
-      renderTasksTabList();
-      toast(`Task cancelled — notifying ${who}`);
+      if(localTask){localTask.status='Cancelled';localTask.cancelledAt=a.cancelledAt;localTask.cancelReason=reason;saveTasksToOneDrive().then(refreshAll).catch(()=>{});}
+      await renderMyTasks(true);
+      toast(resumedParentId?`Delegation cancelled — your original task has resumed`:`Task cancelled — notifying ${who}`);
       window.sendTaskCancelledEmail?.(a);
     } catch (err) {
       console.warn('Cancel assignment failed:', err.message);

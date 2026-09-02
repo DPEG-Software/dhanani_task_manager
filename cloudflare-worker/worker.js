@@ -2192,7 +2192,7 @@ async function handleAssignmentCancel(request, env) {
   const reason = String(body.reason || '').trim().slice(0, 2000);
 
   const row = await env.DPEG_ASSIGNMENTS
-    .prepare('SELECT assigner_email, status, proof_status FROM assignments WHERE id = ?')
+    .prepare('SELECT assigner_email, recipient_email, status, proof_status, parent_assignment_id FROM assignments WHERE id = ?')
     .bind(id).first();
   if (!row) return json({ error: 'Assignment not found' }, 404);
 
@@ -2204,14 +2204,40 @@ async function handleAssignmentCancel(request, env) {
   if (row.proof_status === 'approved') return json({ error: 'A completed task cannot be cancelled' }, 409);
 
   const now = new Date().toISOString();
-  await env.DPEG_ASSIGNMENTS.prepare(
+  const cancelChild=env.DPEG_ASSIGNMENTS.prepare(
     `UPDATE assignments
         SET status = 'Cancelled', cancel_reason = ?, cancelled_at = ?,
             update_alert_at = NULL, updated_at = ?, version = version + 1
       WHERE id = ?`
-  ).bind(reason, now, now, id).run();
+  ).bind(reason, now, now, id);
 
-  return json({ success: true, cancelledAt: now, reason });
+  let resumedParentId='';
+  if(row.parent_assignment_id){
+    const parent=await env.DPEG_ASSIGNMENTS.prepare(
+      'SELECT id,recipient_email,status,delegated_to_email FROM assignments WHERE id=?'
+    ).bind(row.parent_assignment_id).first();
+    const childRecipient=extractEmailAddress(row.recipient_email);
+    if(parent&&extractEmailAddress(parent.recipient_email)===tokenEmail&&extractEmailAddress(parent.delegated_to_email)===childRecipient){
+      resumedParentId=String(parent.id);
+      await env.DPEG_ASSIGNMENTS.batch([
+        cancelChild,
+        env.DPEG_ASSIGNMENTS.prepare(
+          `UPDATE assignments
+              SET status='In Progress', delegated_to_email=NULL, delegated_to_name=NULL,
+                  proof_status='none', proof_submitted_at=NULL, proof_reviewed_at=NULL,
+                  proof_notification_id=NULL, update_alert_at=NULL,
+                  updated_at=?, version=version+1
+            WHERE id=?`
+        ).bind(now,parent.id),
+      ]);
+    }else{
+      await cancelChild.run();
+    }
+  }else{
+    await cancelChild.run();
+  }
+
+  return json({ success: true, cancelledAt: now, reason, resumedParentId });
 }
 
 // ── Staging-only normalized task API ─────────────────────────────────────────
