@@ -1,4 +1,4 @@
-const CACHE = 'dtm-v86';
+const CACHE = 'dtm-v87';
 const PRECACHE = [
   '.',
   'bootstrap.js',

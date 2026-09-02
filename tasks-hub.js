@@ -386,14 +386,10 @@
     return state.thread.slice(seenLen).filter(m => m && m.by !== myRole).length;
   }
 
-  function followupButton(a, received, label='Messages') {
+  function followupButton(a, received) {
     const count = followupUnreadCount(a, received);
     const badge = count > 0 ? '<span class="assign-followup-count">1</span>' : '';
-    return `<button class="btn btn-ghost btn-sm assign-followup-btn" onclick="openTaskFollowup('${a.id}',${received})">${escapeHtml(label)}${badge}</button>`;
-  }
-
-  function delegatedChildFor(parent){
-    return (tasksTabCache.assignedByMe||[]).find(child=>String(child.parentAssignmentId||'')===String(parent?.id||''))||null;
+    return `<button class="btn btn-ghost btn-sm assign-followup-btn" onclick="openTaskFollowup('${a.id}',${received})">Messages${badge}</button>`;
   }
 
   // Standalone one-click "update required" nudge — separate from the
@@ -441,7 +437,7 @@
         :`Approval owner: ${approvalOwner}`;
       return `<span style="font-size:11.5px;color:var(--muted);font-weight:700">${approvalText}</span><span class="assign-actions-trailing">${isTerminal?'':`<button class="btn btn-ghost btn-sm assign-followup-btn" onclick="openTaskFollowup('${a.id}','principal')">Messages</button>`}</span>`;
     }
-    const followBtn = isTerminal ? '' : followupButton(a, received,a.status==='Delegated'?`Messages with ${a.assignerName||a.assignerEmail||'original assigner'}`:'Messages');
+    const followBtn = isTerminal ? '' : followupButton(a, received);
     const bellBtn = (isTerminal || awaitingApproval(a)) ? '' : alertBellButton(a, received);
     // Cancelling is an assigner-only action, and only makes sense while a
     // task is still live — nothing left to call off once it's Done or
@@ -454,12 +450,8 @@
         : `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">✕ Cancelled</span>`;
     } else if (received) {
       if (a.status === 'Delegated') {
-        const child=delegatedChildFor(a);
         const worker=a.delegatedToName||a.delegatedToEmail||'new assignee';
-        const childStatus=child?stageLabel(child):'Assigned';
-        const childMessages=child?followupButton(child,false,`Messages with ${worker}`):'';
-        const childReminder=child&&!awaitingApproval(child)?alertBellButton(child,false):'';
-        content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">${escapeHtml(worker)}: ${escapeHtml(childStatus)}</span>${childMessages}${childReminder}`;
+        content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">Delegated to ${escapeHtml(worker)}</span>`;
       } else if (proof === 'none') {
         const opts = MANUAL_STATUSES.map(s => `<option value="${s}" ${s === (a.status || 'Assigned') ? 'selected' : ''}>${s}</option>`).join('');
         content = `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
@@ -476,6 +468,8 @@
       } else {
         content = '';
       }
+    } else if (a.status === 'Delegated') {
+      content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">Delegated — current worker: ${escapeHtml(a.delegatedToName||a.delegatedToEmail||'delegated assignee')}</span>`;
     } else if (awaitingApproval(a)) {
       content = `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button>`;
     } else if (proof === 'declined') {
