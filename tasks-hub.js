@@ -287,7 +287,12 @@
   }
 
   function awaitingApproval(a) {
-    return !isCancelled(a) && (proofState(a) === 'submitted' || !!window.hasPendingTaskProofReview?.(a?.appTaskId));
+    if(isCancelled(a))return false;
+    // The assignment row is the authoritative current workflow state. Old
+    // proof notifications are retained as history and must not reopen the
+    // review action after changes have already been returned downstream.
+    if(a?.proofStatus!=null&&String(a.proofStatus).trim()!=='')return proofState(a)==='submitted';
+    return !!window.hasPendingTaskProofReview?.(a?.appTaskId);
   }
 
   // Derives the single live stage (0-3, LIVE_STAGES index) an assignment is
@@ -474,10 +479,7 @@
     } else if (awaitingApproval(a)) {
       content = `<button class="btn btn-primary btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button>`;
     } else if (proof === 'declined') {
-      // Keep rejected submissions available to the assigner while the
-      // assignee works on a correction. A later pending resubmission enters
-      // the awaitingApproval branch above and changes this to View Proof.
-      content = `<button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">Proofs</button>`;
+      content = `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Changes sent — waiting for new proof</span>`;
     } else if (proof === 'approved') {
       content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>
         <button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button>`;
