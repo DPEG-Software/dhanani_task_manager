@@ -16,7 +16,7 @@
   window.isDelegatedTaskProof = function isDelegatedTaskProof(appTaskId, recipientEmail) {
     const taskKey=String(appTaskId||'');
     const recipient=String(recipientEmail||'').toLowerCase();
-    return (tasksTabCache.assignedByMe||[]).some(a=>
+    return [...(tasksTabCache.assignedByMe||[]),...(tasksTabCache.overseenByMe||[])].some(a=>
       String(a.appTaskId||'')===taskKey&&
       (!recipient||String(a.recipientEmail||'').toLowerCase()===recipient)
     );
@@ -718,15 +718,19 @@
     const departmentBtn=document.getElementById('tasks-department-btn');
     if(departmentBtn){
       const oversightRows=tasksTabCache.overseenByMe||[];
-      const isNikhilAssistant=String(currentUser?.email||'').toLowerCase()==='isha@dhananipeg.com';
-      departmentBtn.style.display=(isNikhilAssistant||oversightRows.length)?'':'none';
+      const userEmail=String(currentUser?.email||'').toLowerCase();
+      const isNikhilAssistant=userEmail==='isha@dhananipeg.com';
+      const hasDedicatedMaintenanceTab=userEmail==='maintenance@dhananipeg.com';
+      departmentBtn.style.display=!hasDedicatedMaintenanceTab&&(isNikhilAssistant||oversightRows.length)?'':'none';
       departmentBtn.textContent=(isNikhilAssistant||oversightRows.some(a=>a.oversightRole==='Executive Assistant'))?"Nikhil's Tasks":'Department Tasks';
     }
-    const isIsha=String(currentUser?.email||'').toLowerCase()==='isha@dhananipeg.com';
+    const userEmail=String(currentUser?.email||'').toLowerCase();
+    const isIsha=userEmail==='isha@dhananipeg.com';
+    const isFernando=userEmail==='maintenance@dhananipeg.com';
     const propertyBtn=document.getElementById('tasks-property-btn');
     const maintenanceBtn=document.getElementById('tasks-maintenance-btn');
     if(propertyBtn)propertyBtn.style.display=isIsha?'':'none';
-    if(maintenanceBtn)maintenanceBtn.style.display=isIsha?'':'none';
+    if(maintenanceBtn)maintenanceBtn.style.display=(isIsha||isFernando)?'':'none';
     window.updateNotificationCenter?.();
     renderTasksTabList();
   };

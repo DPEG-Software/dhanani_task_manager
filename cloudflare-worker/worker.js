@@ -43,6 +43,12 @@ const TEAM_OVERSIGHT_RECIPIENTS = {
       'cramirez@dhananipeg.com',
     ],
   },
+  'maintenance@dhananipeg.com': {
+    maintenance: [
+      'hcuellar@dhananipeg.com',
+      'cramirez@dhananipeg.com',
+    ],
+  },
 };
 
 function departmentPrincipalDepartments(email) {
@@ -1361,17 +1367,26 @@ async function handleNotify(request, env) {
   if (request.method === 'GET') {
     const data = await env.DPEG_DATA.get(DATA_KEY, 'json') || {};
     const viewerEmail=userEmailFromClaims(claims);
-    const directRows=env.DPEG_ASSIGNMENTS
-      ?(await env.DPEG_ASSIGNMENTS.prepare('SELECT app_task_id,recipient_email FROM assignments WHERE assigner_email=? OR recipient_email=?').bind(viewerEmail,viewerEmail).all()).results||[]
-      :[];
-    const directTaskKeys=new Set(directRows.map(row=>`${String(row.app_task_id||'')}::${extractEmailAddress(row.recipient_email)}`));
+    let visibleRows=[];
+    if(env.DPEG_ASSIGNMENTS){
+      const visibilityClauses=['assigner_email=?','recipient_email=?'];
+      const visibilityBindings=[viewerEmail,viewerEmail];
+      const principalDepartments=departmentPrincipalDepartments(viewerEmail);
+      const oversightAssigners=delegatedAssigners(viewerEmail);
+      const oversightRecipients=teamOversightRecipients(viewerEmail);
+      if(principalDepartments.length){visibilityClauses.push(`LOWER(dept) IN (${principalDepartments.map(()=>'?').join(',')})`);visibilityBindings.push(...principalDepartments);}
+      if(oversightAssigners.length){visibilityClauses.push(`assigner_email IN (${oversightAssigners.map(()=>'?').join(',')})`);visibilityBindings.push(...oversightAssigners);}
+      if(oversightRecipients.length){visibilityClauses.push(`recipient_email IN (${oversightRecipients.map(()=>'?').join(',')})`);visibilityBindings.push(...oversightRecipients);}
+      visibleRows=(await env.DPEG_ASSIGNMENTS.prepare(`SELECT app_task_id,recipient_email FROM assignments WHERE ${visibilityClauses.join(' OR ')}`).bind(...visibilityBindings).all()).results||[];
+    }
+    const visibleTaskKeys=new Set(visibleRows.map(row=>`${String(row.app_task_id||'')}::${extractEmailAddress(row.recipient_email)}`));
     // Proof packages and their private working threads are visible only to
     // the two people at that assignment level. A parent receives a separate,
     // thread-free package only after the middle reviewer forwards it.
     const legacyNotifications = (Array.isArray(data.notifications) ? data.notifications : []).filter(n=>{
       const sender=extractEmailAddress(n.senderEmail||'');
       const recipient=extractEmailAddress(n.recipientEmail||'');
-      return sender===viewerEmail||recipient===viewerEmail||directTaskKeys.has(`${String(n.appTaskId||'')}::${recipient}`);
+      return sender===viewerEmail||recipient===viewerEmail||visibleTaskKeys.has(`${String(n.appTaskId||'')}::${recipient}`);
     });
     const url = new URL(request.url);
     const includeMessages = url.searchParams.get('includeMessages') === '1';
