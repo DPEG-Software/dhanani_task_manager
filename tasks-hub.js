@@ -5,6 +5,7 @@
   let tasksTabMode = 'received'; // 'received' | 'given' | 'department' | 'history'
   let tasksHistoryFilter = 'completed'; // 'completed' | 'cancelled'
   let tasksTabCache = { assignedToMe: [], assignedByMe: [], overseenByMe: [], recurringSchedules: [], recurringOccurrences: [], recurringProofs: [], recurringMessages: [] };
+  let tasksTabHasLoaded = false;
   const tasksTabOpenGroups = { received: new Set(), given: new Set(), department: new Set(), property: new Set(), maintenance: new Set(), recurring: new Set(), history: new Set() };
   const tasksHistoryDirections = new Map(); // person key -> 'to' | 'by'
   let expandedAssignmentId = null;
@@ -677,7 +678,9 @@
   window.renderMyTasks = async function renderMyTasks(silent) {
     const tb = document.getElementById('tasks-tbody');
     if (!tb || !currentUser?.email) return;
-    if (!silent) tb.innerHTML = `<div class="empty-state"><div class="es-text">Loading...</div></div>`;
+    // Keep the current cards visible during manual/action refreshes. A loading
+    // placeholder is only useful before this tab has loaded for the first time.
+    if (!silent && !tasksTabHasLoaded) tb.innerHTML = `<div class="empty-state"><div class="es-text">Loading...</div></div>`;
     let nextCache;
     try {
       const userToken = await getAccessToken();
@@ -698,13 +701,14 @@
       }
     } catch (err) {
       console.warn('Load assignments failed:', err.message);
-      if (!silent) {
+      if (!silent && !tasksTabHasLoaded) {
         tb.innerHTML = `<div class="empty-state"><div class="es-text">Couldn't load Tasks tab</div><div class="es-sub">Check your connection and reopen this tab to retry</div></div>`;
       }
       return;
     }
     if (silent && assignmentsSignature(nextCache) === assignmentsSignature(tasksTabCache)) return;
     tasksTabCache = nextCache;
+    tasksTabHasLoaded = true;
     const departmentBtn=document.getElementById('tasks-department-btn');
     if(departmentBtn){
       const oversightRows=tasksTabCache.overseenByMe||[];
@@ -912,7 +916,7 @@
       const todoRes=await fetch(`${fnBaseUrl()}/todo`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({recipientEmail:child.recipientEmail,title:child.title,summary:child.summary,priority:child.priority,date:child.dueDate,assignedByEmail:child.assignerEmail,assignedByName:child.assignerName,appTaskId:child.appTaskId,proofInstructions:child.proofInstructions,proofBaseUrl:location.origin+location.pathname})});
       if(todoRes.ok){const todo=await todoRes.json();await fetch(`${fnBaseUrl()}/assignment`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({id:child.id,appTaskId:child.appTaskId,title:child.title,summary:child.summary,dept:child.dept,priority:child.priority,dueDate:child.dueDate,recipientEmail:child.recipientEmail,recipientName:child.recipientName,recipientTodoListId:todo.listId||'',recipientTodoTaskId:todo.taskId||'',proofInstructions:child.proofInstructions})});}
       await window.sendTaskNotification?.({id:child.appTaskId,title:child.title,summary:child.summary,email:child.recipientEmail,person:child.recipientName,dept:child.dept,priority:child.priority,date:child.dueDate,assignedByEmail:child.assignerEmail,assignedByName:child.assignerName});
-      closeMo('mo-reassign-task');await renderMyTasks(false);toast(`Task reassigned to ${recipientName||recipientEmail}`);
+      closeMo('mo-reassign-task');await renderMyTasks(true);toast(`Task reassigned to ${recipientName||recipientEmail}`);
     }catch(err){toast(err.message||'Could not reassign task');}finally{btn.disabled=false;}
   };
   window.returnDelegatedTask=async function(id){
@@ -921,7 +925,7 @@
     const suggested=String(result?.reason||'').trim();
     const reason=prompt(`Changes to send to ${a.delegatedToName||a.delegatedToEmail}:`,suggested||'Please revise the proof based on the original assigner\'s feedback.');
     if(reason===null||!String(reason).trim())return;
-    try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/assignment-return`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({assignmentId:id,reason:String(reason).trim()})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not return task');await renderMyTasks(false);toast(`Changes sent to ${a.delegatedToName||a.delegatedToEmail}`);}catch(err){toast(err.message||'Could not return task');}
+    try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/assignment-return`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({assignmentId:id,reason:String(reason).trim()})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not return task');await renderMyTasks(true);toast(`Changes sent to ${a.delegatedToName||a.delegatedToEmail}`);}catch(err){toast(err.message||'Could not return task');}
   };
   window.openRecurringTaskModal=function(){
     const due=document.getElementById('rt-first-due');const today=new Date().toISOString().slice(0,10);if(due){due.min=today;if(!due.value)due.value=today;}

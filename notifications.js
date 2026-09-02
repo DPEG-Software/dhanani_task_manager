@@ -365,20 +365,36 @@ async function showTaskFollowupModal(params){
   const statusEl=document.getElementById('tf-modal-status');
   if(statusEl)statusEl.textContent='';
   document.getElementById('mo-task-followup')?.classList.add('open');
-  await refreshTaskFollowupThread();
+  await refreshTaskFollowupThread({initial:true,retries:2});
   if(params.requestChanges){input?.focus();input?.setSelectionRange(input.value.length,input.value.length);}
 }
 
-async function refreshTaskFollowupThread(){
+async function refreshTaskFollowupThread({initial=false,retries=0,expectedMessage=''}={}){
   if(!_taskFollowupCtx)return;
+  const ctx=_taskFollowupCtx;
   const body=document.getElementById('tf-modal-body');
   if(!body)return;
-  body.innerHTML='<div style="font-size:12px;color:var(--muted)">Loading conversation...</div>';
-  const n=await fetchTaskFollowupThread(_taskFollowupCtx.appTaskId,_taskFollowupCtx.recipientEmail);
+  const statusEl=document.getElementById('tf-modal-status');
+  if(initial)body.innerHTML='<div style="font-size:12px;color:var(--muted)">Loading conversation...</div>';
+  else if(statusEl)statusEl.textContent='Syncing conversation...';
+  let n=null;
+  for(let attempt=0;attempt<=retries;attempt++){
+    n=await fetchTaskFollowupThread(ctx.appTaskId,ctx.recipientEmail);
+    const thread=Array.isArray(n?.thread)?n.thread:[];
+    const expectedVisible=!expectedMessage||thread.some(item=>
+      String(item?.message||item?.text||'').trim()===String(expectedMessage).trim()&&
+      (!item?.senderEmail||String(item.senderEmail).toLowerCase()===String(currentUser?.email||'').toLowerCase())
+    );
+    if((n&&expectedVisible)||attempt===retries)break;
+    await new Promise(resolve=>setTimeout(resolve,350*(attempt+1)));
+    if(_taskFollowupCtx!==ctx)return;
+  }
+  if(_taskFollowupCtx!==ctx)return;
   const thread=n&&Array.isArray(n.thread)?n.thread:[];
   body.innerHTML=thread.length?renderProofThread(n):'<div style="font-size:12px;color:var(--muted);padding:6px 0">No messages yet — send one to start the conversation.</div>';
+  if(statusEl)statusEl.textContent='';
   scrollProofThreadsToBottom(body);
-  window.markTaskFollowupSeen?.(_taskFollowupCtx.assignmentId,thread.length,_taskFollowupCtx.role);
+  window.markTaskFollowupSeen?.(ctx.assignmentId,thread.length,ctx.role);
 }
 
 function closeTaskFollowup(){
@@ -447,7 +463,7 @@ async function sendTaskFollowupMessage(){
     }else{
       toast('Message sent — the recipient was notified in the app');
     }
-    await refreshTaskFollowupThread();
+    await refreshTaskFollowupThread({retries:3,expectedMessage:message});
     window.renderMyTasks?.(true);
   }catch(err){
     if(statusEl)statusEl.innerHTML=`<span style="color:#b91c1c">${escapeHtml(err.message||'Could not send message')}</span>`;
@@ -555,10 +571,20 @@ window.openTaskProofReview=async function openTaskProofReview(assignment){
   document.getElementById('task-review-status').textContent='Loading submission...';
   body.innerHTML='<div style="padding:28px;text-align:center;font-size:12px;color:var(--muted)">Loading proof and conversation...</div>';
   modal.classList.add('open');
-  await checkAndLoadProofNotifications().catch(err=>console.warn('Proof notification refresh failed:',err.message));
-  const n=taskProofReviewNotification(appTaskId,false);
+  const reviewCtx=taskProofReviewContext;
+  let n=null;
+  for(let attempt=0;attempt<4;attempt++){
+    await checkAndLoadProofNotifications().catch(err=>console.warn('Proof notification refresh failed:',err.message));
+    if(taskProofReviewContext!==reviewCtx)return;
+    n=taskProofReviewNotification(appTaskId,false);
+    if(n)break;
+    if(attempt<3){
+      document.getElementById('task-review-status').textContent='Waiting for submission to sync...';
+      await new Promise(resolve=>setTimeout(resolve,400*(attempt+1)));
+    }
+  }
   if(!n){
-    body.innerHTML='<div class="empty-state"><div class="es-text">Submission not available yet</div><div class="es-sub">It may still be syncing. Close this window and try again shortly.</div></div>';
+    body.innerHTML='<div class="empty-state"><div class="es-text">Submission is still syncing</div><div class="es-sub">Keep this window open and try again.</div><button class="btn btn-secondary" style="margin-top:12px" onclick="retryTaskProofReview()">Retry now</button></div>';
     document.getElementById('task-review-status').textContent='';
     setTaskReviewActionsEnabled(false);
     return;
@@ -566,6 +592,11 @@ window.openTaskProofReview=async function openTaskProofReview(assignment){
   taskProofReviewContext.notificationId=n.id;
   markNotifSeen(n.id);
   renderTaskProofReview(n);
+};
+
+window.retryTaskProofReview=function retryTaskProofReview(){
+  const assignment=taskProofReviewContext?.assignment;
+  if(assignment)window.openTaskProofReview(assignment);
 };
 
 function renderTaskProofReview(n){
@@ -615,7 +646,7 @@ async function approveTaskProof(){
       const token=await getAccessToken();const res=await fetch(`${workerBaseUrl()}/assignment-forward`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({assignmentId:assignment.id,reviewNote})});
       const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not forward proof');
       const n=notifications.find(x=>x.id===id);if(n)n.status='approved';
-      closeTaskProofReview();await checkAndLoadProofNotifications();await window.renderMyTasks?.(false);toast('Proof approved and forwarded to the original assigner');
+      closeTaskProofReview();await checkAndLoadProofNotifications();await window.renderMyTasks?.(true);toast('Proof approved and forwarded to the original assigner');
     }catch(err){setTaskReviewBusy(false,err.message||'Forwarding failed');}
     return;
   }
