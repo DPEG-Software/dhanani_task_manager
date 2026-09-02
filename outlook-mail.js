@@ -3009,6 +3009,7 @@ async function sendTaskNotification(task){
     console.warn('Task notification failed:',err.message);
   }
 }
+window.sendTaskNotification=sendTaskNotification;
 
 async function updateTodoTask(task,changes){
   const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL).replace(/\/?$/,'');

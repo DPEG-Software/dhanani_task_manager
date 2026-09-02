@@ -238,6 +238,12 @@ async function ensureAssignmentProofColumns(env) {
     ['version', 'INTEGER NOT NULL DEFAULT 1'],
     ['cancel_reason', 'TEXT'],
     ['cancelled_at', 'TEXT'],
+    ['parent_assignment_id', 'TEXT'],
+    ['root_assignment_id', 'TEXT'],
+    ['delegation_level', 'INTEGER NOT NULL DEFAULT 0'],
+    ['delegated_to_email', 'TEXT'],
+    ['delegated_to_name', 'TEXT'],
+    ['forwarded_review_note', 'TEXT'],
   ];
   for (const [name, type] of columns) {
     try {
@@ -252,6 +258,8 @@ async function ensureAssignmentProofColumns(env) {
   await env.DPEG_ASSIGNMENTS.prepare(
     'CREATE INDEX IF NOT EXISTS idx_assignments_assigner_created ON assignments(assigner_email, created_at)'
   ).run();
+  await env.DPEG_ASSIGNMENTS.prepare('CREATE INDEX IF NOT EXISTS idx_assignments_parent ON assignments(parent_assignment_id)').run();
+  await env.DPEG_ASSIGNMENTS.prepare('CREATE INDEX IF NOT EXISTS idx_assignments_root ON assignments(root_assignment_id)').run();
   assignmentColumnsReady = true;
 }
 
@@ -1352,7 +1360,19 @@ async function handleNotify(request, env) {
 
   if (request.method === 'GET') {
     const data = await env.DPEG_DATA.get(DATA_KEY, 'json') || {};
-    const legacyNotifications = Array.isArray(data.notifications) ? data.notifications : [];
+    const viewerEmail=userEmailFromClaims(claims);
+    const directRows=env.DPEG_ASSIGNMENTS
+      ?(await env.DPEG_ASSIGNMENTS.prepare('SELECT app_task_id,recipient_email FROM assignments WHERE assigner_email=? OR recipient_email=?').bind(viewerEmail,viewerEmail).all()).results||[]
+      :[];
+    const directTaskKeys=new Set(directRows.map(row=>`${String(row.app_task_id||'')}::${extractEmailAddress(row.recipient_email)}`));
+    // Proof packages and their private working threads are visible only to
+    // the two people at that assignment level. A parent receives a separate,
+    // thread-free package only after the middle reviewer forwards it.
+    const legacyNotifications = (Array.isArray(data.notifications) ? data.notifications : []).filter(n=>{
+      const sender=extractEmailAddress(n.senderEmail||'');
+      const recipient=extractEmailAddress(n.recipientEmail||'');
+      return sender===viewerEmail||recipient===viewerEmail||directTaskKeys.has(`${String(n.appTaskId||'')}::${recipient}`);
+    });
     const url = new URL(request.url);
     const includeMessages = url.searchParams.get('includeMessages') === '1';
     const taskId = url.searchParams.get('taskId') || '';
@@ -1382,6 +1402,9 @@ async function handleNotify(request, env) {
   const notifications = Array.isArray(data.notifications) ? data.notifications : [];
 
   if (body.type === 'proof_result') {
+    const actor=userEmailFromClaims(claims);
+    const assignment=await env.DPEG_ASSIGNMENTS?.prepare('SELECT assigner_email,recipient_email FROM assignments WHERE app_task_id=? AND recipient_email=?').bind(String(body.appTaskId||''),extractEmailAddress(body.recipientEmail||'')).first();
+    if(assignment&&extractEmailAddress(assignment.assigner_email)!==actor)return json({error:'Only the immediate assigner can review this proof'},403);
     // Mark the original proof_submitted notification as resolved
     const idx = notifications.findIndex(n => n.id === body.notifId && n.type === 'proof_submitted');
     if (idx >= 0) notifications[idx].status = body.result === 'approved' ? 'approved' : 'declined';
@@ -1423,6 +1446,11 @@ async function handleNotify(request, env) {
       } catch {}
     }
   } else if (body.type === 'proof_submitted') {
+    const actor=userEmailFromClaims(claims);
+    const claimedRecipient=extractEmailAddress(body.recipientEmail||'');
+    if(claimedRecipient!==actor)return json({error:'Only the assigned recipient can submit proof'},403);
+    const assignment=await env.DPEG_ASSIGNMENTS?.prepare('SELECT assigner_email,recipient_email FROM assignments WHERE app_task_id=? AND recipient_email=?').bind(String(body.appTaskId||''),claimedRecipient).first();
+    if(assignment)body.senderEmail=assignment.assigner_email;
     const proofNotificationId = `pn-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
     notifications.push({
       id: proofNotificationId,
@@ -1709,6 +1737,13 @@ async function handleAssignments(request, env) {
     ).bind(tokenEmail).all(),
     overseenQuery,
   ]);
+  const visibleRows=[...(toMe.results||[]),...(byMe.results||[]),...(overseen.results||[])];
+  const rootIds=[...new Set(visibleRows.map(r=>String(r.root_assignment_id||r.id)).filter(Boolean))];
+  const chainRows=rootIds.length
+    ?(await env.DPEG_ASSIGNMENTS.prepare(`SELECT * FROM assignments WHERE id IN (${rootIds.map(()=>'?').join(',')}) OR root_assignment_id IN (${rootIds.map(()=>'?').join(',')}) ORDER BY delegation_level ASC, created_at ASC`).bind(...rootIds,...rootIds).all()).results||[]
+    :[];
+  const chainByRoot=new Map();
+  chainRows.forEach(r=>{const root=String(r.root_assignment_id||r.id);if(!chainByRoot.has(root))chainByRoot.set(root,[]);chainByRoot.get(root).push(r);});
 
   const shape = (row) => ({
     id: row.id,
@@ -1740,6 +1775,13 @@ async function handleAssignments(request, env) {
     updatedAt: row.updated_at,
     version: Number(row.version || 1),
     isRecurring: String(row.app_task_id || '').includes('rec-task-'),
+    parentAssignmentId: row.parent_assignment_id || '',
+    rootAssignmentId: row.root_assignment_id || row.id,
+    delegationLevel: Number(row.delegation_level || 0),
+    delegatedToEmail: row.delegated_to_email || '',
+    delegatedToName: row.delegated_to_name || '',
+    forwardedReviewNote: row.forwarded_review_note || '',
+    chain: (chainByRoot.get(String(row.root_assignment_id||row.id))||[]).map(node=>({id:node.id,level:Number(node.delegation_level||0),assignerName:node.assigner_name,assignerEmail:node.assigner_email,recipientName:node.recipient_name,recipientEmail:node.recipient_email,status:node.status})),
   });
 
   return json({
@@ -1755,6 +1797,106 @@ async function handleAssignments(request, env) {
       return { ...shape(row), oversightRole: scopes.includes('department') ? 'Department Principal' : 'Executive Assistant', oversightScopes: scopes };
     }),
   });
+}
+
+async function handleAssignmentReassign(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'D1 storage is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+  const body = await request.json().catch(() => null);
+  if (!body) return json({ error: 'Invalid JSON body' }, 400);
+  const parentId=String(body.assignmentId||'').trim();
+  const targetEmail=extractEmailAddress(body.recipientEmail||'');
+  const targetName=String(body.recipientName||targetEmail).trim().slice(0,300);
+  const expectedVersion=Number(body.expectedVersion);
+  if(!parentId||!targetEmail.endsWith('@dhananipeg.com')||!Number.isInteger(expectedVersion))return json({error:'Assignment, DPEG recipient and version are required'},400);
+  const parent=await env.DPEG_ASSIGNMENTS.prepare('SELECT * FROM assignments WHERE id = ?').bind(parentId).first();
+  if(!parent)return json({error:'Assignment not found'},404);
+  const actor=userEmailFromClaims(claims);
+  if(extractEmailAddress(parent.recipient_email)!==actor)return json({error:'Only the current recipient can reassign this task'},403);
+  if(Number(parent.version||1)!==expectedVersion)return json({error:'version_conflict',message:'This task changed. Reload and try again.'},409);
+  if(['Done','Cancelled','Delegated'].includes(String(parent.status))||String(parent.proof_status)!=='none')return json({error:'This task can no longer be reassigned'},409);
+  const rootId=String(parent.root_assignment_id||parent.id);
+  const chain=await env.DPEG_ASSIGNMENTS.prepare('SELECT assigner_email, recipient_email FROM assignments WHERE id = ? OR root_assignment_id = ?').bind(rootId,rootId).all();
+  const participants=new Set((chain.results||[]).flatMap(r=>[extractEmailAddress(r.assigner_email),extractEmailAddress(r.recipient_email)]));
+  if(participants.has(targetEmail))return json({error:'That person is already in this delegation chain'},409);
+  const now=new Date().toISOString();
+  const childId=`del-asg-${crypto.randomUUID()}`;
+  const childTaskId=`del-task-${crypto.randomUUID()}`;
+  const results=await env.DPEG_ASSIGNMENTS.batch([
+    env.DPEG_ASSIGNMENTS.prepare(
+      `INSERT INTO assignments (id,app_task_id,title,summary,dept,priority,due_date,assigner_email,assigner_name,recipient_email,recipient_name,status,progress_note,proof_status,proof_instructions,created_at,updated_at,parent_assignment_id,root_assignment_id,delegation_level)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,'Assigned',NULL,'none',?,?,?,?,?,?)`
+    ).bind(childId,childTaskId,String(parent.title),String(body.instructions||parent.summary||'').slice(0,8000),String(parent.dept||''),String(parent.priority||'Normal'),String(body.dueDate||parent.due_date||''),actor,String(claims.name||actor),targetEmail,targetName,String(parent.proof_instructions||''),now,now,parentId,rootId,Number(parent.delegation_level||0)+1),
+    env.DPEG_ASSIGNMENTS.prepare(
+      `UPDATE assignments SET status='Delegated', delegated_to_email=?, delegated_to_name=?, updated_at=?, version=version+1 WHERE id=? AND version=?`
+    ).bind(targetEmail,targetName,now,parentId,expectedVersion),
+  ]);
+  if(!results?.[1]?.meta?.changes){
+    await env.DPEG_ASSIGNMENTS.prepare('DELETE FROM assignments WHERE id=?').bind(childId).run();
+    return json({error:'version_conflict',message:'This task changed. Reload and try again.'},409);
+  }
+  return json({success:true,child:{id:childId,appTaskId:childTaskId,title:parent.title,summary:String(body.instructions||parent.summary||''),dept:parent.dept,priority:parent.priority,dueDate:String(body.dueDate||parent.due_date||''),assignerEmail:actor,assignerName:String(claims.name||actor),recipientEmail:targetEmail,recipientName:targetName,proofInstructions:parent.proof_instructions||'',parentAssignmentId:parentId,rootAssignmentId:rootId,delegationLevel:Number(parent.delegation_level||0)+1}},201);
+}
+
+async function handleAssignmentForward(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (!env.DPEG_ASSIGNMENTS || !env.DPEG_DATA) return json({ error: 'Storage is not configured' }, 501);
+  await ensureAssignmentProofColumns(env);
+  const body=await request.json().catch(()=>null);
+  if(!body)return json({error:'Invalid JSON body'},400);
+  const childId=String(body.assignmentId||'').trim();
+  const reviewNote=String(body.reviewNote||'').trim().slice(0,2000);
+  const child=await env.DPEG_ASSIGNMENTS.prepare('SELECT * FROM assignments WHERE id=?').bind(childId).first();
+  if(!child||!child.parent_assignment_id)return json({error:'Delegated assignment not found'},404);
+  const actor=userEmailFromClaims(claims);
+  if(extractEmailAddress(child.assigner_email)!==actor)return json({error:'Only the middle reviewer can forward this proof'},403);
+  if(String(child.proof_status)!=='submitted')return json({error:'Proof has not been submitted for review'},409);
+  const parent=await env.DPEG_ASSIGNMENTS.prepare('SELECT * FROM assignments WHERE id=?').bind(child.parent_assignment_id).first();
+  if(!parent||extractEmailAddress(parent.recipient_email)!==actor)return json({error:'Parent assignment is invalid'},409);
+  const data=await env.DPEG_DATA.get(DATA_KEY,'json')||{};
+  const notifications=Array.isArray(data.notifications)?data.notifications:[];
+  const source=notifications.find(n=>n.type==='proof_submitted'&&n.status==='pending'&&String(n.appTaskId)===String(child.app_task_id)&&extractEmailAddress(n.recipientEmail)===extractEmailAddress(child.recipient_email));
+  if(!source)return json({error:'Approved proof package could not be found'},404);
+  const now=new Date().toISOString();
+  const forwardedId=`pn-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+  source.status='approved';
+  notifications.push({id:forwardedId,type:'proof_submitted',appTaskId:String(parent.app_task_id),taskTitle:String(parent.title),senderEmail:String(parent.assigner_email),recipientEmail:String(parent.recipient_email),recipientName:String(parent.recipient_name),proofs:Array.isArray(source.proofs)?source.proofs:[],note:String(source.note||''),forwardedReviewNote:reviewNote,forwardedFromName:String(claims.name||actor),completedByName:String(child.recipient_name||child.recipient_email),delegationPath:true,thread:[],followupStatus:'',submittedAt:now,status:'pending',seen:false});
+  notifications.push({id:`pr-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,type:'proof_result',appTaskId:String(child.app_task_id),taskTitle:String(child.title),senderEmail:actor,senderName:String(claims.name||actor),recipientEmail:String(child.recipient_email),result:'approved',reason:reviewNote,createdAt:now,seen:false});
+  await env.DPEG_ASSIGNMENTS.batch([
+    env.DPEG_ASSIGNMENTS.prepare("UPDATE assignments SET status='Done',proof_status='approved',proof_reviewed_at=?,forwarded_review_note=?,updated_at=?,version=version+1 WHERE id=?").bind(now,reviewNote,now,childId),
+    env.DPEG_ASSIGNMENTS.prepare("UPDATE assignments SET status='Submitted',proof_status='submitted',proof_submitted_at=?,proof_notification_id=?,updated_at=?,version=version+1 WHERE id=?").bind(now,forwardedId,now,parent.id),
+  ]);
+  data.notifications=notifications;
+  await env.DPEG_DATA.put(DATA_KEY,JSON.stringify(data));
+  return json({success:true,forwardedNotificationId:forwardedId});
+}
+
+async function handleAssignmentReturn(request, env) {
+  const {error,status,claims}=await validateUserToken(request);if(error)return json({error},status);
+  if(!env.DPEG_ASSIGNMENTS||!env.DPEG_DATA)return json({error:'Storage is not configured'},501);
+  await ensureAssignmentProofColumns(env);
+  const body=await request.json().catch(()=>null);if(!body)return json({error:'Invalid JSON body'},400);
+  const parentId=String(body.assignmentId||'').trim(),reason=String(body.reason||'Changes were requested by the original assigner.').trim().slice(0,2000);
+  const parent=await env.DPEG_ASSIGNMENTS.prepare('SELECT * FROM assignments WHERE id=?').bind(parentId).first();
+  const actor=userEmailFromClaims(claims);
+  if(!parent||extractEmailAddress(parent.recipient_email)!==actor)return json({error:'Only the middle reviewer can return this task'},403);
+  if(String(parent.proof_status)!=='declined'||!parent.delegated_to_email)return json({error:'There is no returned proof to send down'},409);
+  const child=await env.DPEG_ASSIGNMENTS.prepare('SELECT * FROM assignments WHERE parent_assignment_id=? ORDER BY delegation_level DESC LIMIT 1').bind(parentId).first();
+  if(!child)return json({error:'Delegated assignment not found'},404);
+  const now=new Date().toISOString();
+  await env.DPEG_ASSIGNMENTS.batch([
+    env.DPEG_ASSIGNMENTS.prepare("UPDATE assignments SET status='Delegated',proof_status='none',proof_submitted_at=NULL,proof_reviewed_at=NULL,proof_notification_id=NULL,updated_at=?,version=version+1 WHERE id=?").bind(now,parentId),
+    env.DPEG_ASSIGNMENTS.prepare("UPDATE assignments SET status='In Progress',proof_status='declined',proof_reviewed_at=?,updated_at=?,version=version+1 WHERE id=?").bind(now,now,child.id),
+  ]);
+  const data=await env.DPEG_DATA.get(DATA_KEY,'json')||{};const notifications=Array.isArray(data.notifications)?data.notifications:[];
+  notifications.push({id:`pr-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,type:'proof_result',appTaskId:String(child.app_task_id),taskTitle:String(child.title),senderEmail:actor,senderName:String(claims.name||actor),recipientEmail:String(child.recipient_email),result:'declined',reason,createdAt:now,seen:false});
+  data.notifications=notifications;await env.DPEG_DATA.put(DATA_KEY,JSON.stringify(data));
+  if(externalEffectsAllowed(env)&&child.recipient_todo_list_id&&child.recipient_todo_task_id){try{const token=await getAppToken(env);await fetch(todoTaskUrl(child.recipient_email,child.recipient_todo_list_id,child.recipient_todo_task_id),{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({status:'notStarted'})});}catch{}}
+  return json({success:true});
 }
 
 async function handleRecurringSchedules(request, env) {
@@ -2911,6 +3053,9 @@ async function routeRequest(request, env) {
     if (path === '/notify') return withStagingRealtimeBroadcast(request, env, handleNotify(request, env));
     if (path === '/assignments') return handleAssignments(request, env);
     if (path === '/recurring-schedules') return withStagingRealtimeBroadcast(request, env, handleRecurringSchedules(request, env));
+    if (path === '/assignment-reassign') return withStagingRealtimeBroadcast(request, env, handleAssignmentReassign(request, env));
+    if (path === '/assignment-forward') return withStagingRealtimeBroadcast(request, env, handleAssignmentForward(request, env));
+    if (path === '/assignment-return') return withStagingRealtimeBroadcast(request, env, handleAssignmentReturn(request, env));
 
     if (request.method !== 'POST') {
       return json({ error: 'Only POST allowed' }, 405);

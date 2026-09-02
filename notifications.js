@@ -158,7 +158,9 @@ async function checkAndLoadProofNotifications(){
     if(task)task._proofNotif=pn;
     const localData={
       type:'proof_submitted',
-      message:`${pn.recipientName||pn.recipientEmail||'Someone'} submitted proof for "${pn.taskTitle||'a task'}"`,
+      message:pn.delegationPath
+        ?`${pn.completedByName||'A delegated assignee'} completed the work; ${pn.forwardedFromName||pn.recipientName||'the reviewer'} approved and forwarded it for final approval`
+        :`${pn.recipientName||pn.recipientEmail||'Someone'} submitted proof for "${pn.taskTitle||'a task'}"`,
       taskTitle:pn.taskTitle||task?.title||'',
       taskId:task?task.id:taskKey,
       proofs:Array.isArray(pn.proofs)?pn.proofs:[],
@@ -170,6 +172,10 @@ async function checkAndLoadProofNotifications(){
       status:'pending',
       recipientEmail:pn.recipientEmail||'',
       recipientName:pn.recipientName||'',
+      forwardedReviewNote:pn.forwardedReviewNote||'',
+      forwardedFromName:pn.forwardedFromName||'',
+      completedByName:pn.completedByName||'',
+      delegationPath:!!pn.delegationPath,
       assignmentGroupId:task?.assignmentGroupId||'',
     };
     // Remove any stale local notifications for this same task before adding/updating
@@ -182,7 +188,7 @@ async function checkAndLoadProofNotifications(){
     const existingLocal=notifications.find(n=>n.kvNotifId===pn.id);
     if(existingLocal){
       // Only count as changed if meaningful fields actually differ — prevents refreshAll() every poll
-      const sig=n=>[n.proofs,n.note,n.thread,n.followupStatus,n.status].map(v=>JSON.stringify(v)).join('|');
+      const sig=n=>[n.proofs,n.note,n.thread,n.followupStatus,n.status,n.forwardedReviewNote,n.forwardedFromName,n.completedByName,n.delegationPath].map(v=>JSON.stringify(v)).join('|');
       const before=sig(existingLocal);
       Object.assign(existingLocal,localData);
       if(sig(existingLocal)!==before)existingUpdated++;
@@ -570,12 +576,14 @@ function renderTaskProofReview(n){
   const stateClass=n.status==='approved'?'is-approved':n.status==='dismissed'?'is-changes':'is-pending';
   const task=tasks.find(t=>String(t.id)===String(n.taskId||''));
   const instructions=String(taskProofReviewContext?.assignment?.proofInstructions||task?.proofInstructions||'').trim();
+  const forwarding=!!taskProofReviewContext?.assignment?.parentAssignmentId;
   const instructionsHtml=instructions?`<div style="margin:10px 0;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#166534;margin-bottom:4px">Proof instructions</div><div style="font-size:12px;color:#14532d;line-height:1.5;white-space:pre-wrap">${escapeHtml(instructions)}</div></div>`:'';
   body.innerHTML=`<div class="task-review-summary ${stateClass}">
       <div><div class="task-review-kicker">Proof submission</div><div class="task-review-state">${stateLabel}</div></div>
       <div class="task-review-person">${escapeHtml(n.recipientName||n.recipientEmail||'Assignee')}</div>
-    </div>${instructionsHtml}${renderNotificationProofs(n)}`;
+    </div>${instructionsHtml}${renderNotificationProofs(n)}${forwarding&&pending?`<div style="margin-top:12px;padding:11px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#1d4ed8;margin-bottom:5px">What will be forwarded upward</div><div style="font-size:11.5px;color:#1e3a8a;line-height:1.5;margin-bottom:8px">Only the final proof attachments, the assignee's completion note, and your review note. This private working conversation and rejected drafts will not be shared.</div><textarea id="task-review-forward-note" class="ag-ta" placeholder="Add your review note for the original assigner" style="min-height:62px"></textarea></div>`:''}`;
   document.getElementById('task-review-status').textContent=pending?'Review the files and note before deciding.':'';
+  const approveBtn=document.getElementById('task-review-approve-btn');if(approveBtn)approveBtn.textContent=forwarding?'Approve & Forward':'Approve';
   setTaskReviewActionsEnabled(pending);
   scrollProofThreadsToBottom(body);
 }
@@ -599,6 +607,18 @@ function closeTaskProofReview(){
 
 async function approveTaskProof(){
   const id=taskProofReviewContext?.notificationId;if(id==null)return;
+  const assignment=taskProofReviewContext?.assignment||{};
+  if(assignment.parentAssignmentId){
+    const reviewNote=String(document.getElementById('task-review-forward-note')?.value||'').trim();
+    setTaskReviewBusy(true,'Approving and forwarding package...');
+    try{
+      const token=await getAccessToken();const res=await fetch(`${workerBaseUrl()}/assignment-forward`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({assignmentId:assignment.id,reviewNote})});
+      const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not forward proof');
+      const n=notifications.find(x=>x.id===id);if(n)n.status='approved';
+      closeTaskProofReview();await checkAndLoadProofNotifications();await window.renderMyTasks?.(false);toast('Proof approved and forwarded to the original assigner');
+    }catch(err){setTaskReviewBusy(false,err.message||'Forwarding failed');}
+    return;
+  }
   setTaskReviewBusy(true,'Approving proof...');
   await approveNotification(id);
   const n=notifications.find(x=>x.id===id);
@@ -984,6 +1004,8 @@ function renderNotificationProofs(n){
 function renderSingleProofContents(n){
   const proofs=Array.isArray(n.proofs)?n.proofs:[];
   const note=String(n.note||'').trim();
+  const reviewNote=String(n.forwardedReviewNote||'').trim();
+  const forwardedHtml=n.delegationPath?`<div style="margin:7px 0;padding:9px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px"><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#1d4ed8;margin-bottom:4px">Approved and forwarded${n.forwardedFromName?` by ${escapeHtml(n.forwardedFromName)}`:''}</div><div style="font-size:12px;color:#1e3a8a;line-height:1.5;white-space:pre-wrap">${escapeHtml(reviewNote||'Approved with no additional review note.')}</div></div>`:'';
   const noteHtml=note?`<div style="margin:7px 0;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:5px">
     <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#166534;margin-bottom:4px">Submitted note</div>
     <div style="font-size:12px;color:#14532d;line-height:1.5;white-space:pre-wrap">${escapeHtml(note)}</div>
@@ -996,7 +1018,7 @@ function renderSingleProofContents(n){
       ${p.webUrl?`<a href="${escapeHtml(p.webUrl)}" target="_blank" rel="noopener" style="color:#0E3416;font-weight:700;flex-shrink:0">Open / Download</a>`:''}
     </div>`).join('')}
   </div>`:(note?'':`<div style="margin:6px 0;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:6px 8px">No proof files were attached.</div>`);
-  return noteHtml+filesHtml;
+  return forwardedHtml+noteHtml+filesHtml;
 }
 
 function renderRelatedProofSubmissions(n){

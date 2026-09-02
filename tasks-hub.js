@@ -449,14 +449,19 @@
         ? `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">Cancelled by ${escapeHtml(a.assignerName || a.assignerEmail || 'the assignor')}</span>`
         : `<span style="font-size:11.5px;color:var(--ruby);font-weight:700">✕ Cancelled</span>`;
     } else if (received) {
-      if (proof === 'none') {
+      if (a.status === 'Delegated') {
+        content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">Delegated — waiting on ${escapeHtml(a.delegatedToName||a.delegatedToEmail||'new assignee')}</span>`;
+      } else if (proof === 'none') {
         const opts = MANUAL_STATUSES.map(s => `<option value="${s}" ${s === (a.status || 'Assigned') ? 'selected' : ''}>${s}</option>`).join('');
         content = `<select class="sel-f" onchange="updateAssignmentStatus('${a.id}',this.value)">${opts}</select>
-          <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>`;
+          <button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Submit Proof</button>
+          <button class="btn btn-ghost btn-sm" onclick="openReassignTask('${a.id}')">Reassign</button>`;
       } else if (proof === 'submitted') {
         content = `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>`;
       } else if (proof === 'declined') {
-        content = `<button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button>`;
+        content = a.delegatedToEmail
+          ?`<button class="btn btn-ghost btn-sm" onclick="returnDelegatedTask('${a.id}')">Send Changes to ${escapeHtml(a.delegatedToName||a.delegatedToEmail)}</button>`
+          :`<button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button>`;
       } else if (proof === 'approved') {
         content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
       } else {
@@ -501,6 +506,10 @@
       ${followupHistory?`<span class="assign-history-label">${followupHistory} message${followupHistory===1?'':'s'}</span>`:'<span class="assign-history-label">No messages</span>'}
       <span class="assign-history-label">${reminders} reminder${reminders===1?'':'s'}</span>
     </div>`:'';
+    const chainNames=Array.isArray(a.chain)&&a.chain.length
+      ?[a.chain[0]?.assignerName||a.chain[0]?.assignerEmail,...a.chain.map(node=>node.recipientName||node.recipientEmail)].filter(Boolean)
+      :[];
+    const chainHtml=chainNames.length>2?`<div class="assign-history-label" style="margin-bottom:7px">Delegation: ${chainNames.map(escapeHtml).join(' → ')}</div>`:'';
     return `<div class="wed-card assign-compact-card${hasFollowup ? ' has-followup' : ''}${newReminder?' has-new-reminder':''}${proofReady?' has-proof-ready':''}${changesRequested?' has-changes-requested':''}${overdueCard?' is-overdue':''}${expanded?' is-expanded':''}" data-assignment-id="${escapeHtml(String(a.id))}">
       <div class="wed-card-head assign-compact-head">
         <button type="button" class="assign-title-button" onclick="toggleAssignmentDetails('${a.id}')" aria-expanded="${expanded}">
@@ -509,7 +518,7 @@
         ${history?'':`<span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span>${pBadge(a.priority)}`}
       </div>
       <div class="wed-card-body assign-compact-body">
-        ${historyLabels}
+        ${chainHtml}${historyLabels}
         ${history?`${(a.proofSubmittedAt||proofState(a)==='approved'||proofState(a)==='declined')?`<div class="assign-compact-summary"><div></div><div class="assign-actions"><button class="btn btn-ghost btn-sm" onclick="openProofReviewFromTasksTab('${a.id}')">View Proof</button></div></div>`:''}`:`<div class="assign-compact-summary">
           <div class="assign-card-meta">${dueDateBadge(a)}${isNew?'<span class="assign-task-new">New</span>':''}${proofNotice}</div>
           <div class="assign-actions">${assignmentActions(a, received, principal)}</div>
@@ -870,6 +879,47 @@
   }
 
   window.toggleRecurringHistory=function(id){const el=document.getElementById(`rec-history-${String(id).replace(/[^a-zA-Z0-9_-]/g,'_')}`);if(el)el.style.display=el.style.display==='none'?'block':'none';};
+  let reassignAssignment=null;
+  window.openReassignTask=function(id){
+    reassignAssignment=(tasksTabCache.assignedToMe||[]).find(a=>a.id===id)||null;if(!reassignAssignment)return;
+    document.getElementById('reassign-task-sub').textContent=reassignAssignment.title||'';
+    document.getElementById('reassign-recipient').value='';document.getElementById('reassign-recipient-email').value='';document.getElementById('reassign-recipient-name').value='';
+    document.getElementById('reassign-instructions').value=reassignAssignment.summary||'';
+    const due=document.getElementById('reassign-due');due.value=String(reassignAssignment.dueDate||'').slice(0,10);due.min=new Date().toISOString().slice(0,10);
+    document.getElementById('mo-reassign-task')?.classList.add('open');
+  };
+  window.showReassignAC=function(value){
+    const ac=document.getElementById('reassign-ac'),token=String(value||'').trim().toLowerCase();
+    document.getElementById('reassign-recipient-email').value='';document.getElementById('reassign-recipient-name').value='';
+    if(!token){ac.style.display='none';return;}
+    const chainEmails=new Set((reassignAssignment?.chain||[]).flatMap(n=>[n.assignerEmail,n.recipientEmail]).map(e=>String(e||'').toLowerCase()));
+    const seen=new Set();const matches=departmentAssignmentContacts().filter(p=>p?.email&&!chainEmails.has(String(p.email).toLowerCase())).filter(p=>{const k=normEmail(p.email);if(seen.has(k))return false;seen.add(k);return String(p.name||'').toLowerCase().includes(token)||k.includes(token)||String(p.dept||'').toLowerCase().includes(token)||String(p.role||'').toLowerCase().includes(token);}).slice(0,8);
+    window._reassignMatches=matches;if(!matches.length){ac.style.display='none';return;}
+    ac.innerHTML=matches.map((p,i)=>`<div class="compose-ac-item" onmousedown="event.preventDefault();selectReassignAC(${i})">${av(p.name||p.email||'?',28)}<div><div class="compose-ac-name">${escapeHtml(p.name||p.email)}</div><div class="compose-ac-email">${escapeHtml(p.email)}</div><div class="compose-ac-role">${escapeHtml(p.dept||p.role||'')}</div></div></div>`).join('');ac.style.display='block';
+  };
+  window.selectReassignAC=function(i){const p=(window._reassignMatches||[])[i];if(!p)return;document.getElementById('reassign-recipient').value=p.name||p.email;document.getElementById('reassign-recipient-email').value=p.email;document.getElementById('reassign-recipient-name').value=p.name||'';document.getElementById('reassign-ac').style.display='none';};
+  window.hideReassignAC=function(){setTimeout(()=>{document.getElementById('reassign-ac').style.display='none';},180);};
+  window.saveTaskReassignment=async function(){
+    if(!reassignAssignment)return;const recipientEmail=document.getElementById('reassign-recipient-email').value.trim(),recipientName=document.getElementById('reassign-recipient-name').value.trim();
+    if(!recipientEmail){toast('Select a person from the contact list');return;}
+    const btn=document.getElementById('reassign-save');btn.disabled=true;
+    try{
+      const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/assignment-reassign`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({assignmentId:reassignAssignment.id,expectedVersion:reassignAssignment.version,recipientEmail,recipientName,instructions:document.getElementById('reassign-instructions').value,dueDate:document.getElementById('reassign-due').value})});
+      const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||data.message||'Could not reassign task');const child=data.child;
+      const todoRes=await fetch(`${fnBaseUrl()}/todo`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({recipientEmail:child.recipientEmail,title:child.title,summary:child.summary,priority:child.priority,date:child.dueDate,assignedByEmail:child.assignerEmail,assignedByName:child.assignerName,appTaskId:child.appTaskId,proofInstructions:child.proofInstructions,proofBaseUrl:location.origin+location.pathname})});
+      if(todoRes.ok){const todo=await todoRes.json();await fetch(`${fnBaseUrl()}/assignment`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({id:child.id,appTaskId:child.appTaskId,title:child.title,summary:child.summary,dept:child.dept,priority:child.priority,dueDate:child.dueDate,recipientEmail:child.recipientEmail,recipientName:child.recipientName,recipientTodoListId:todo.listId||'',recipientTodoTaskId:todo.taskId||'',proofInstructions:child.proofInstructions})});}
+      await window.sendTaskNotification?.({id:child.appTaskId,title:child.title,summary:child.summary,email:child.recipientEmail,person:child.recipientName,dept:child.dept,priority:child.priority,date:child.dueDate,assignedByEmail:child.assignerEmail,assignedByName:child.assignerName});
+      closeMo('mo-reassign-task');await renderMyTasks(false);toast(`Task reassigned to ${recipientName||recipientEmail}`);
+    }catch(err){toast(err.message||'Could not reassign task');}finally{btn.disabled=false;}
+  };
+  window.returnDelegatedTask=async function(id){
+    const a=(tasksTabCache.assignedToMe||[]).find(row=>row.id===id);if(!a)return;
+    const result=window._proofResultState?.[String(a.appTaskId||'')];
+    const suggested=String(result?.reason||'').trim();
+    const reason=prompt(`Changes to send to ${a.delegatedToName||a.delegatedToEmail}:`,suggested||'Please revise the proof based on the original assigner\'s feedback.');
+    if(reason===null||!String(reason).trim())return;
+    try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/assignment-return`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({assignmentId:id,reason:String(reason).trim()})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not return task');await renderMyTasks(false);toast(`Changes sent to ${a.delegatedToName||a.delegatedToEmail}`);}catch(err){toast(err.message||'Could not return task');}
+  };
   window.openRecurringTaskModal=function(){
     const due=document.getElementById('rt-first-due');const today=new Date().toISOString().slice(0,10);if(due){due.min=today;if(!due.value)due.value=today;}
     const dept=document.getElementById('rt-department');if(dept)dept.innerHTML=allDepartments().map(d=>`<option>${escapeHtml(d)}</option>`).join('');

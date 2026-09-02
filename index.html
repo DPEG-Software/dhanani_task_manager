@@ -797,6 +797,20 @@
   </div>
 </div>
 
+<!-- REASSIGN RECEIVED TASK -->
+<div class="mo" id="mo-reassign-task">
+  <div class="mo-box" style="max-width:560px">
+    <div class="mo-hdr"><div><div class="mo-title">Reassign Task</div><div class="mo-sub" id="reassign-task-sub"></div></div><button class="mo-x" onclick="closeMo('mo-reassign-task')">&#10005;</button></div>
+    <div class="mo-body">
+      <div class="form-grp" style="position:relative"><label class="form-lbl">Reassign to</label><input class="form-in" id="reassign-recipient" placeholder="Type a name or email" autocomplete="off" oninput="showReassignAC(this.value)" onblur="hideReassignAC()"><input type="hidden" id="reassign-recipient-email"><input type="hidden" id="reassign-recipient-name"><div id="reassign-ac" class="compose-ac" style="display:none;position:absolute;left:0;right:0;z-index:9999"></div></div>
+      <div class="form-grp"><label class="form-lbl">Instructions for the new assignee</label><textarea class="form-ta" id="reassign-instructions" placeholder="Explain what they need to complete"></textarea></div>
+      <div class="form-grp"><label class="form-lbl">Due date</label><input class="form-in" id="reassign-due" type="date"></div>
+      <div style="padding:10px 12px;background:var(--sage3);border:1px solid var(--sage);border-radius:var(--r);font-size:11.5px;color:var(--forest)">You remain responsible for reviewing the new assignee's proof. Only after you approve and forward it will your original assigner see the proof package.</div>
+    </div>
+    <div class="mo-foot"><button class="btn btn-ghost btn-sm" onclick="closeMo('mo-reassign-task')">Cancel</button><button class="btn btn-primary btn-sm" id="reassign-save" onclick="saveTaskReassignment()">Reassign</button></div>
+  </div>
+</div>
+
 <!-- TASK FOLLOW-UP MODAL (Tasks tab — Received & Delegated) -->
 <div class="mo" id="mo-task-followup">
   <div class="mo-box" style="width:520px;max-height:88vh">
