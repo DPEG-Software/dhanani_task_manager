@@ -32,19 +32,22 @@ function nav(name,mode){
 
 
 function syncBadges(){
-  const open=tasks.filter(t=>nstt(t.status)!=="Done").length;
-  const actionWeekOpen=tasks.filter(t=>nstt(t.status)!=="Done"&&taskWeekOffset(t)===curWeek).length;
-  const high=tasks.filter(t=>String(t.priority||"Normal").toLowerCase()==="high"&&nstt(t.status)!=="Done").length;
+  // Cancelled tasks are a closed-out state, same as Done — they must not
+  // inflate "open"/"total" figures across the sidebar badges and Dashboard.
+  const activeTasks=tasks.filter(t=>nstt(t.status)!=="Cancelled");
+  const open=activeTasks.filter(isOpenTask).length;
+  const actionWeekOpen=activeTasks.filter(t=>isOpenTask(t)&&taskWeekOffset(t)===curWeek).length;
+  const high=activeTasks.filter(t=>String(t.priority||"Normal").toLowerCase()==="high"&&isOpenTask(t)).length;
   const wed=tasks.filter(t=>t.wednesday).length+customNotes.length;
-  const dn=tasks.filter(t=>nstt(t.status)==="Done").length;
-  const pct=tasks.length?Math.round(dn/tasks.length*100):0;
+  const dn=activeTasks.filter(t=>nstt(t.status)==="Done").length;
+  const pct=activeTasks.length?Math.round(dn/activeTasks.length*100):0;
   document.getElementById("nb-m").textContent=actionWeekOpen;
   document.getElementById("nb-w").textContent=wed;
-  document.getElementById("d-tot").textContent=tasks.length;
+  document.getElementById("d-tot").textContent=activeTasks.length;
   document.getElementById("d-high").textContent=high;
   document.getElementById("d-wed").textContent=wed;
   document.getElementById("d-rate").textContent=pct+"%";
-  document.getElementById("d-rate-sub").textContent=`${dn} of ${tasks.length} tasks completed`;
+  document.getElementById("d-rate-sub").textContent=`${dn} of ${activeTasks.length} tasks completed`;
   const pctL=document.getElementById("d-pct-l");if(pctL)pctL.textContent=pct+"%";
   syncPulse();
 }

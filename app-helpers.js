@@ -32,6 +32,11 @@ function fmtD(d) {
   return dt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
 }
 function nstt(s) { return s==="In Progress"?"Pending":(s||"Pending"); }
+// Cancelled is a terminal, closed-out state — same as Done — so it must never
+// count as open/pending workload the way a bare status!=="Done" check would
+// otherwise include it as. Used everywhere a count/badge/chart means "still
+// active work," not "every task that ever existed."
+function isOpenTask(t){const s=nstt(t.status);return s!=="Done"&&s!=="Cancelled";}
 // Overdue is computed from the due date, not a stored status string — nothing
 // in the app ever actually sets status to the literal "Overdue" value, so
 // every nstt(t.status)==="Overdue" check was silently always false.

@@ -13,7 +13,7 @@ function getSummaryFilters(){
 function getSummaryFilteredTasks(){
   const {w,dept,status}=getSummaryFilters();
   return tasks.filter(t=>{
-    const wm=w==="all"||t.weekOffset===parseInt(w)||(nstt(t.status)!=="Done"&&t.weekOffset<=parseInt(w));
+    const wm=w==="all"||t.weekOffset===parseInt(w)||(isOpenTask(t)&&t.weekOffset<=parseInt(w));
     const stm=status==="all"||(status==="Overdue"?isOverdueTask(t):nstt(t.status)===status);
     return (w==="all"?true:wm)&&(dept==="all"||t.dept===dept)&&stm;
   });

@@ -64,7 +64,7 @@ function daysSince(date){
 }
 
 function executiveAttentionItems(){
-  const open=tasks.filter(t=>nstt(t.status)!=="Done");
+  const open=tasks.filter(isOpenTask);
   const ranked=open.map(t=>{
     const overdue=isOverdueTask(t);
     const high=String(t.priority||"Normal").toLowerCase()==="high";
@@ -129,6 +129,7 @@ function renderCharts(){
   // Dept chart — grouped bars: overdue / pending / done
   const dp={};
   tasks.forEach(t=>{
+    if(nstt(t.status)==="Cancelled")return;
     if(!dp[t.dept])dp[t.dept]={tot:0,dn:0,ov:0};
     dp[t.dept].tot++;
     if(nstt(t.status)==="Done")dp[t.dept].dn++;
@@ -148,6 +149,7 @@ function renderCharts(){
   // Open workload — normalise by staffKey so the same person doesn't split across entries
   const pp={};
   tasks.forEach(t=>{
+    if(nstt(t.status)==="Cancelled")return;
     const key=staffKey(t.email,t.person);
     if(!pp[key])pp[key]={name:staffConfig[key]?.name||t.person,tot:0,dn:0,open:0,ov:0};
     pp[key].tot++;
@@ -179,6 +181,7 @@ function renderCharts(){
   // Status doughnut
   const sc={"Pending":0,"Done":0,"Overdue":0};
   tasks.forEach(t=>{
+    if(nstt(t.status)==="Cancelled")return;
     const bucket=nstt(t.status)==="Done"?"Done":(isOverdueTask(t)?"Overdue":"Pending");
     sc[bucket]++;
   });

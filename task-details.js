@@ -355,7 +355,7 @@ async function addTask(){
 // ============================================================
 function drillStat(type){
   let list,title,sub;
-  if(type==="high"){list=tasks.filter(t=>String(t.priority||"Normal").toLowerCase()==="high"&&nstt(t.status)!=="Done");title="High Priority Tasks";sub=`${list.length} tasks needing immediate attention`;}
+  if(type==="high"){list=tasks.filter(t=>String(t.priority||"Normal").toLowerCase()==="high"&&isOpenTask(t));title="High Priority Tasks";sub=`${list.length} tasks needing immediate attention`;}
   if(type==="overdue"){list=tasks.filter(isOverdueTask).sort((a,b)=>new Date(a.date)-new Date(b.date));title="Overdue Tasks";sub=`${list.length} tasks past their deadline`;}
   if(!list||!list.length){toast("No tasks in this category");return;}
   document.getElementById("drill-title").textContent=title;document.getElementById("drill-sub").textContent=sub;
