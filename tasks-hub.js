@@ -722,7 +722,8 @@
       const isNikhilAssistant=userEmail==='isha@dhananipeg.com';
       const hasDedicatedMaintenanceTab=userEmail==='maintenance@dhananipeg.com';
       departmentBtn.style.display=!hasDedicatedMaintenanceTab&&(isNikhilAssistant||oversightRows.length)?'':'none';
-      departmentBtn.textContent=(isNikhilAssistant||oversightRows.some(a=>a.oversightRole==='Executive Assistant'))?"Nikhil's Tasks":'Department Tasks';
+      const hasNikhilScope=oversightRows.some(a=>(a.oversightScopes||[]).includes('nikhil'));
+      departmentBtn.textContent=(isNikhilAssistant||hasNikhilScope)?"Nikhil's Tasks":'Department Tasks';
     }
     const userEmail=String(currentUser?.email||'').toLowerCase();
     const isIsha=userEmail==='isha@dhananipeg.com';
@@ -730,7 +731,10 @@
     const propertyBtn=document.getElementById('tasks-property-btn');
     const maintenanceBtn=document.getElementById('tasks-maintenance-btn');
     if(propertyBtn)propertyBtn.style.display=isIsha?'':'none';
-    if(maintenanceBtn)maintenanceBtn.style.display=(isIsha||isFernando)?'':'none';
+    if(maintenanceBtn){
+      maintenanceBtn.style.display=(isIsha||isFernando)?'':'none';
+      maintenanceBtn.textContent=isFernando?'Maintenance Team':'Maintenance';
+    }
     window.updateNotificationCenter?.();
     renderTasksTabList();
   };
