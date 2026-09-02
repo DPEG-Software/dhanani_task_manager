@@ -499,6 +499,8 @@
     const reminderCount=!history&&received&&reminders?`<span class="assign-reminder-count">${reminders} reminder${reminders===1?'':'s'}</span>`:'';
     const changesBadge=changesRequested?'<span class="assign-changes-count">Changes requested</span>':'';
     const recurringBadge=a.isRecurring?'<span class="assign-history-label">Recurring</span>':'';
+    const isDelegated=!!(a.parentAssignmentId||a.delegatedToEmail||a.status==='Delegated'||(Array.isArray(a.chain)&&a.chain.length>1));
+    const delegatedBadge=isDelegated?'<span class="assign-delegated-badge">Delegated</span>':'';
     const newReminder=!history&&hasNewReminder(a,received);
     const proofReady=!history&&!received&&awaitingApproval(a);
     const followupHistory=(followupThreadState(a)?.thread||[]).length;
@@ -513,11 +515,11 @@
     const chainNames=Array.isArray(a.chain)&&a.chain.length
       ?[a.chain[0]?.assignerName||a.chain[0]?.assignerEmail,...a.chain.map(node=>node.recipientName||node.recipientEmail)].filter(Boolean)
       :[];
-    const chainHtml=chainNames.length>2?`<div class="assign-history-label" style="margin-bottom:7px">Delegation: ${chainNames.map(escapeHtml).join(' → ')}</div>`:'';
-    return `<div class="wed-card assign-compact-card${hasFollowup ? ' has-followup' : ''}${newReminder?' has-new-reminder':''}${proofReady?' has-proof-ready':''}${changesRequested?' has-changes-requested':''}${overdueCard?' is-overdue':''}${expanded?' is-expanded':''}" data-assignment-id="${escapeHtml(String(a.id))}">
+    const chainHtml=isDelegated&&chainNames.length>1?`<div class="assign-delegation-chain"><span class="assign-delegation-label">Delegation chain</span><div class="assign-delegation-people">${chainNames.map((name,i)=>`${i?'<span class="assign-delegation-arrow" aria-hidden="true">→</span>':''}<span class="assign-delegation-person">${escapeHtml(name)}</span>`).join('')}</div></div>`:'';
+    return `<div class="wed-card assign-compact-card${isDelegated?' is-delegated':''}${hasFollowup ? ' has-followup' : ''}${newReminder?' has-new-reminder':''}${proofReady?' has-proof-ready':''}${changesRequested?' has-changes-requested':''}${overdueCard?' is-overdue':''}${expanded?' is-expanded':''}" data-assignment-id="${escapeHtml(String(a.id))}">
       <div class="wed-card-head assign-compact-head">
         <button type="button" class="assign-title-button" onclick="toggleAssignmentDetails('${a.id}')" aria-expanded="${expanded}">
-          <span class="assign-expand-symbol">${expanded?'−':'+'}</span><span class="wed-card-title">${escapeHtml(a.title || '')}</span>${recurringBadge}${reminderCount}${changesBadge}
+          <span class="assign-expand-symbol">${expanded?'−':'+'}</span><span class="wed-card-title">${escapeHtml(a.title || '')}</span>${delegatedBadge}${recurringBadge}${reminderCount}${changesBadge}
         </button>
         ${history?'':`<span class="dept-pill"><span class="dept-dot" style="background:${dcolor(a.dept)}"></span>${escapeHtml(a.dept || '')}</span>${pBadge(a.priority)}`}
       </div>
