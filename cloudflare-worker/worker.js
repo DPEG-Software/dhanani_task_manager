@@ -1739,9 +1739,15 @@ async function handleAssignments(request, env) {
   ]);
   const visibleRows=[...(toMe.results||[]),...(byMe.results||[]),...(overseen.results||[])];
   const rootIds=[...new Set(visibleRows.map(r=>String(r.root_assignment_id||r.id)).filter(Boolean))];
-  const chainRows=rootIds.length
-    ?(await env.DPEG_ASSIGNMENTS.prepare(`SELECT * FROM assignments WHERE id IN (${rootIds.map(()=>'?').join(',')}) OR root_assignment_id IN (${rootIds.map(()=>'?').join(',')}) ORDER BY delegation_level ASC, created_at ASC`).bind(...rootIds,...rootIds).all()).results||[]
-    :[];
+  // Each root is bound twice. D1 caps bound parameters per statement, so
+  // load chains in groups of 40 instead of letting larger accounts crash
+  // the entire /assignments response with a 500.
+  const chainRows=[];
+  for(let offset=0;offset<rootIds.length;offset+=40){
+    const roots=rootIds.slice(offset,offset+40);
+    const result=await env.DPEG_ASSIGNMENTS.prepare(`SELECT * FROM assignments WHERE id IN (${roots.map(()=>'?').join(',')}) OR root_assignment_id IN (${roots.map(()=>'?').join(',')}) ORDER BY delegation_level ASC, created_at ASC`).bind(...roots,...roots).all();
+    chainRows.push(...(result.results||[]));
+  }
   const chainByRoot=new Map();
   chainRows.forEach(r=>{const root=String(r.root_assignment_id||r.id);if(!chainByRoot.has(root))chainByRoot.set(root,[]);chainByRoot.get(root).push(r);});
 
