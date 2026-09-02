@@ -462,7 +462,7 @@
         content = `<span style="font-size:11.5px;color:var(--muted);font-weight:700">Submitted — waiting on approval</span>`;
       } else if (proof === 'declined') {
         content = a.delegatedToEmail
-          ?`<button class="btn btn-ghost btn-sm" onclick="returnDelegatedTask('${a.id}')">Send Changes to ${escapeHtml(a.delegatedToName||a.delegatedToEmail)}</button>`
+          ?`<button class="btn btn-primary btn-sm" onclick="returnDelegatedTask('${a.id}',this)">Send Changes to ${escapeHtml(a.delegatedToName||a.delegatedToEmail)}</button>`
           :`<button class="btn btn-ghost btn-sm" onclick="openProofFromTasksTab('${a.id}')">Resubmit Proof</button>`;
       } else if (proof === 'approved') {
         content = `<span style="font-size:11.5px;color:var(--forest);font-weight:700">✓ Approved &amp; complete</span>`;
@@ -921,13 +921,13 @@
       closeMo('mo-reassign-task');await renderMyTasks(true);toast(`Task reassigned to ${recipientName||recipientEmail}`);
     }catch(err){toast(err.message||'Could not reassign task');}finally{btn.disabled=false;}
   };
-  window.returnDelegatedTask=async function(id){
+  window.returnDelegatedTask=async function(id,button){
     const a=(tasksTabCache.assignedToMe||[]).find(row=>row.id===id);if(!a)return;
     const result=window._proofResultState?.[String(a.appTaskId||'')];
-    const suggested=String(result?.reason||'').trim();
-    const reason=prompt(`Changes to send to ${a.delegatedToName||a.delegatedToEmail}:`,suggested||'Please revise the proof based on the original assigner\'s feedback.');
-    if(reason===null||!String(reason).trim())return;
-    try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/assignment-return`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({assignmentId:id,reason:String(reason).trim()})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not return task');await renderMyTasks(true);toast(`Changes sent to ${a.delegatedToName||a.delegatedToEmail}`);}catch(err){toast(err.message||'Could not return task');}
+    const reason=String(result?.reason||'').trim()||'Please revise the proof based on the original assigner\'s feedback.';
+    const originalText=button?.textContent||'';
+    if(button){button.disabled=true;button.textContent='Sending changes...';}
+    try{const token=await getAccessToken();const res=await fetch(`${fnBaseUrl()}/assignment-return`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({assignmentId:id,reason})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'Could not return task');await renderMyTasks(true);toast(`Changes sent to ${a.delegatedToName||a.delegatedToEmail}`);}catch(err){if(button){button.disabled=false;button.textContent=originalText;}toast(err.message||'Could not return task');}
   };
   window.openRecurringTaskModal=function(){
     const due=document.getElementById('rt-first-due');const today=new Date().toISOString().slice(0,10);if(due){due.min=today;if(!due.value)due.value=today;}
