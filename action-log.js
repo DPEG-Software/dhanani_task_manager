@@ -75,6 +75,11 @@ function completedTaskTimelineHTML(t){
 function completedActionCount(){
   return tasks.filter(t=>nstt(t.status)==="Done"&&taskCompletedWeekOffset(t)===curWeek).length;
 }
+function isAwaitingApprovalTask(t){
+  if(nstt(t.status)==='Done'||nstt(t.status)==='Cancelled')return false;
+  const proofStatus=String(t.proofStatus||'').toLowerCase();
+  return proofStatus==='submitted'||(t._proofNotif&&t._proofNotif.status==='pending');
+}
 function syncMasterCompletedToggle(){
   const btn=document.getElementById("master-done-toggle");
   if(!btn)return;
@@ -119,7 +124,7 @@ function getVis(){
     const inRelevantWeek=isDone?taskCompletedWeekOffset(t)===curWeek:taskWeekOffset(t)===curWeek;
     const wm=curSearch?true:inRelevantWeek;
     const sm=!curSearch||[t.title,t.emailSubject||"",t.person,t.email||"",t.dept,t.summary||""].some(x=>String(x).toLowerCase().includes(curSearch));
-    const stm=sf==="all"||(sf==="Overdue"?isOverdueTask(t):nstt(t.status)===sf);
+    const stm=sf==="all"||(sf==="Overdue"?isOverdueTask(t):sf==="Awaiting Approval"?isAwaitingApprovalTask(t):nstt(t.status)===sf);
     const completionVisible=showMasterCompleted?isDone:!isDone;
     return !isCancelled&&wm&&completionVisible&&sm&&stm&&(df==="all"||t.dept===df)&&(pf==="all"||(String(t.priority||"Normal").toLowerCase()==="high"?"High":"Normal")===pf);
   }));
