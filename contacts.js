@@ -144,29 +144,6 @@
 
   function profileContacts() {
     const map = new Map();
-    if (typeof PRINCIPALS !== "undefined") {
-      Object.entries(PRINCIPALS).forEach(([email, profile]) => {
-        map.set(normEmail(email), {
-          name: profile.name || email.split("@")[0],
-          email: normEmail(email),
-          dept: "Needs Department",
-          role: profile.role || "",
-        });
-      });
-    }
-    if (typeof ADMIN_EMAILS !== "undefined" && Array.isArray(ADMIN_EMAILS)) {
-      ADMIN_EMAILS.forEach((email) => {
-        const key = normEmail(email);
-        if (!key || map.has(key)) return;
-        const configured = Object.values(staffConfig).find((p) => normEmail(p.email) === key);
-        map.set(key, {
-          name: configured?.name || (key === "propertymanagement2@dhananipeg.com" ? "Nikhil Kumar" : key.split("@")[0].replace(/[._-]+/g, " ")),
-          email: key,
-          dept: configured?.dept || "Needs Department",
-          role: configured?.role || "Admin",
-        });
-      });
-    }
     if (currentUser?.email) {
       const key = normEmail(currentUser.email);
       const existing = map.get(key) || {};
@@ -215,9 +192,7 @@
         byEmail.set(email, { key, person });
         return;
       }
-      const preferredName = email === "propertymanagement2@dhananipeg.com"
-        ? "Nikhil Kumar"
-        : (person.name && !person.name.includes("@") ? person.name : current.person.name);
+      const preferredName = person.name && !person.name.includes("@") ? person.name : current.person.name;
       staffConfig[current.key] = {
         ...current.person,
         ...person,

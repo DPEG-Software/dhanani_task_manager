@@ -44,9 +44,9 @@
           <p id="account">Not signed in</p>
           <label for="test-actor">Test as</label>
           <select id="test-actor">
-            <option value="nick@dhananipeg.com">Nick — CEO</option>
-            <option value="faiz@dhananipeg.com">Faiz — Investor Relations Principal</option>
-            <option value="invest@dhananipeg.com">Investor Relations Team</option>
+            <option value="executive.test@example.invalid">Test Executive</option>
+            <option value="principal.test@example.invalid">Test Department Principal</option>
+            <option value="team.test@example.invalid">Test Department Team</option>
           </select>
           <p style="margin-top:7px">Staging simulation only. Your Microsoft account remains the authenticated tester.</p>
         </section>
@@ -54,7 +54,7 @@
           <h2>Create a weekly recurring task</h2>
           <p>Creates a fresh occurrence each week. Previous proof and messages remain attached to their original week.</p>
           <label for="rec-title">Task title</label><input class="input" id="rec-title" placeholder="Weekly reconciliation">
-          <label for="rec-recipient">Recipient email</label><input class="input" id="rec-recipient" type="email" value="invest@dhananipeg.com">
+          <label for="rec-recipient">Recipient email</label><input class="input" id="rec-recipient" type="email" value="team.test@example.invalid">
           <label for="rec-summary">Instructions</label><textarea id="rec-summary" placeholder="Complete and submit the weekly reconciliation."></textarea>
           <div class="row"><div><label for="rec-department">Department</label><input class="input" id="rec-department" value="Investor Relations"></div><div><label for="rec-first-due">First due date</label><input class="input" id="rec-first-due" type="date"></div></div>
           <label>Frequency</label><div class="row"><div><input class="input" id="rec-frequency-interval" type="number" min="1" max="365" value="1"></div><div><select id="rec-frequency-unit"><option value="day">Day(s)</option><option value="week" selected>Week(s)</option><option value="month">Month(s)</option><option value="year">Year(s)</option></select></div></div>
@@ -63,7 +63,7 @@
         </section>
         <section class="panel">
           <h2>Create a fake delegated task</h2>
-          <label for="recipient">Recipient email</label><input class="input" id="recipient" type="email" value="invest@dhananipeg.com" placeholder="employee@dhananipeg.com">
+          <label for="recipient">Recipient email</label><input class="input" id="recipient" type="email" value="team.test@example.invalid" placeholder="team.test@example.invalid">
           <label for="title">Task title</label><input class="input" id="title" placeholder="Staging test task">
           <label for="summary">Instructions</label><textarea id="summary" placeholder="This is fake staging data."></textarea>
           <div class="row"><div><label for="department">Department</label><input class="input" id="department" value="Investor Relations"></div><div><label for="priority">Priority</label><select id="priority"><option>Normal</option><option>High</option><option>Low</option></select></div></div>

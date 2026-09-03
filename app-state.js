@@ -24,21 +24,9 @@ const SCOPES_GRAPH    = ["User.Read", "Files.ReadWrite", "Mail.Read", "Mail.Send
 const SCOPES_DRAFTS   = ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"];
 const SCOPES_TODO     = ["User.Read", "Tasks.ReadWrite"];
 const SCOPES_CONTACTS = ["User.Read", "Contacts.Read", "People.Read", "User.ReadBasic.All"];
-const ADMIN_EMAILS    = ["propertymanagement2@dhananipeg.com", "systemmanager1@dhananipeg.com"];
-function isAdmin(){ return currentUser && ADMIN_EMAILS.includes(currentUser.email?.toLowerCase()); }
+let secureDirectoryCapabilities={departmentOversight:false,assignerOversight:false,teamGroups:[]};
+function isAdmin(){ return Boolean(currentUser?.isAdmin); }
 const ONEDRIVE_FOLDER = "DPEGTaskManager";
-
-// PRINCIPALS — those with Wednesday Review vs Discussion Notes
-const PRINCIPALS = {
-  "nikhil@dhananipeg.com":  { name:"Nikhil Dhanani",  role:"President",                               wednesday: true  },
-  "nick@dhananipeg.com":    { name:"Nick Dhanani",     role:"Chief Executive Officer",                 wednesday: false },
-  "ali@dhananipeg.com":     { name:"Ali Wadhwani",     role:"Chief Financial Officer",                 wednesday: false },
-  "nurali@dhananipeg.com":  { name:"Nurali Wadhwani",  role:"Chief Financial Officer",                 wednesday: false },
-  "lucy@dhananipeg.com":    { name:"Lucy Singh",        role:"Chief Operating Officer",                 wednesday: false },
-  "faiz@dhananipeg.com":    { name:"Faiz Hirani",       role:"Principal, Investor Relations",           wednesday: false },
-  "junior@dhananipeg.com":  { name:"Junior Dhanani",    role:"Principal, Retail Assets & Acquisitions", wednesday: false },
-  "rahul@dhananipeg.com":   { name:"Rahul Wadhwani",    role:"Principal, Marketing",                    wednesday: false },
-};
 
 let msalInstance = null;
 let currentUser = null;

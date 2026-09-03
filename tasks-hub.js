@@ -225,7 +225,7 @@
       return { list: [...toMe, ...byMe], received: a => a._received, sortFn: sortHistoryItems };
     }
     if (mode === 'department') {
-      const list = (tasksTabCache.overseenByMe || []).filter(a => (a.oversightScopes||['department']).includes('nikhil')||(a.oversightScopes||['department']).includes('department')).filter(a => stageLabel(a) !== 'Done' && stageLabel(a) !== 'Cancelled');
+      const list = (tasksTabCache.overseenByMe || []).filter(a => (a.oversightScopes||['department']).includes('executive')||(a.oversightScopes||['department']).includes('department')).filter(a => stageLabel(a) !== 'Done' && stageLabel(a) !== 'Cancelled');
       return { list, received: false, principal: true, sortFn: sortAssignmentItems };
     }
     if (mode === 'property' || mode === 'maintenance') {
@@ -426,6 +426,7 @@
   }
 
   function assignmentActions(a, received, principal=false) {
+    if(window.DPEG_STAGING_SIMULATION)return '<span style="font-size:11.5px;color:var(--muted);font-weight:700">Read-only role simulation</span>';
     const proof = proofState(a);
     const cancelled = isCancelled(a);
     // A task that's Done — or Cancelled — has nothing left to follow up or
@@ -597,32 +598,6 @@
     }
   };
 
-  // Older Action Log entries predate the shared Tasks tab. Backfill only
-  // Nikhil's missing records, using the Action Log as the allow-list; this
-  // never scans/imports unrelated items from anyone's Microsoft To Do.
-  async function backfillLegacyNikhilAssignments(cache) {
-    const target='nikhil@dhananipeg.com';
-    const sessionKey=`dpeg_nikhil_tasks_backfill_${String(currentUser?.email||'').toLowerCase()}`;
-    if(sessionStorage.getItem(sessionKey)==='done')return 0;
-    const existing=new Set((cache?.assignedByMe||[]).map(a=>`${String(a.appTaskId||'')}::${String(a.recipientEmail||'').toLowerCase()}`));
-    const candidates=(Array.isArray(tasks)?tasks:[]).filter(task=>
-      String(task?.email||'').trim().toLowerCase()===target &&
-      task?.id!=null &&
-      !existing.has(`${String(task.id)}::${target}`)
-    );
-    let imported=0;
-    for(const task of candidates){
-      task.assignmentId=task.assignmentId||`legacy-${String(currentUser.email).toLowerCase().replace(/[^a-z0-9]+/g,'-')}-${String(task.id).replace(/[^a-zA-Z0-9_-]+/g,'-')}`;
-      if(await recordAssignment(task))imported++;
-    }
-    if(imported){
-      await saveTasksToOneDrive();
-      toast(`${imported} older Nikhil task${imported===1?'':'s'} added to Tasks`);
-    }
-    if(imported===candidates.length)sessionStorage.setItem(sessionKey,'done');
-    return imported;
-  }
-
   window.setTasksTabMode = function setTasksTabMode(mode) {
     tasksTabMode = mode;
     if (mode === 'history') {
@@ -642,14 +617,14 @@
     if(historyFilter)historyFilter.style.display=mode==='history'?'flex':'none';
     const desc = document.getElementById('tasks-tab-description');
     if (desc) {
-      const isAssistant=String(currentUser?.email||'').toLowerCase()==='isha@dhananipeg.com'||(tasksTabCache.overseenByMe||[]).some(a=>a.oversightRole==='Executive Assistant');
+      const isAssistant=Boolean(secureDirectoryCapabilities?.assignerOversight)||(tasksTabCache.overseenByMe||[]).some(a=>a.oversightRole==='Executive Assistant');
       desc.textContent = mode === 'received'
         ? 'Your active assignments, status updates, proof, and conversations.'
         : mode === 'given'
         ? 'Tasks you assigned to others. Submitted proof needing review appears first.'
         : mode === 'department'
         ? (isAssistant
-          ? 'Tasks assigned by Nikhil. You can monitor progress and send follow-up messages.'
+          ? 'Tasks assigned by the executive you support. You can monitor progress and send follow-up messages.'
           : 'Tasks in your department. You can monitor activity and participate in messages.')
         : mode === 'property'
         ? 'Tasks currently assigned to the Property Management team. You can monitor progress and send follow-up messages.'
@@ -690,21 +665,16 @@
     let nextCache;
     try {
       const userToken = await getAccessToken();
+      const assignmentHeaders={Authorization:`Bearer ${userToken}`};
+      const simulation=sessionStorage.getItem('dpeg_staging_profile')||'';
+      if(window.DPEG_STAGING_MODE&&simulation)assignmentHeaders['X-DPEG-Staging-Profile']=simulation;
       const [assignmentRes, recurringRes] = await Promise.all([
-        fetch(`${fnBaseUrl()}/assignments?email=${encodeURIComponent(currentUser.email)}`, {headers:{Authorization:`Bearer ${userToken}`}}),
+        fetch(`${fnBaseUrl()}/assignments?email=${encodeURIComponent(currentUser.email)}`, {headers:assignmentHeaders}),
         fetch(`${fnBaseUrl()}/recurring-schedules`, {headers:{Authorization:`Bearer ${userToken}`}}),
       ]);
       if (!assignmentRes.ok) throw new Error(`HTTP ${assignmentRes.status}`);
       nextCache = await assignmentRes.json();
       if(recurringRes.ok){const recurring=await recurringRes.json();nextCache.recurringSchedules=recurring.schedules||[];nextCache.recurringOccurrences=recurring.occurrences||[];nextCache.recurringProofs=recurring.proofs||[];nextCache.recurringMessages=recurring.messages||[];}
-      const imported=await backfillLegacyNikhilAssignments(nextCache);
-      if(imported){
-        const refreshed=await fetch(`${fnBaseUrl()}/assignments?email=${encodeURIComponent(currentUser.email)}`,{headers:{Authorization:`Bearer ${userToken}`}});
-        if(refreshed.ok){
-          const refreshedAssignments=await refreshed.json();
-          nextCache={...nextCache,...refreshedAssignments};
-        }
-      }
     } catch (err) {
       console.warn('Load assignments failed:', err.message);
       if (!silent && !tasksTabHasLoaded) {
@@ -718,22 +688,21 @@
     const departmentBtn=document.getElementById('tasks-department-btn');
     if(departmentBtn){
       const oversightRows=tasksTabCache.overseenByMe||[];
-      const userEmail=String(currentUser?.email||'').toLowerCase();
-      const isNikhilAssistant=userEmail==='isha@dhananipeg.com';
-      const hasDedicatedMaintenanceTab=userEmail==='maintenance@dhananipeg.com';
-      departmentBtn.style.display=!hasDedicatedMaintenanceTab&&(isNikhilAssistant||oversightRows.length)?'':'none';
-      const hasNikhilScope=oversightRows.some(a=>(a.oversightScopes||[]).includes('nikhil'));
-      departmentBtn.textContent=(isNikhilAssistant||hasNikhilScope)?"Nikhil's Tasks":'Department Tasks';
+      const hasAssignerScope=Boolean(secureDirectoryCapabilities?.assignerOversight);
+      const hasDedicatedMaintenanceTab=(secureDirectoryCapabilities?.teamGroups||[]).includes('maintenance')&&!hasAssignerScope;
+      departmentBtn.style.display=!hasDedicatedMaintenanceTab&&(hasAssignerScope||oversightRows.length)?'':'none';
+      departmentBtn.textContent=hasAssignerScope?'Executive Tasks':'Department Tasks';
     }
-    const userEmail=String(currentUser?.email||'').toLowerCase();
-    const isIsha=userEmail==='isha@dhananipeg.com';
-    const isFernando=userEmail==='maintenance@dhananipeg.com';
+    const teamGroups=secureDirectoryCapabilities?.teamGroups||[];
+    const hasPropertyTeam=teamGroups.includes('property_management');
+    const hasMaintenanceTeam=teamGroups.includes('maintenance');
+    const isMaintenanceOnly=hasMaintenanceTeam&&!hasPropertyTeam&&!secureDirectoryCapabilities?.assignerOversight;
     const propertyBtn=document.getElementById('tasks-property-btn');
     const maintenanceBtn=document.getElementById('tasks-maintenance-btn');
-    if(propertyBtn)propertyBtn.style.display=isIsha?'':'none';
+    if(propertyBtn)propertyBtn.style.display=hasPropertyTeam?'':'none';
     if(maintenanceBtn){
-      maintenanceBtn.style.display=(isIsha||isFernando)?'':'none';
-      maintenanceBtn.textContent=isFernando?'Maintenance Team':'Maintenance';
+      maintenanceBtn.style.display=hasMaintenanceTeam?'':'none';
+      maintenanceBtn.textContent=isMaintenanceOnly?'Maintenance Team':'Maintenance';
     }
     window.updateNotificationCenter?.();
     renderTasksTabList();

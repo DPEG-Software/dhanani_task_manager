@@ -12,6 +12,7 @@ const ALLOWED_ORIGINS = new Set([
   ALLOWED_ORIGIN,
   'http://localhost:8765',
   'https://dpeg-task-manager-staging-test.pages.dev',
+  'https://main.dpeg-task-manager-staging-test.pages.dev',
 ]);
 const DPEG_TENANT_ID  = '9152bf5c-22ff-4e4a-8624-784a2d243006';
 const AZURE_CLIENT_ID = '8d523e65-0163-49c7-881b-407c0222527e';
@@ -20,71 +21,63 @@ const STANDARD_DEPARTMENTS = new Set([
   'property management','maintenance','marketing','legal and title','leasing',
   'it','operations','lending','insurance','multifamily','eb-5',
 ]);
-const DEPARTMENT_PRINCIPALS = {
-  'faiz@dhananipeg.com': ['investor relations'],
-};
-const ASSIGNER_DELEGATES = {
-  'isha@dhananipeg.com': ['nikhil@dhananipeg.com'],
-};
-const TEAM_OVERSIGHT_RECIPIENTS = {
-  'isha@dhananipeg.com': {
-    property_management: [
-      'propertymanagement@dhananipeg.com', 'elanda@dhananipeg.com',
-      'propertyadmin@dhananipeg.com', 'ap@dhananipeg.com',
-      'dhenriquez@dhananipeg.com', 'leasing2@dhananipeg.com',
-      'ar@dhananipeg.com', 'propertymanagement1@dhananipeg.com',
-      'anajus@dhananipeg.com', 'ggonzalez@dhananipeg.com',
-      'girfan@dhananipeg.com', 'tenantrelations@dhananipeg.com',
-      'amadhani@dhananipeg.com', 'systemmanager@dhananipeg.com',
-      'skradjian@dhananipeg.com',
-    ],
-    maintenance: [
-      'maintenance@dhananipeg.com', 'hcuellar@dhananipeg.com',
-      'cramirez@dhananipeg.com',
-    ],
-  },
-  'maintenance@dhananipeg.com': {
-    maintenance: [
-      'hcuellar@dhananipeg.com',
-      'cramirez@dhananipeg.com',
-    ],
-  },
-};
-
-function departmentPrincipalDepartments(email) {
-  return DEPARTMENT_PRINCIPALS[extractEmailAddress(email || '')] || [];
+async function directoryAccessContext(env, email) {
+  const viewerEmail = extractEmailAddress(email || '');
+  const empty = { profile:null, principalDepartments:[], delegatedAssigners:[], oversightGroups:{}, oversightRecipients:[] };
+  if (!env.DPEG_ASSIGNMENTS || !viewerEmail) return empty;
+  const [profile, rulesResult] = await Promise.all([
+    env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT email, display_name, role_title, department_key, is_admin, is_principal, wednesday_review
+         FROM directory_users WHERE email = ? AND active = 1`
+    ).bind(viewerEmail).first(),
+    env.DPEG_ASSIGNMENTS.prepare(
+      `SELECT rule_type, group_key, target_value
+         FROM directory_access_rules WHERE viewer_email = ? ORDER BY rule_type, group_key, target_value`
+    ).bind(viewerEmail).all(),
+  ]);
+  const context = { ...empty, profile: profile || null };
+  for (const row of rulesResult.results || []) {
+    const target = String(row.target_value || '').trim().toLowerCase();
+    if (!target) continue;
+    if (row.rule_type === 'department') context.principalDepartments.push(target);
+    if (row.rule_type === 'assigner') context.delegatedAssigners.push(extractEmailAddress(target));
+    if (row.rule_type === 'recipient') {
+      const group = String(row.group_key || 'team').trim().toLowerCase();
+      (context.oversightGroups[group] ||= []).push(extractEmailAddress(target));
+    }
+  }
+  context.oversightRecipients = [...new Set(Object.values(context.oversightGroups).flat())];
+  return context;
 }
 
-function departmentPrincipalCanOversee(email, department) {
-  return departmentPrincipalDepartments(email).includes(String(department || '').trim().toLowerCase());
-}
-
-function delegatedAssigners(email) {
-  return ASSIGNER_DELEGATES[extractEmailAddress(email || '')] || [];
-}
-
-function teamOversightGroups(email) {
-  return TEAM_OVERSIGHT_RECIPIENTS[extractEmailAddress(email || '')] || {};
-}
-
-function teamOversightRecipients(email) {
-  return [...new Set(Object.values(teamOversightGroups(email)).flat())];
-}
-
-function canOverseeAssignment(email, assignment) {
-  return departmentPrincipalCanOversee(email, assignment?.dept)
-    || delegatedAssigners(email).includes(extractEmailAddress(assignment?.assigner_email || ''))
-    || teamOversightRecipients(email).includes(extractEmailAddress(assignment?.recipient_email || ''));
+function contextCanOverseeAssignment(context, assignment) {
+  return context.principalDepartments.includes(String(assignment?.dept || '').trim().toLowerCase())
+    || context.delegatedAssigners.includes(extractEmailAddress(assignment?.assigner_email || ''))
+    || context.oversightRecipients.includes(extractEmailAddress(assignment?.recipient_email || ''));
 }
 
 const CORS = {
   'Access-Control-Allow-Origin':  ALLOWED_ORIGIN,
   'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-DPEG-Staging-Profile',
 };
 
 const DATA_KEY = 'company-state';
-const ADMIN_EMAILS = new Set(['systemmanager1@dhananipeg.com', 'propertymanagement2@dhananipeg.com']);
+async function directoryIsAdmin(env, email) {
+  const context = await directoryAccessContext(env, email);
+  return Number(context.profile?.is_admin || 0) === 1;
+}
+
+async function directoryViewer(request, env, claims) {
+  const authenticatedEmail=userEmailFromClaims(claims);
+  const profileKey=String(request.headers.get('X-DPEG-Staging-Profile')||'').trim().toLowerCase();
+  if(!isStaging(env)||!profileKey)return {email:authenticatedEmail,simulated:false};
+  if(!await directoryIsAdmin(env,authenticatedEmail))return {email:authenticatedEmail,simulated:false};
+  const row=await env.DPEG_ASSIGNMENTS.prepare(
+    'SELECT email FROM directory_users WHERE staging_profile_key = ? AND active = 1'
+  ).bind(profileKey).first();
+  return row?.email?{email:extractEmailAddress(row.email),simulated:true}:{email:authenticatedEmail,simulated:false};
+}
 const PROOF_START = 'DPEG_PROOF_START';
 const PROOF_END = 'DPEG_PROOF_END';
 const PROOF_LINK_PREFIX = 'proof-link:';
@@ -160,7 +153,7 @@ function withRequestCors(response, request) {
   const headers = new Headers(response.headers);
   headers.set('Access-Control-Allow-Origin', allowedOrigin);
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-DPEG-Staging-Profile');
   headers.append('Vary', 'Origin');
   return new Response(response.body, {
     status: response.status,
@@ -418,7 +411,7 @@ async function insertTaskMessage(env, body, claims, options = {}) {
   }
   const canonicalAssigner = extractEmailAddress(assignment.assigner_email || '');
   const canonicalRecipient = extractEmailAddress(assignment.recipient_email || '');
-  const oversightAccess = canOverseeAssignment(senderEmail, assignment);
+  const oversightAccess = contextCanOverseeAssignment(await directoryAccessContext(env, senderEmail), assignment);
   if (senderEmail !== canonicalAssigner && senderEmail !== canonicalRecipient && !oversightAccess && !options.allowPrincipal) {
     return { error: json({ error: 'You are not a participant in this task conversation' }, 403) };
   }
@@ -460,11 +453,12 @@ async function loadTaskMessageThreads(env, claims, options = {}) {
   const taskId = String(options.taskId || '').trim();
   const recipientEmail = extractEmailAddress(options.recipientEmail || '');
   const since = String(options.since || '').trim();
+  const accessContext = await directoryAccessContext(env, email);
   const principalDepartments = Array.isArray(options.principalDepartments)
     ? options.principalDepartments.map(value => String(value || '').trim().toLowerCase()).filter(Boolean)
-    : departmentPrincipalDepartments(email);
-  const oversightAssigners = delegatedAssigners(email);
-  const oversightRecipients = teamOversightRecipients(email);
+    : accessContext.principalDepartments;
+  const oversightAssigners = accessContext.delegatedAssigners;
+  const oversightRecipients = accessContext.oversightRecipients;
   let sql = `SELECT id, app_task_id, task_title, assigner_email, recipient_email, recipient_name,
                     sender_email, sender_name, sender_role, message, created_at
                FROM task_messages
@@ -828,7 +822,7 @@ async function handleData(request, env) {
     const payload = {
       tasks: Array.isArray(body.tasks) ? body.tasks : [],
       archives: Array.isArray(body.archives) ? body.archives : [],
-      staffConfig: ADMIN_EMAILS.has(userEmail) && body.staffConfig && typeof body.staffConfig === 'object'
+      staffConfig: await directoryIsAdmin(env, userEmail) && body.staffConfig && typeof body.staffConfig === 'object'
         ? body.staffConfig
         : (existing.staffConfig && typeof existing.staffConfig === 'object' ? existing.staffConfig : {}),
       customDepartments: Array.isArray(existing.customDepartments) ? existing.customDepartments : [],
@@ -1116,7 +1110,7 @@ async function handleDepartments(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
 
-  if (!ADMIN_EMAILS.has(userEmail)) return json({ error: 'Admin access only' }, 403);
+  if (!await directoryIsAdmin(env, userEmail)) return json({ error: 'Admin access only' }, 403);
 
   // Admins may map one verified Microsoft email to an existing department.
   if (request.method === 'POST' && body.assignment) {
@@ -1166,6 +1160,39 @@ async function handleDepartments(request, env) {
   const payload = { ...existing, customDepartments: departments, departmentAssignments: assignments, departmentsUpdatedAt: now };
   await env.DPEG_DATA.put(DATA_KEY, JSON.stringify(payload));
   return json({ success: true, updatedAt: now });
+}
+
+// Returns only the signed-in user's own profile and capability labels. The
+// emails that define those capabilities stay in D1 and are never sent to the
+// public browser bundle.
+async function handleDirectory(request, env) {
+  const { error, status, claims } = await validateUserToken(request);
+  if (error) return json({ error }, status);
+  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+  if (!env.DPEG_ASSIGNMENTS) return json({ error: 'Directory storage is not configured' }, 501);
+  const viewer=await directoryViewer(request,env,claims);
+  const email = viewer.email;
+  const context = await directoryAccessContext(env, email);
+  const profile = context.profile ? {
+    displayName: String(context.profile.display_name || claims.name || ''),
+    role: String(context.profile.role_title || ''),
+    department: String(context.profile.department_key || ''),
+    isAdmin: Number(context.profile.is_admin || 0) === 1,
+    isPrincipal: Number(context.profile.is_principal || 0) === 1,
+    wednesday: Number(context.profile.wednesday_review || 0) === 1,
+  } : {
+    displayName: String(claims.name || ''), role:'', department:'',
+    isAdmin:false, isPrincipal:false, wednesday:false,
+  };
+  return json({
+    profile,
+    simulated: viewer.simulated,
+    capabilities: {
+      departmentOversight: context.principalDepartments.length > 0,
+      assignerOversight: context.delegatedAssigners.length > 0,
+      teamGroups: Object.keys(context.oversightGroups),
+    },
+  });
 }
 
 // ── / endpoint (existing AI summary) ─────────────────────────────────────────
@@ -1410,9 +1437,10 @@ async function handleNotify(request, env) {
     if(env.DPEG_ASSIGNMENTS){
       const visibilityClauses=['assigner_email=?','recipient_email=?'];
       const visibilityBindings=[viewerEmail,viewerEmail];
-      const principalDepartments=departmentPrincipalDepartments(viewerEmail);
-      const oversightAssigners=delegatedAssigners(viewerEmail);
-      const oversightRecipients=teamOversightRecipients(viewerEmail);
+      const accessContext=await directoryAccessContext(env,viewerEmail);
+      const principalDepartments=accessContext.principalDepartments;
+      const oversightAssigners=accessContext.delegatedAssigners;
+      const oversightRecipients=accessContext.oversightRecipients;
       if(principalDepartments.length){visibilityClauses.push(`LOWER(dept) IN (${principalDepartments.map(()=>'?').join(',')})`);visibilityBindings.push(...principalDepartments);}
       if(oversightAssigners.length){visibilityClauses.push(`assigner_email IN (${oversightAssigners.map(()=>'?').join(',')})`);visibilityBindings.push(...oversightAssigners);}
       if(oversightRecipients.length){visibilityClauses.push(`recipient_email IN (${oversightRecipients.map(()=>'?').join(',')})`);visibilityBindings.push(...oversightRecipients);}
@@ -1751,15 +1779,18 @@ async function handleAssignments(request, env) {
 
   const url = new URL(request.url);
   const requestedEmail = extractEmailAddress(url.searchParams.get('email') || '');
-  const tokenEmail = userEmailFromClaims(claims);
-  if (!requestedEmail || requestedEmail !== tokenEmail) {
+  const authenticatedEmail = userEmailFromClaims(claims);
+  const viewer = await directoryViewer(request,env,claims);
+  const tokenEmail = viewer.email;
+  if (!requestedEmail || (!viewer.simulated && requestedEmail !== authenticatedEmail)) {
     return json({ error: 'You can only fetch your own assignments' }, 403);
   }
 
-  const principalDepartments = departmentPrincipalDepartments(tokenEmail);
-  const oversightAssigners = delegatedAssigners(tokenEmail);
-  const oversightGroups = teamOversightGroups(tokenEmail);
-  const oversightRecipients = teamOversightRecipients(tokenEmail);
+  const accessContext = await directoryAccessContext(env, tokenEmail);
+  const principalDepartments = accessContext.principalDepartments;
+  const oversightAssigners = accessContext.delegatedAssigners;
+  const oversightGroups = accessContext.oversightGroups;
+  const oversightRecipients = accessContext.oversightRecipients;
   const oversightClauses = [];
   const oversightBindings = [];
   if (principalDepartments.length) {
@@ -1850,9 +1881,10 @@ async function handleAssignments(request, env) {
     overseenByMe: (overseen.results || []).map(row => {
       const recipient = extractEmailAddress(row.recipient_email);
       const scopes = [];
-      if (oversightAssigners.includes(extractEmailAddress(row.assigner_email))) scopes.push('nikhil');
-      if ((oversightGroups.property_management || []).includes(recipient)) scopes.push('property_management');
-      if ((oversightGroups.maintenance || []).includes(recipient)) scopes.push('maintenance');
+      if (oversightAssigners.includes(extractEmailAddress(row.assigner_email))) scopes.push('executive');
+      for (const [group, recipients] of Object.entries(oversightGroups)) {
+        if (recipients.includes(recipient)) scopes.push(group);
+      }
       if (!scopes.length) scopes.push('department');
       return { ...shape(row), oversightRole: scopes.includes('department') ? 'Department Principal' : 'Executive Assistant', oversightScopes: scopes };
     }),
@@ -2300,17 +2332,17 @@ async function handleAssignmentCancel(request, env) {
 const STAGING_TASK_STATUSES = new Set(['Pending', 'In Progress', 'Done', 'Cancelled']);
 const STAGING_TASK_PRIORITIES = new Set(['Low', 'Normal', 'High']);
 const STAGING_DEPARTMENT_PRINCIPALS = {
-  'faiz@dhananipeg.com': ['investor relations'],
+  'principal.test@example.invalid': ['investor relations'],
 };
 const STAGING_TEST_ACTORS = new Set([
-  'nick@dhananipeg.com',
-  'faiz@dhananipeg.com',
-  'invest@dhananipeg.com',
+  'executive.test@example.invalid',
+  'principal.test@example.invalid',
+  'team.test@example.invalid',
 ]);
 const STAGING_TEST_ACTOR_NAMES = {
-  'nick@dhananipeg.com': 'Nick Dhanani',
-  'faiz@dhananipeg.com': 'Faiz Hirani',
-  'invest@dhananipeg.com': 'Investor Relations Team',
+  'executive.test@example.invalid': 'Test Executive',
+  'principal.test@example.invalid': 'Test Principal',
+  'team.test@example.invalid': 'Test Department Team',
 };
 
 function stagingPrincipalDepartments(email) {
@@ -3133,6 +3165,7 @@ async function routeRequest(request, env) {
     if (path === '/data') return handleData(request, env);
     if (path === '/shared-workflow-sync') return withStagingRealtimeBroadcast(request, env, handleSharedWorkflowSync(request, env));
     if (path === '/shared-workflow-read') return handleSharedWorkflowRead(request, env);
+    if (path === '/directory') return handleDirectory(request, env);
     if (path === '/departments') return handleDepartments(request, env);
     if (path === '/department-assignment') return handleDepartments(request, env);
     if (path === '/task-edit-lock') return handleTaskEditLock(request, env);

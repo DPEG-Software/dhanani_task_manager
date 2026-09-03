@@ -112,8 +112,8 @@ async function getSignedInProfile(account){
     if(res.ok){
       const me=await res.json();
       const candidates=[me.mail,me.userPrincipalName,fallbackEmail].map(normEmail).filter(Boolean);
-      const principalEmail=candidates.find(e=>PRINCIPALS[e])||candidates[0]||fallbackEmail;
-      return {email:principalEmail,name:me.displayName||account.name||principalEmail,role:me.jobTitle||""};
+      const resolvedEmail=candidates[0]||fallbackEmail;
+      return {email:resolvedEmail,name:me.displayName||account.name||resolvedEmail,role:me.jobTitle||""};
     }
   }catch(err){console.warn("Profile lookup skipped:",err.message);}
   return {email:fallbackEmail,name:account.name||fallbackEmail,role:""};
@@ -122,14 +122,15 @@ async function getSignedInProfile(account){
 async function loadUser(account) {
   const profile = await getSignedInProfile(account);
   const email = profile.email;
-  const principal = PRINCIPALS[email];
   currentUser = {
     email,
-    name: principal?.name || profile.name || account.username,
-    role: principal?.role || profile.role || "Team Member",
-    wednesday: principal?.wednesday || false,
+    name: profile.name || account.username,
+    role: profile.role || "Team Member",
+    wednesday: false,
+    isAdmin: false,
     folder: email.split("@")[0],
   };
+  await loadSecureDirectoryProfile();
   isWednesdayUser = currentUser.wednesday;
   loadUserContacts();
 
@@ -144,6 +145,29 @@ async function loadUser(account) {
 
   updateUI();
   await loadTasksFromOneDrive();
+}
+
+async function loadSecureDirectoryProfile(){
+  try{
+    const token=await getAccessToken();
+    const base=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
+    const headers={Authorization:`Bearer ${token}`};
+    const simulation=sessionStorage.getItem('dpeg_staging_profile')||'';
+    if(window.DPEG_STAGING_MODE&&simulation)headers['X-DPEG-Staging-Profile']=simulation;
+    const response=await fetch(`${base}/directory`,{headers});
+    if(!response.ok)throw new Error(`Directory returned ${response.status}`);
+    const directory=await response.json();
+    const secured=directory.profile||{};
+    currentUser.name=secured.displayName||currentUser.name;
+    currentUser.role=secured.role||currentUser.role;
+    currentUser.wednesday=Boolean(secured.wednesday);
+    currentUser.isAdmin=Boolean(secured.isAdmin);
+    if(!simulation)window.DPEG_AUTHENTICATED_ADMIN=currentUser.isAdmin;
+    secureDirectoryCapabilities={...secureDirectoryCapabilities,...(directory.capabilities||{})};
+    window.DPEG_STAGING_SIMULATION=Boolean(directory.simulated);
+  }catch(err){
+    console.warn('Secure directory unavailable; privileged features remain disabled:',err.message);
+  }
 }
 
 // setStatus removed - no longer needed
@@ -208,12 +232,28 @@ function applyStagingUiBoundary(){
     button.style.display=handler.includes("nav('tasks')")?'':'none';
   });
   document.querySelectorAll('button[onclick="openAdd()"],#pwa-install-btn').forEach(button=>button.style.display='none');
-  document.getElementById('admin-settings-btn')?.style.setProperty('display','none');
-  document.getElementById('department-settings-btn')?.style.setProperty('display','none');
   if(!document.getElementById('staging-app-banner')){
     const banner=document.createElement('div');
     banner.id='staging-app-banner';
-    banner.innerHTML='D1 STAGING — Fake tasks only. Email, OneDrive, Microsoft To Do and AI are disabled. <button type="button" id="staging-dual-write-test" onclick="testStagingDualWrite()">Test dual-write</button>';
+    banner.innerHTML='D1 STAGING — Fake tasks only. Email, OneDrive, Microsoft To Do and AI are disabled. <span id="staging-role-slot"></span> <button type="button" id="staging-dual-write-test" onclick="testStagingDualWrite()">Test dual-write</button>';
     document.querySelector('.main')?.prepend(banner);
   }
+  const slot=document.getElementById('staging-role-slot');
+  if(slot&&window.DPEG_AUTHENTICATED_ADMIN){
+    const selected=sessionStorage.getItem('dpeg_staging_profile')||'';
+    slot.innerHTML=`<label style="margin-left:12px">View as <select id="staging-role-select" onchange="setStagingRoleSimulation(this.value)">
+      <option value="">My account</option><option value="assistant">Executive Assistant</option>
+      <option value="principal">Department Principal</option><option value="maintenance_lead">Maintenance Lead</option>
+      <option value="regular">Regular Employee</option></select></label>`;
+    document.getElementById('staging-role-select').value=selected;
+  }
+}
+
+async function setStagingRoleSimulation(profileKey){
+  if(!window.DPEG_STAGING_MODE||!window.DPEG_AUTHENTICATED_ADMIN)return;
+  if(profileKey)sessionStorage.setItem('dpeg_staging_profile',profileKey);else sessionStorage.removeItem('dpeg_staging_profile');
+  await loadSecureDirectoryProfile();
+  isWednesdayUser=currentUser.wednesday;
+  updateUI();
+  await window.renderMyTasks?.();
 }

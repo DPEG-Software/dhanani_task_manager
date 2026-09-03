@@ -75,7 +75,7 @@
         method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
         body:JSON.stringify({tasks:[
           {id:`dual-write-check-${email}`,title:'Dual-write staging check',summary:'Synthetic staging-only record',assignedByEmail:email,status:'Pending',updatedAt:new Date().toISOString()},
-          {id:`dual-write-foreign-${email}`,title:'Must be rejected',assignedByEmail:'foreign-owner@dhananipeg.com',status:'Pending'},
+          {id:`dual-write-foreign-${email}`,title:'Must be rejected',assignedByEmail:'foreign-owner@example.invalid',status:'Pending'},
         ]}),
       });
       const result=await response.json().catch(()=>({}));

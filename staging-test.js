@@ -123,7 +123,7 @@ function relatedActivity(a){
     const expanded=expandedThreads.has(a.id);
     const messageRows=expanded?messages.map(message=>{
       const mine=norm(message.email)===norm($('test-actor')?.value||account?.username);
-      const isPrincipal=norm(message.email)==='faiz@dhananipeg.com'&&norm(a.dept)==='investor relations';
+      const isPrincipal=norm(message.email)==='principal.test@example.invalid'&&norm(a.dept)==='investor relations';
       const sender=(mine?'You':message.name||message.email||'Employee')+(isPrincipal?' — Department Principal':'');
       const time=message.createdAt?new Date(message.createdAt).toLocaleString([],{
         month:'short',day:'numeric',hour:'numeric',minute:'2-digit'
@@ -156,10 +156,10 @@ function card(a,role){
 function render(){
   const email=norm($('test-actor')?.value||account?.username);const assignments=workflow.assignments||[];
   const by=assignments.filter(a=>norm(a.assigner_email)===email);const to=assignments.filter(a=>norm(a.recipient_email)===email);
-  const department=assignments.filter(a=>email==='faiz@dhananipeg.com'&&norm(a.dept)==='investor relations'&&norm(a.assigner_email)!==email&&norm(a.recipient_email)!==email);
+  const department=assignments.filter(a=>email==='principal.test@example.invalid'&&norm(a.dept)==='investor relations'&&norm(a.assigner_email)!==email&&norm(a.recipient_email)!==email);
   $('by-me').innerHTML=by.length?by.map(a=>card(a,'assigner')).join(''):'<div class="empty">No fake tasks assigned by you.</div>';
   $('to-me').innerHTML=to.length?to.map(a=>card(a,'recipient')).join(''):'<div class="empty">No fake tasks assigned to you.</div>';
-  $('department-panel').hidden=email!=='faiz@dhananipeg.com';
+  $('department-panel').hidden=email!=='principal.test@example.invalid';
   $('department-tasks').innerHTML=department.length?department.map(a=>card(a,'principal')).join(''):'<div class="empty">No Investor Relations tasks.</div>';
   const schedules=workflow.recurringSchedules||[];
   $('recurring-schedules').innerHTML=schedules.length?schedules.map(s=>`<article class="card"><div class="card-head"><div><div class="title">${esc(s.title)}</div><div class="meta">Every ${Number(s.frequency_interval||1)} ${esc(s.frequency_unit||'week')}${Number(s.frequency_interval||1)===1?'':'s'} · ${esc(s.recipient_email)} · Next due ${esc(s.next_due_date)}</div></div><span class="badge">${Number(s.active)?'Active':'Paused'}</span></div>${norm(s.assigner_email)===email?`<div class="actions"><button onclick="toggleRecurring('${s.id}',${Number(s.active)?'false':'true'})">${Number(s.active)?'Pause':'Resume'}</button></div>`:''}</article>`).join(''):'<div class="empty">No recurring schedules.</div>';
