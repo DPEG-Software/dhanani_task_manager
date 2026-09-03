@@ -2687,6 +2687,10 @@ async function toggleEmailAISummary(emailId){
 }
 
 async function summarizeAttachments(emailId){
+  if(localStorage.getItem('dpeg_ai_attachments_enabled')!=='true'){
+    toast('Attachment AI is disabled. Enable it in AI Settings only when the document is safe to share with the AI provider.');
+    return;
+  }
   const btn=document.getElementById('att-sum-btn-'+emailId);
   const container=document.getElementById('att-sum-'+emailId);
   if(!container)return;
@@ -2729,6 +2733,14 @@ async function summarizeAttachments(emailId){
       container.innerHTML=`<div style="font-size:11px;color:#6b7280;padding:6px 0">Cannot read attachment content automatically${unsuppMsg}.</div>`;
       if(btn){btn.disabled=false;btn.textContent='Summarize attachments';}
       return;
+    }
+    if(localStorage.getItem('dpeg_ai_preview_enabled')!=='false'){
+      const preview=textAtts.map(a=>`[${a.name}]\n${redactAITextForPreview(a.text,800)}`).join('\n\n').slice(0,3500);
+      if(!confirm(`The following redacted attachment text will be sent to Groq:\n\n${preview}\n\nContinue?`)){
+        container.innerHTML='<span style="color:var(--muted);font-size:11px">Attachment summary cancelled.</span>';
+        if(btn){btn.disabled=false;btn.textContent='Summarize attachments';}
+        return;
+      }
     }
     const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
     const token2=await getAccessToken();

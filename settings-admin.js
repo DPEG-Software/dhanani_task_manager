@@ -8,15 +8,25 @@ function loadAIConfig(){
   const url=localStorage.getItem('dpeg_ai_fn_url')||'';
   const el=document.getElementById('ai-fn-url');
   if(el)el.value=url||WORKER_URL;
-  updateAIStatusDot(!!url);
+  const enabled=localStorage.getItem('dpeg_ai_enabled')!=='false';
+  const enabledEl=document.getElementById('ai-enabled');if(enabledEl)enabledEl.checked=enabled;
+  const attachmentsEl=document.getElementById('ai-attachments-enabled');if(attachmentsEl)attachmentsEl.checked=localStorage.getItem('dpeg_ai_attachments_enabled')==='true';
+  const previewEl=document.getElementById('ai-preview-enabled');if(previewEl)previewEl.checked=localStorage.getItem('dpeg_ai_preview_enabled')!=='false';
+  updateAIStatusDot(enabled);
   return url;
 }
 function saveAISettings(){
   const url=(document.getElementById('ai-fn-url')?.value||'').trim();
+  const enabled=!!document.getElementById('ai-enabled')?.checked;
+  const attachmentsEnabled=!!document.getElementById('ai-attachments-enabled')?.checked;
+  const previewEnabled=!!document.getElementById('ai-preview-enabled')?.checked;
   localStorage.setItem('dpeg_ai_fn_url',url);
-  updateAIStatusDot(!!url);
+  localStorage.setItem('dpeg_ai_enabled',String(enabled));
+  localStorage.setItem('dpeg_ai_attachments_enabled',String(attachmentsEnabled));
+  localStorage.setItem('dpeg_ai_preview_enabled',String(previewEnabled));
+  updateAIStatusDot(enabled);
   closeMo('mo-ai-settings');
-  toast(url?'AI summarization enabled':'AI summarization disabled — using local algorithm');
+  toast(enabled?'AI summaries enabled with server-side redaction':'AI summarization disabled — using local processing');
 }
 function openAISettings(){
   loadAIConfig();

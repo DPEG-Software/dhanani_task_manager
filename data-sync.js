@@ -169,27 +169,17 @@ function buildProofBlock(base,proofs){
 }
 
 async function createProofViewLink(token,itemId){
-  // Try org-scoped first, fall back to anonymous view link
-  for(const scope of['organization','anonymous']){
-    try{
-      const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/createLink`,{
-        method:'POST',
-        headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-        body:JSON.stringify({type:'view',scope})
-      });
-      if(res.ok){
-        const data=await res.json();
-        const url=data.link?.webUrl||'';
-        if(url)return url;
-      }
-    }catch{}
-  }
-  // Last resort: return the direct drive item webUrl
-  try{
-    const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${itemId}?$select=id,webUrl`,{headers:{Authorization:`Bearer ${token}`}});
-    if(res.ok){const d=await res.json();return d.webUrl||'';}
-  }catch{}
-  return '';
+  // Proof links must require a signed-in DPEG tenant account. Never fall
+  // back to an anonymous "anyone with the link" URL.
+  const res=await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/createLink`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+    body:JSON.stringify({type:'view',scope:'organization'})
+  });
+  if(!res.ok)throw new Error('Could not create a secure organization-only proof link');
+  const data=await res.json();
+  if(!data.link?.webUrl)throw new Error('Microsoft did not return a secure proof link');
+  return data.link.webUrl;
 }
 
 function graphShareIdFromUrl(url){

@@ -1,7 +1,18 @@
 // ============================================================
 // AI SUMMARIZATION
 // ============================================================
+function redactAITextForPreview(value,maxLength=12000){
+  return String(value||'').slice(0,maxLength)
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g,'[REDACTED SSN]')
+    .replace(/\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/g,'[REDACTED PHONE]')
+    .replace(/\b(?:\d[ -]*?){13,19}\b/g,'[REDACTED PAYMENT NUMBER]')
+    .replace(/\b(routing|account|bank account|tax id|ein)\s*(?:number|no\.?|#)?\s*[:=-]?\s*[A-Z0-9-]{4,}\b/gi,'$1: [REDACTED]')
+    .replace(/\b(password|passcode|pin|access code|security code|secret)\s*[:=-]\s*\S+/gi,'$1: [REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~-]+/gi,'Bearer [REDACTED]');
+}
+
 async function callAISummary(messages, subject, opts={}){
+  if(localStorage.getItem('dpeg_ai_enabled')==='false')return null;
   const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
   if(!fnUrl)return null;
   try{
@@ -40,6 +51,10 @@ async function callAISummary(messages, subject, opts={}){
     const latestDate=isNaN(latestDt)?'':latestDt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
     const latestRawHtml=latest?.body?.contentType==='html'?latest?.body?.content:'';
     const latestMessageText=latestRawHtml?cleanEmailBodyForAI(latestRawHtml):cleanEmailText(latest?.body?.content||latest?.bodyPreview||'');
+    if(localStorage.getItem('dpeg_ai_preview_enabled')!=='false'){
+      const preview=`Subject: ${redactAITextForPreview(subject,300)}\n\n${redactAITextForPreview(emailText,3500)}`;
+      if(!confirm(`The following redacted content will be sent to Groq for summarization:\n\n${preview}\n\nContinue?`))return null;
+    }
     const res=await fetch(fnUrl,{
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
@@ -231,6 +246,4 @@ async function quickReassignDepartment(index,dept){
   setDeptAssignDepartment(dept);
   await saveDepartmentAssignmentSetting();
 }
-
-
 

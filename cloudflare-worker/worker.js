@@ -127,6 +127,18 @@ function json(data, status = 200) {
   });
 }
 
+function redactSensitiveAIText(value, maxLength) {
+  let text=String(value||'').slice(0,maxLength);
+  text=text
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g,'[REDACTED SSN]')
+    .replace(/\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/g,'[REDACTED PHONE]')
+    .replace(/\b(?:\d[ -]*?){13,19}\b/g,'[REDACTED PAYMENT NUMBER]')
+    .replace(/\b(routing|account|bank account|tax id|ein)\s*(?:number|no\.?|#)?\s*[:=-]?\s*[A-Z0-9-]{4,}\b/gi,'$1: [REDACTED]')
+    .replace(/\b(password|passcode|pin|access code|security code|secret)\s*[:=-]\s*\S+/gi,'$1: [REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~-]+/gi,'Bearer [REDACTED]');
+  return text;
+}
+
 // Apply CORS after routing so every endpoint—including redirects and errors—
 // gets the correct origin. Browsers accept only one Allow-Origin value, so a
 // comma-separated list would not work; echo the requesting origin only when
@@ -669,6 +681,7 @@ async function handleTodo(request, env) {
   let body;
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
+  if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Invalid request body'},400);
 
   const { recipientEmail, title, summary = '', priority = 'Normal', date, deadline, appTaskId = '' } = body;
   const recipient = extractEmailAddress(recipientEmail);
@@ -1152,8 +1165,16 @@ async function handleSummary(request, env) {
   let body;
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
+  if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Invalid request body'},400);
 
-  const { subject = '', emailText = '', senderName = '', messageCount = 1, latestMessageText = '', latestSender = '', latestDate = '', attachmentNames = [] } = body;
+  const subject=redactSensitiveAIText(body.subject,300);
+  const emailText=redactSensitiveAIText(body.emailText,12000);
+  const senderName=redactSensitiveAIText(body.senderName,200);
+  const latestMessageText=redactSensitiveAIText(body.latestMessageText,3000);
+  const latestSender=redactSensitiveAIText(body.latestSender,200);
+  const latestDate=String(body.latestDate||'').slice(0,100);
+  const messageCount=Math.max(1,Math.min(100,Number(body.messageCount)||1));
+  const attachmentNames=Array.isArray(body.attachmentNames)?body.attachmentNames.slice(0,30).map(name=>redactSensitiveAIText(name,200)):[];
   if (!emailText && !subject) {
     return json({ error: 'Provide emailText or subject' }, 400);
   }
@@ -1189,8 +1210,7 @@ Write 3-5 sentences. No bullet points, no headers. State names, amounts, propert
   });
 
   if (!groqRes.ok) {
-    const err = await groqRes.text().catch(() => '');
-    return json({ error: 'Groq call failed', detail: err }, 502);
+    return json({ error: 'AI summary provider request failed' }, 502);
   }
 
   const groqData = await groqRes.json();
@@ -1206,8 +1226,10 @@ async function handleAttachmentSummary(request, env) {
   let body;
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
+  if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Invalid request body'},400);
 
-  const { subject = '', attachmentContents = [] } = body;
+  const subject=redactSensitiveAIText(body.subject,300);
+  const attachmentContents=Array.isArray(body.attachmentContents)?body.attachmentContents.slice(0,10).map(a=>({name:redactSensitiveAIText(a?.name,200),text:redactSensitiveAIText(a?.text,2000)})):[];
   if (!attachmentContents.length) return json({ error: 'No attachment contents provided' }, 400);
 
   const text = attachmentContents.map(a => `[${a.name}]\n${String(a.text || '').slice(0, 800)}`).join('\n\n---\n\n');
@@ -1233,8 +1255,7 @@ Write 1-3 bullet points (•) summarizing what these attachments contain. Be spe
   });
 
   if (!groqRes.ok) {
-    const err = await groqRes.text().catch(() => '');
-    return json({ error: 'Groq call failed', detail: err }, 502);
+    return json({ error: 'AI attachment summary provider request failed' }, 502);
   }
 
   const groqData = await groqRes.json();

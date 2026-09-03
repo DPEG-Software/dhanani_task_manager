@@ -682,16 +682,28 @@
     <div class="mo-hdr">
       <div>
         <div class="mo-title">AI Settings</div>
-        <div class="mo-sub">Connect your Azure OpenAI function for smart email summaries</div>
+        <div class="mo-sub">Privacy controls for external AI email summaries</div>
       </div>
       <button class="mo-x" onclick="closeMo('mo-ai-settings')">&#10005;</button>
     </div>
     <div class="mo-body">
       <div class="ai-status-bar" id="ai-settings-status"></div>
+      <label class="meeting-teams-toggle" style="margin-bottom:12px">
+        <input type="checkbox" id="ai-enabled" checked><span class="meeting-toggle-track"><span></span></span>
+        <span><strong>Allow AI email summaries</strong><small>Redacted email text is processed by Groq through the DPEG Worker.</small></span>
+      </label>
+      <label class="meeting-teams-toggle" style="margin-bottom:14px">
+        <input type="checkbox" id="ai-attachments-enabled"><span class="meeting-toggle-track"><span></span></span>
+        <span><strong>Allow attachment AI</strong><small>Off by default. Enable only for documents approved for external AI processing.</small></span>
+      </label>
+      <label class="meeting-teams-toggle" style="margin-bottom:14px">
+        <input type="checkbox" id="ai-preview-enabled" checked><span class="meeting-toggle-track"><span></span></span>
+        <span><strong>Preview before sending to AI</strong><small>Review the redacted content and approve each external AI request.</small></span>
+      </label>
       <div class="form-grp">
         <label class="form-lbl">Azure Function URL</label>
         <input type="url" class="form-in" id="ai-fn-url" placeholder="https://dpeg-ai-summarize.systemmanager1.workers.dev/">
-        <div style="font-size:11px;color:var(--muted);margin-top:5px">Paste your Cloudflare Worker URL. See setup steps below.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:5px">Email text is redacted again by this Worker before it reaches Groq.</div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="testAIConnection()" id="ai-test-btn" style="margin-bottom:14px">Test Connection</button>
       <div style="background:var(--sage3);border:1px solid var(--sage);border-radius:var(--r);padding:12px 14px;font-size:12px;color:var(--sub);line-height:1.7">
