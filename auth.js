@@ -1,9 +1,25 @@
 // ============================================================
 // MICROSOFT AUTH
 // ============================================================
+function clearLegacyPersistentSecurityCaches() {
+  try {
+    const clientId = String(MSAL_CONFIG?.auth?.clientId || '').toLowerCase();
+    Object.keys(localStorage).forEach(key => {
+      const normalized = String(key || '').toLowerCase();
+      const isLegacyMsal = normalized.startsWith('msal.') ||
+        (clientId && normalized.includes(clientId));
+      const isLegacyTaskBackup = normalized.startsWith('dpeg_local_task_backup_');
+      if (isLegacyMsal || isLegacyTaskBackup) localStorage.removeItem(key);
+    });
+  } catch (err) {
+    console.warn('Legacy browser cache cleanup skipped:', err.message);
+  }
+}
+
 async function initMsal() {
   showSignIn();
   try {
+    clearLegacyPersistentSecurityCaches();
     msalInstance = new msal.PublicClientApplication(MSAL_CONFIG);
     await msalInstance.initialize();
 

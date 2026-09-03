@@ -517,10 +517,6 @@ async function loadTasksFromOneDrive() {
   } catch (err) {
     sharedDataActive=false;
     console.error("OneDrive load error:", err);
-    try{
-      const backup=localStorage.getItem(`dpeg_local_task_backup_${normEmail(currentUser?.email||'unknown')}`);
-      if(backup)applyLoadedData(JSON.parse(backup));
-    }catch{}
     setSyncStatus("error","OneDrive unavailable • tasks still online");
     toast("OneDrive is unavailable. Shared tasks and messages are still online.");
     refreshAll();
@@ -727,9 +723,7 @@ async function saveTasksToOneDrive() {
     return true;
   }
   setSyncStatus("syncing", "Saving...");
-  const backupKey=`dpeg_local_task_backup_${normEmail(currentUser?.email||'unknown')}`;
   const payload=JSON.stringify({tasks,archives,staffConfig,customDepartments,customNotes,notifications},null,2);
-  try{localStorage.setItem(backupKey,payload);}catch{}
   try {
     const token = await getAccessToken();
     if(!await ensureLegacyOneDriveFolder(token))throw new Error('OneDrive folder could not be created');

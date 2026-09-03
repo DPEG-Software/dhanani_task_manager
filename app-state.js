@@ -12,8 +12,10 @@ const MSAL_CONFIG = {
     navigateToLoginRequestUrl: false,
   },
   cache: {
-    cacheLocation: "localStorage",
-    storeAuthStateInCookie: true
+    // Keep Microsoft tokens only for the lifetime of the browser tab. This
+    // reduces exposure on shared or unattended computers.
+    cacheLocation: "sessionStorage",
+    storeAuthStateInCookie: false
   }
 };
 
