@@ -2734,6 +2734,11 @@ async function summarizeAttachments(emailId){
       if(btn){btn.disabled=false;btn.textContent='Summarize attachments';}
       return;
     }
+    if(textAtts.some(a=>containsSensitiveAIText(`${a.name}\n${a.text}`))){
+      container.innerHTML=`<div style="margin-top:6px;padding:8px 10px;background:#fff1f2;border-radius:4px;border:1px solid #fecaca;color:#b91c1c;font-size:11.5px;font-weight:700">${SENSITIVE_AI_BLOCK_MESSAGE}</div>`;
+      if(btn){btn.disabled=false;btn.textContent='Summary blocked';}
+      return;
+    }
     if(localStorage.getItem('dpeg_ai_preview_enabled')!=='false'){
       const preview=textAtts.map(a=>`[${a.name}]\n${redactAITextForPreview(a.text,800)}`).join('\n\n').slice(0,3500);
       if(!confirm(`The following redacted attachment text will be sent to Groq:\n\n${preview}\n\nContinue?`)){

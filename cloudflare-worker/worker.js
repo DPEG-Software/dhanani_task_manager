@@ -139,6 +139,17 @@ function redactSensitiveAIText(value, maxLength) {
   return text;
 }
 
+function containsSensitiveAIContent(value) {
+  const text=String(value||'');
+  return /\b\d{3}-\d{2}-\d{4}\b/.test(text)
+    || /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/.test(text)
+    || /\b(?:\d[ -]*?){13,19}\b/.test(text)
+    || /\b\d{8,12}\b/.test(text)
+    || /\b(routing|account|bank account|tax id|ein|social security)\s*(?:number|no\.?|#)?\s*[:=-]?\s*[A-Z0-9-]{3,}\b/i.test(text)
+    || /\b(password|passcode|pin|access code|security code|secret|api key|token)\s*[:=-]\s*\S+/i.test(text)
+    || /\bBearer\s+[A-Za-z0-9._~-]+/i.test(text);
+}
+
 // Apply CORS after routing so every endpoint—including redirects and errors—
 // gets the correct origin. Browsers accept only one Allow-Origin value, so a
 // comma-separated list would not work; echo the requesting origin only when
@@ -1166,6 +1177,9 @@ async function handleSummary(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
   if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Invalid request body'},400);
+  if(containsSensitiveAIContent(`${body.subject||''}\n${body.emailText||''}\n${body.latestMessageText||''}`)){
+    return json({summary:'Not safe — contains sensitive info.',blocked:true});
+  }
 
   const subject=redactSensitiveAIText(body.subject,300);
   const emailText=redactSensitiveAIText(body.emailText,12000);
@@ -1227,6 +1241,10 @@ async function handleAttachmentSummary(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: 'Invalid JSON body' }, 400); }
   if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'Invalid request body'},400);
+  const rawAttachmentContents=Array.isArray(body.attachmentContents)?body.attachmentContents:[];
+  if(containsSensitiveAIContent(`${body.subject||''}\n${rawAttachmentContents.map(a=>`${a?.name||''}\n${a?.text||''}`).join('\n')}`)){
+    return json({summary:'Not safe — contains sensitive info.',blocked:true});
+  }
 
   const subject=redactSensitiveAIText(body.subject,300);
   const attachmentContents=Array.isArray(body.attachmentContents)?body.attachmentContents.slice(0,10).map(a=>({name:redactSensitiveAIText(a?.name,200),text:redactSensitiveAIText(a?.text,2000)})):[];

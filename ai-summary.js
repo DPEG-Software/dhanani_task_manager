@@ -11,6 +11,18 @@ function redactAITextForPreview(value,maxLength=12000){
     .replace(/\bBearer\s+[A-Za-z0-9._~-]+/gi,'Bearer [REDACTED]');
 }
 
+const SENSITIVE_AI_BLOCK_MESSAGE='Not safe — contains sensitive info.';
+function containsSensitiveAIText(value){
+  const text=String(value||'');
+  return /\b\d{3}-\d{2}-\d{4}\b/.test(text)
+    || /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/.test(text)
+    || /\b(?:\d[ -]*?){13,19}\b/.test(text)
+    || /\b\d{8,12}\b/.test(text)
+    || /\b(routing|account|bank account|tax id|ein|social security)\s*(?:number|no\.?|#)?\s*[:=-]?\s*[A-Z0-9-]{3,}\b/i.test(text)
+    || /\b(password|passcode|pin|access code|security code|secret|api key|token)\s*[:=-]\s*\S+/i.test(text)
+    || /\bBearer\s+[A-Za-z0-9._~-]+/i.test(text);
+}
+
 async function callAISummary(messages, subject, opts={}){
   if(localStorage.getItem('dpeg_ai_enabled')==='false')return null;
   const fnUrl=(localStorage.getItem('dpeg_ai_fn_url')||WORKER_URL||'').replace(/\/?$/,'');
@@ -51,6 +63,7 @@ async function callAISummary(messages, subject, opts={}){
     const latestDate=isNaN(latestDt)?'':latestDt.toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
     const latestRawHtml=latest?.body?.contentType==='html'?latest?.body?.content:'';
     const latestMessageText=latestRawHtml?cleanEmailBodyForAI(latestRawHtml):cleanEmailText(latest?.body?.content||latest?.bodyPreview||'');
+    if(containsSensitiveAIText(`${subject}\n${emailText}\n${latestMessageText}`))return SENSITIVE_AI_BLOCK_MESSAGE;
     if(localStorage.getItem('dpeg_ai_preview_enabled')!=='false'){
       const preview=`Subject: ${redactAITextForPreview(subject,300)}\n\n${redactAITextForPreview(emailText,3500)}`;
       if(!confirm(`The following redacted content will be sent to Groq for summarization:\n\n${preview}\n\nContinue?`))return null;
@@ -246,4 +259,3 @@ async function quickReassignDepartment(index,dept){
   setDeptAssignDepartment(dept);
   await saveDepartmentAssignmentSetting();
 }
-
