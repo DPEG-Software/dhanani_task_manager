@@ -1,4 +1,4 @@
-const CACHE = 'dtm-v101';
+const CACHE = 'dtm-v103';
 const PRECACHE = [
   '.',
   'bootstrap.js',
@@ -15,6 +15,7 @@ const PRECACHE = [
   'outlook-folders.js',
   'outlook-calendar.js',
   'notifications.js',
+  'security-tools.js',
   'notification-center.js',
   'dashboard.js',
   'action-log.js',

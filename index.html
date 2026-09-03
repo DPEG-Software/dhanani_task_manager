@@ -106,6 +106,10 @@
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M22 21v-2a4 4 0 00-3-3.87M12 7a4 4 0 11-8 0 4 4 0 018 0M17 11l2 2 4-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Sync My Outlook Contacts
       </button>
+      <button class="acct-option" id="proof-security-btn" onclick="openProofSecurityCheck()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.6-2.9 8.3-7 10-4.1-1.7-7-5.4-7-10V6l7-3zM9 12l2 2 4-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Proof Link Security
+      </button>
       <button class="acct-option" id="department-settings-btn" style="display:none" onclick="openDepartmentSettings();closeAccountMenu()">
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7M17 14l3 3m0 0l-3 3m3-3h-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Department Settings
@@ -1103,6 +1107,7 @@
 <script src="outlook-folders.js"></script>
 <script src="outlook-calendar.js"></script>
 <script src="notifications.js"></script>
+<script src="security-tools.js"></script>
 <script src="dashboard.js"></script>
 <script src="action-log.js"></script>
 <script src="task-details.js"></script>

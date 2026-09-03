@@ -1483,7 +1483,29 @@ async function handleNotify(request, env) {
   const data = await env.DPEG_DATA.get(DATA_KEY, 'json') || {};
   const notifications = Array.isArray(data.notifications) ? data.notifications : [];
 
-  if (body.type === 'proof_result') {
+  if (body.type === 'proof_security_link_update') {
+    const actor=userEmailFromClaims(claims);
+    const driveItemId=String(body.driveItemId||'').trim();
+    const webUrl=String(body.webUrl||'').trim();
+    const shareId=String(body.shareId||'').trim();
+    if(!driveItemId||!/^https:\/\//i.test(webUrl))return json({error:'A valid replacement proof link is required'},400);
+    let updated=0;
+    for(const notification of notifications){
+      if(!Array.isArray(notification.proofs))continue;
+      for(const proof of notification.proofs){
+        if(String(proof?.driveItemId||'')!==driveItemId)continue;
+        if(extractEmailAddress(proof?.uploadedBy||'')!==actor)continue;
+        proof.webUrl=webUrl;
+        proof.shareId=shareId;
+        updated++;
+      }
+    }
+    if(!updated)return json({error:'No proof file owned by this account matched'},404);
+    data.notifications=notifications;
+    data.updatedAt=new Date().toISOString();
+    await env.DPEG_DATA.put(DATA_KEY,JSON.stringify(data));
+    return json({success:true,updated});
+  } else if (body.type === 'proof_result') {
     const actor=userEmailFromClaims(claims);
     const assignment=await env.DPEG_ASSIGNMENTS?.prepare('SELECT assigner_email,recipient_email FROM assignments WHERE app_task_id=? AND recipient_email=?').bind(String(body.appTaskId||''),extractEmailAddress(body.recipientEmail||'')).first();
     if(assignment&&extractEmailAddress(assignment.assigner_email)!==actor)return json({error:'Only the immediate assigner can review this proof'},403);
